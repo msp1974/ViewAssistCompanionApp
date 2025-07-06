@@ -1,0 +1,9 @@
+This project is based on the work by hasanatlodhi
+https://github.com/hasanatlodhi/OpenwakewordforAndroid
+
+which itself is based on the original Python implementation by dscripka:
+https://github.com/dscripka/openWakeWord/
+
+Copyright © 2025 Mark Parker
+
+Licensed under the Apache License, Version 2.0.

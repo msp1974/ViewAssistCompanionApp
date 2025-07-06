@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".MainActivity">
+
+    <TextView
+        android:id="@+id/textView2"
+        android:layout_width="251dp"
+        android:layout_height="53dp"
+        android:layout_marginTop="25dp"
+        android:gravity="center"
+        android:text="View Assist Companion"
+        android:textAlignment="center"
+        android:textColor="@color/black"
+        android:textSize="22sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TableLayout
+        android:layout_width="381dp"
+        android:layout_height="404dp"
+        android:layout_marginStart="11dp"
+        android:layout_marginTop="84dp"
+        android:layout_marginEnd="12dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintHorizontal_bias="0.428"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Version"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/version"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="v1.0"
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="UUID"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/uuid"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Unknown"
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Permissions"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/permissions"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Not granted"
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Wake Word"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/wakeword"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Detection Value"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/detectionValue"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Detection Sound"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/detectionSound"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Connection Status"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/conn_status"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text=""
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Prediction"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/prediction"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="0.00000"
+                android:textStyle="normal" />
+
+        </TableRow>
+
+        <TableRow
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <TextView
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Wakeword Status"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/ww_status"
+                android:layout_width="fill_parent"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:gravity="start"
+                android:text="Starting..."
+                android:textStyle="normal" />
+
+        </TableRow>
+
+    </TableLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>
