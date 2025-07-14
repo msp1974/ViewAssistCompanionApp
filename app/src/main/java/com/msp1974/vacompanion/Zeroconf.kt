@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdManager.RegistrationListener
 import android.net.nsd.NsdServiceInfo
+import com.msp1974.vacompanion.settings.APPConfig
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -11,6 +12,7 @@ import java.net.NetworkInterface
 internal class Zeroconf(private val context: Context) {
     private var nsdManager: NsdManager? = null
     private var registrationListener: RegistrationListener? = null
+    private val config = APPConfig.getInstance(context)
     var serviceName: String? = null
 
     init {
@@ -19,8 +21,8 @@ internal class Zeroconf(private val context: Context) {
 
     fun registerService(port: Int) {
         val serviceInfo = NsdServiceInfo()
-        serviceInfo.serviceName = "wy-${Global.config.uuid}"
-        serviceInfo.serviceType = "_va_wyoming._tcp."
+        serviceInfo.serviceName = "vaca-${config.uuid}"
+        serviceInfo.serviceType = "_vaca._tcp."
         serviceInfo.port = port
 
         nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager

@@ -1,11 +1,14 @@
-package com.msp1974.vacompanion
+package com.msp1974.vacompanion.openwakeword
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.OrtSession.SessionOptions
+import android.content.Context
 import android.content.res.AssetManager
+import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.Logger
 import java.io.IOException
 import java.nio.FloatBuffer
 import java.util.ArrayDeque
@@ -13,9 +16,10 @@ import java.util.Collections
 import java.util.Random
 import kotlin.math.max
 
-enum class SupportedWakewords { alexa, hey_jarvis, hey_mycroft, hey_rhasspy }
+enum class SupportedWakewords { alexa, hey_jarvis, hey_mycroft, hey_rhasspy, ok_nabu, ok_computer }
 
 class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
+    private var log = Logger()
     var ort_session: OrtSession? = null
     var ort_env: OrtEnvironment = OrtEnvironment.getEnvironment()
 
@@ -29,7 +33,7 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
             val wakeWordFile = wakeWord.lowercase() + ".onnx"
             ort_session = ort_env.createSession(readModelFile(assetManager, wakeWordFile))
         } catch (e: IOException) {
-            Global.log.e("Error reading model file: $e")
+            log.e("Error reading model file: $e")
             throw RuntimeException(e)
         }
 
@@ -138,7 +142,7 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
                 return reshapedOutput
             }
         } catch (e: Exception) {
-            Global.log.d("not_predicted " + e.message)
+            log.d("not_predicted " + e.message)
         } finally {
             inputTensor?.close() // You're doing this, which is good.
         }
@@ -217,10 +221,14 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
 
             return transformedArray
         }
+
+        fun getWakeWords(): List<String> {
+            return enumValues<SupportedWakewords>().map { it.name }
+        }
     }
 }
 
-class Model internal constructor(modelRunner: ONNXModelRunner?) {
+class Model internal constructor(context: Context, modelRunner: ONNXModelRunner?) {
     var n_prepared_samples: Int = 1280
     var sampleRate: Int = 16000
     var melspectrogramMaxLen: Int = 10 * 97
@@ -231,6 +239,8 @@ class Model internal constructor(modelRunner: ONNXModelRunner?) {
     var raw_data_remainder: FloatArray = FloatArray(0)
     var melspectrogramBuffer: Array<FloatArray?>
     var accumulated_samples: Int = 0
+    val config = APPConfig.getInstance(context)
+
 
     init {
         melspectrogramBuffer = Array(76) { FloatArray(32) }
@@ -247,6 +257,10 @@ class Model internal constructor(modelRunner: ONNXModelRunner?) {
         } catch (e: Exception) {
             print(e.message)
         }
+    }
+
+    fun stop() {
+        modelRunner.end()
     }
 
     fun getFeatures(nFeatureFrames: Int, startNdx: Int): Array<Array<FloatArray>> {
@@ -555,8 +569,19 @@ class Model internal constructor(modelRunner: ONNXModelRunner?) {
         return if (processed_samples != 0) processed_samples else this.accumulated_samples
     }
 
-    fun predict_WakeWord(audiobuffer: FloatArray): String {
-        n_prepared_samples = this.streaming_features(audiobuffer)
+    private fun normaliseAudioBuffer(audioBuffer: ShortArray): FloatArray {
+        val floatBuffer = FloatArray(audioBuffer.size)
+        // Convert each short to float
+        for (i in audioBuffer.indices) {
+            // Convert by dividing by the maximum value of short to normalize
+            floatBuffer[i] =
+                (audioBuffer[i] / 32768.0f) * config.micGain // Normalize to range -1.0 to 1.0 if needed
+        }
+        return floatBuffer
+    }
+
+    fun predict_WakeWord(audioBuffer: ShortArray): String {
+        n_prepared_samples = this.streaming_features(normaliseAudioBuffer(audioBuffer))
         val res = this.getFeatures(16, -1)
         var result = ""
         try {

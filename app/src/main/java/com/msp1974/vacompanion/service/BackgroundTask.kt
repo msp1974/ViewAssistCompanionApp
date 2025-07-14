@@ -1,0 +1,233 @@
+package com.msp1974.vacompanion.service
+
+import android.content.Context
+import android.content.res.AssetManager
+import android.media.AudioManager
+import com.msp1974.vacompanion.Zeroconf
+import com.msp1974.vacompanion.audio.AudioInCallback
+import com.msp1974.vacompanion.audio.AudioRecorderThread
+import com.msp1974.vacompanion.audio.WakeWordSoundPlayer
+import com.msp1974.vacompanion.broadcasts.BroadcastSender
+import com.msp1974.vacompanion.openwakeword.Model
+import com.msp1974.vacompanion.openwakeword.ONNXModelRunner
+import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
+import com.msp1974.vacompanion.utils.Logger
+import com.msp1974.vacompanion.wyoming.WyomingTCPServer
+import com.msp1974.vacompanion.wyoming.WyomingCallback
+import kotlin.concurrent.thread
+import android.app.NotificationManager
+import android.content.Context.AUDIO_SERVICE
+import android.content.Context.NOTIFICATION_SERVICE
+import android.content.Intent
+import android.provider.Settings
+import com.msp1974.vacompanion.utils.SoundControl
+
+enum class audioRouteOption { NONE, DETECT, STREAM}
+
+internal class BackgroundTaskController (private val context: Context): Thread() {
+
+    private val log = Logger()
+    private var config: APPConfig = APPConfig.getInstance(context)
+
+    var modelRunner: ONNXModelRunner? = null
+    var model: Model? = null
+    var audioRoute: audioRouteOption = audioRouteOption.NONE
+    var recorder: AudioRecorderThread? = null
+
+    lateinit var assetManager: AssetManager
+    lateinit var server: WyomingTCPServer
+
+    var wwDetect = true
+    var calm: Int = 0
+
+
+    override fun run() {
+        assetManager = context.assets
+
+        startOpenWakeWordDetection()
+        startInputAudio(context)
+
+        // Start wyoming server
+        server = WyomingTCPServer(context, config.serverPort, object : WyomingCallback {
+            override fun onSatelliteStarted() {
+                log.i("Background Task - Connection detected")
+                audioRoute = audioRouteOption.DETECT
+            }
+
+            override fun onSatelliteStopped() {
+                log.i("Background Task - Disconnection detected")
+                audioRoute = audioRouteOption.NONE
+            }
+
+            override fun onRequestInputAudioStream() {
+                log.i("Streaming audio to server")
+                audioRoute = audioRouteOption.STREAM
+            }
+
+            override fun onReleaseInputAudioStream() {
+                log.i("Stopped streaming audio to server")
+                audioRoute = audioRouteOption.DETECT
+            }
+        })
+        thread { server.start() }
+
+        // Add config change listeners
+        config.addChangeListener("notificationVolume", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.notificationVolume}")
+                setVolume(AudioManager.STREAM_NOTIFICATION, config.notificationVolume)
+            }
+        })
+
+        config.addChangeListener("musicVolume", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.musicVolume}")
+                setVolume(AudioManager.STREAM_MUSIC, config.musicVolume)
+            }
+        })
+
+        config.addChangeListener("wakeWord", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.wakeWord}")
+                restartWakeWordDetection()
+            }
+        })
+        config.addChangeListener("doNotDisturb", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.doNotDisturb}")
+                setDoNotDisturb(config.doNotDisturb)
+            }
+        })
+
+        // Start mdns server
+        log.i("Starting mdns server")
+        Zeroconf(context).registerService(config.serverPort)
+    }
+
+    fun startInputAudio(context: Context) {
+        try {
+            log.i("Starting input audio")
+            recorder = AudioRecorderThread(context, object : AudioInCallback {
+                override fun onAudio(audioBuffer: ShortArray) {
+                    if (audioRoute == audioRouteOption.DETECT) {
+                        processAudioToWakeWordEngine(context, audioBuffer)
+                    } else if (audioRoute == audioRouteOption.STREAM) {
+                        server.sendAudio(convertAudioToByteBuffer(audioBuffer))
+                    }
+                }
+                override fun onError(err: String) {
+                }
+            })
+            recorder?.start()
+        } catch (e: Exception) {
+            log.d("Error starting mic audio: ${e.message.toString()}")
+        }
+    }
+
+    fun stopInputAudio() {
+        try {
+            log.i("Stopping input audio")
+            recorder?.stopRecording()
+            recorder = null
+        } catch (e: Exception) {
+            log.d("Error stopping input audio: ${e.message.toString()}")
+        }
+    }
+
+    fun processAudioToWakeWordEngine(context: Context, audioBuffer: ShortArray) {
+        try {
+            val res = model!!.predict_WakeWord(audioBuffer)
+            if (res.toFloat() > config.wakeWordThreshold && calm == 0) {
+                log.i("Wake word detected")
+
+                if (config.wakeWordSound != "none") {
+                    WakeWordSoundPlayer(
+                        context,
+                        context.resources.getIdentifier(
+                            config.wakeWordSound,
+                            "raw",
+                            context.packageName
+                        )
+                    ).play()
+                }
+                BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
+
+                // Process 20 audio buffers before sending detection event again
+                calm = 20
+            }
+            if (calm > 0) {
+                --calm
+            }
+        } catch (e: Exception) {
+            log.d("Error processing to wake word engine: ${e.message.toString()}")
+        }
+    }
+
+    private fun convertAudioToByteBuffer(audioBuffer: ShortArray): ByteArray {
+        val byteBuffer = ByteArray(audioBuffer.size * 2)
+        for (i in audioBuffer.indices) {
+            val value: Int = (audioBuffer[i] * config.micGain)
+            byteBuffer[i * 2] = (value and 0xFF).toByte()
+            byteBuffer[i * 2 + 1] = (value shr 8).toByte()
+        }
+        return byteBuffer
+    }
+
+    fun shutdown() {
+        Zeroconf(context).unregisterService()
+        stopInputAudio()
+        stopOpenWakeWordDetection()
+        server.stop()
+
+    }
+
+    fun startOpenWakeWordDetection() {
+        // Init wake word detection
+        log.i("Starting wake word detection")
+        try {
+            modelRunner = ONNXModelRunner(assetManager, config.wakeWord)
+            model = Model(context, modelRunner)
+        } catch (e: Exception) {
+            log.d("Error starting wake word detection: ${e.message.toString()}")
+        }
+    }
+
+    fun stopOpenWakeWordDetection() {
+        log.i("Stopping wake word detection")
+        //model?.stop()
+    }
+
+    fun restartWakeWordDetection() {
+        if (config.initSettings) {
+            log.i("Restarting wake word detection")
+            wwDetect = false
+            stopOpenWakeWordDetection()
+            startOpenWakeWordDetection()
+            wwDetect = true
+        }
+    }
+
+    fun setVolume(stream: Int, volume: Float) {
+        val audioManager = com.msp1974.vacompanion.audio.AudioManager(context)
+        audioManager.setVolume(stream, volume)
+    }
+
+    fun setDoNotDisturb(enable: Boolean) {
+
+        val sound = SoundControl(context)
+
+        if (enable) {
+            // Mute mic
+            //stopInputAudio()
+            // Enable silent mode
+            sound.setSoundMode(AudioManager.RINGER_MODE_SILENT)
+
+        } else {
+            // Un-mute mic
+            //startInputAudio(context)
+            // Disable silent mode
+            sound.setSoundMode(AudioManager.RINGER_MODE_NORMAL)
+        }
+    }
+}

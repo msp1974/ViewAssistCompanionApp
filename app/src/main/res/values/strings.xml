@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">View Assist App</string>
+
+    <string name="service_notification_channel_name">View Assist</string>
+    <string name="service_notification_channel_description">View Assist Running…</string>
+    <string name="service_notification_title">View Assist Companion App</string>
+    <string name="service_notification_message">Background services running…</string>
 </resources>
