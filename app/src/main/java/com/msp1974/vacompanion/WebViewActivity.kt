@@ -12,6 +12,7 @@ import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
@@ -37,9 +38,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
     private lateinit var config: APPConfig
     private lateinit var screen: ScreenUtils
 
-    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
-    private lateinit var webView: WebView
-    private var authInProgress: Boolean = false
+    private var swipeRefreshLayout: SwipeRefreshLayout? = null
+    private var webView: WebView? = null
 
     @SuppressLint("SetJavaScriptEnabled", "SetTextI18n", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -55,13 +55,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         webView = findViewById(R.id.haWebview)
         swipeRefreshLayout = findViewById(R.id.swiperefresh)
 
-        // Add javascript interface for view assist
-        webView.addJavascriptInterface(WebAppInterface(applicationContext), "ViewAssistApp")
-        // Add JS interface for HA external auth support
-        webView.addJavascriptInterface(WebViewJavascriptInterface(externalAuthCallback), "externalApp")
-
         // Initial states
-        swipeRefreshLayout.setEnabled(config.swipeRefresh)
+        swipeRefreshLayout?.setEnabled(config.swipeRefresh)
         screen.setDeviceBrightnessMode(config.screenAutoBrightness)
         if (!config.screenAutoBrightness) {
             setScreenBrightness(config.screenBrightness)
@@ -81,7 +76,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
             override fun onConfigChange(property: String) {
                 log.i("Swipe refresh changed to ${config.swipeRefresh}")
                 runOnUiThread {
-                    swipeRefreshLayout.setEnabled(config.swipeRefresh)
+                    swipeRefreshLayout?.setEnabled(config.swipeRefresh)
                 }
             }
         })
@@ -128,71 +123,108 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         LocalBroadcastManager.getInstance(this).registerReceiver(satelliteBroadcastReceiver, filter)
 
         // Setup WebView and load html page
-        swipeRefreshLayout.setOnRefreshListener(this);
-        webView.setWebViewClient(object : WebViewClient() {
-            override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
-                super.onPageStarted(view, url, favicon)
-                swipeRefreshLayout.isRefreshing = true
-            }
-
-            override fun onPageFinished(view: WebView, url: String) {
-                swipeRefreshLayout.isRefreshing = false
-            }
-
-            override fun onRenderProcessGone(
-                view: WebView?,
-                detail: RenderProcessGoneDetail?
-            ): Boolean {
-                view?.let {
-                    finish()
-                }
-                return true
-            }
-
-            override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
-                // If the url is our client id then capture the auth code and get an access token
-                if (url.contains(AuthUtils.CLIENT_URL)) {
-                    val authCode = AuthUtils.getReturnAuthCode(url)
-                    if (authCode != "") {
-                        // Get access token using auth token
-                        val auth = AuthUtils.authoriseWithAuthCode(config.homeAssistantHTTPServerHost, authCode)
-                        if (auth.accessToken == "") {
-                            // Not authorised.  Send back to login screen
-                            webView.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
-                        } else {
-                            // Authorised. Load HA default dashboard
-                            config.accessToken = auth.accessToken
-                            config.refreshToken = auth.refreshToken
-                            config.tokenExpiry = auth.expires
-                            webView.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost))
-                        }
-                    }
-                }
-                return true
-            }
-        })
-
-        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
-        webView.settings.javaScriptEnabled = true
-        webView.settings.domStorageEnabled = true
-        webView.settings.allowContentAccess = true
-        webView.settings.mediaPlaybackRequiresUserGesture = false
+        swipeRefreshLayout?.setOnRefreshListener(this);
 
 
         val policy = ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
+
+        initialiseWebView(webView)
 
         //If we have auth token, load the home assistant URL
         //If not, do auth
         if (config.accessToken != "") {
             // We have valid token , load url
             log.d("Have auth token, logging in...")
-            webView.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost,))
+            webView!!.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost,))
         } else {
             // We need to ask for login
             log.d("No auth token stored. Requesting login")
-            webView.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+            webView!!.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
         }
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    fun initialiseWebView(view: WebView?) {
+        if (view != null) {
+            // Add javascript interface for view assist
+            view.addJavascriptInterface(WebAppInterface(applicationContext), "ViewAssistApp")
+            // Add JS interface for HA external auth support
+            view.addJavascriptInterface(
+                WebViewJavascriptInterface(externalAuthCallback),
+                "externalApp"
+            )
+
+            view.setWebViewClient(object : WebViewClient() {
+                override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    val swipe = view.parent as SwipeRefreshLayout
+                    swipe.isRefreshing = true
+                }
+
+                override fun onPageFinished(view: WebView, url: String) {
+                    val swipe = view.parent as SwipeRefreshLayout
+                    swipe.isRefreshing = false
+                }
+
+                override fun onRenderProcessGone(
+                    view: WebView,
+                    detail: RenderProcessGoneDetail?
+                ): Boolean {
+                    log.d("Webview render process gone: $detail")
+                    if (webView!! == view) {
+                        val container = swipeRefreshLayout?.parent as ViewGroup
+                        val params = container.layoutParams
+                        container.removeView(swipeRefreshLayout)
+                        webView = null
+                        swipeRefreshLayout = null
+                        view.destroy()
+
+                        val v = layoutInflater.inflate(R.layout.activity_webview, container, false)
+                        webView = findViewById(R.id.haWebview)
+                        swipeRefreshLayout = findViewById(R.id.swiperefresh)
+                        initialiseWebView(webView)
+                        setContentView(v, params)
+                        webView?.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost))
+                    }
+
+                    return true
+                }
+
+                override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                    // If the url is our client id then capture the auth code and get an access token
+                    if (url.contains(AuthUtils.CLIENT_URL)) {
+                        val authCode = AuthUtils.getReturnAuthCode(url)
+                        if (authCode != "") {
+                            // Get access token using auth token
+                            val auth = AuthUtils.authoriseWithAuthCode(config.homeAssistantHTTPServerHost, authCode)
+                            if (auth.accessToken == "") {
+                                // Not authorised.  Send back to login screen
+                                view.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+                            } else {
+                                // Authorised. Load HA default dashboard
+                                config.accessToken = auth.accessToken
+                                config.refreshToken = auth.refreshToken
+                                config.tokenExpiry = auth.expires
+                                view.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost))
+                            }
+                        }
+                    }
+                    return true
+                }
+            })
+
+            view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+            view.settings.apply {
+                javaScriptEnabled = true
+                domStorageEnabled = true
+                allowContentAccess = true
+                mediaPlaybackRequiresUserGesture = false
+                allowFileAccess = true
+            }
+
+        }
+
     }
 
     // Add external auth callback for HA authentication
@@ -209,7 +241,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 } else {
                     log.d("Failed to refresh auth token.  Proceeding to login screen")
                     runOnUiThread {
-                        webView.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+                        webView!!.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
                     }
                 }
             } else {
@@ -220,7 +252,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
         private fun callAuthJS() {
             runOnUiThread {
-                webView.evaluateJavascript(
+                webView!!.evaluateJavascript(
                     "window.externalAuthSetToken(true, {\n" +
                         "\"access_token\": \"${config.accessToken}\",\n" +
                         "\"expires_in\": 1800\n" +
@@ -270,7 +302,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
     override fun onRefresh() {
         log.d("Reloading WebView URL")
-        webView.reload()
+        webView!!.reload()
     }
 
     override fun onResume() {
@@ -311,7 +343,6 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         // wake lock
         if (state) {
             screen.wakeScreen()
-
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
             window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
