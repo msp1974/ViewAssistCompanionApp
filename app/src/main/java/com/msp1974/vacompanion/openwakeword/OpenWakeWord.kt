@@ -569,19 +569,8 @@ class Model internal constructor(context: Context, modelRunner: ONNXModelRunner?
         return if (processed_samples != 0) processed_samples else this.accumulated_samples
     }
 
-    private fun normaliseAudioBuffer(audioBuffer: ShortArray): FloatArray {
-        val floatBuffer = FloatArray(audioBuffer.size)
-        // Convert each short to float
-        for (i in audioBuffer.indices) {
-            // Convert by dividing by the maximum value of short to normalize
-            floatBuffer[i] =
-                (audioBuffer[i] / 32768.0f) * config.micGain // Normalize to range -1.0 to 1.0 if needed
-        }
-        return floatBuffer
-    }
-
-    fun predict_WakeWord(audioBuffer: ShortArray): String {
-        n_prepared_samples = this.streaming_features(normaliseAudioBuffer(audioBuffer))
+    fun predict_WakeWord(audioBuffer: FloatArray): String {
+        n_prepared_samples = this.streaming_features(audioBuffer)
         val res = this.getFeatures(16, -1)
         var result = ""
         try {

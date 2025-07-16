@@ -20,7 +20,9 @@ import android.app.NotificationManager
 import android.content.Context.AUDIO_SERVICE
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
+import android.provider.MediaStore
 import android.provider.Settings
+import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.utils.SoundControl
 
 enum class audioRouteOption { NONE, DETECT, STREAM}
@@ -34,6 +36,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     var model: Model? = null
     var audioRoute: audioRouteOption = audioRouteOption.NONE
     var recorder: AudioRecorderThread? = null
+    val audioDSP: AudioDSP = AudioDSP()
 
     lateinit var assetManager: AssetManager
     lateinit var server: WyomingTCPServer
@@ -99,6 +102,12 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 setDoNotDisturb(config.doNotDisturb)
             }
         })
+        config.addChangeListener("micGain", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.micGain}")
+                audioDSP.gain = config.micGain
+            }
+        })
 
         // Start mdns server
         log.i("Starting mdns server")
@@ -108,10 +117,20 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     fun startInputAudio(context: Context) {
         try {
             log.i("Starting input audio")
+            audioDSP.gain = config.micGain
             recorder = AudioRecorderThread(context, object : AudioInCallback {
                 override fun onAudio(audioBuffer: ShortArray) {
                     if (audioRoute == audioRouteOption.DETECT) {
-                        processAudioToWakeWordEngine(context, audioBuffer)
+                        var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
+                        if (config.audioFilterEnabled) {
+                            floatBuffer = audioDSP.bandPassFilter(
+                                floatBuffer,
+                                1600f,
+                                2000f,
+                                config.sampleRate.toFloat()
+                            )
+                        }
+                        processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == audioRouteOption.STREAM) {
                         server.sendAudio(convertAudioToByteBuffer(audioBuffer))
                     }
@@ -135,7 +154,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         }
     }
 
-    fun processAudioToWakeWordEngine(context: Context, audioBuffer: ShortArray) {
+    fun processAudioToWakeWordEngine(context: Context, audioBuffer: FloatArray) {
         try {
             val res = model!!.predict_WakeWord(audioBuffer)
             if (res.toFloat() > config.wakeWordThreshold && calm == 0) {
