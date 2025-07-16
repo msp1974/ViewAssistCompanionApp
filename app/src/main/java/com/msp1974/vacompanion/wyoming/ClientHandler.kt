@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.os.Handler
+import android.os.Looper
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.openwakeword.ONNXModelRunner
 import com.msp1974.vacompanion.audio.PCMMediaPlayer
@@ -185,6 +187,13 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             "transcript" -> {
                 releaseInputAudioStream()
+                val handler = Handler(Looper.getMainLooper())
+                handler.postDelayed({
+                    // Unduck volume if no tts audio stream in 1s
+                    if (pipelineStatus != PipelineStatus.STREAMING) {
+                        MusicPlayer.unDuckVolume()
+                    }
+                }, 1000) //
             }
             "voice-stopped" -> {
                 releaseInputAudioStream()
