@@ -104,6 +104,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 if (intent.action == BroadcastSender.SATELLITE_STOPPED) {
                     runOnUiThread {
                         LocalBroadcastManager.getInstance(context).unregisterReceiver(this)
+                        webView!!.removeAllViews()
+                        webView!!.destroy()
                     }
                     finish()
                 }
@@ -130,7 +132,10 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         StrictMode.setThreadPolicy(policy)
 
         initialiseWebView(webView)
+        loadInitURL()
+    }
 
+    fun loadInitURL() {
         //If we have auth token, load the home assistant URL
         //If not, do auth
         if (config.accessToken != "") {
@@ -222,6 +227,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 mediaPlaybackRequiresUserGesture = false
                 allowFileAccess = true
             }
+            view.removeAllViews()
 
         }
 
@@ -302,7 +308,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
     override fun onRefresh() {
         log.d("Reloading WebView URL")
-        webView!!.reload()
+        webView!!.removeAllViews()
+        loadInitURL()
     }
 
     override fun onResume() {
@@ -312,8 +319,13 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        if (webView != null) {
+            webView!!.removeJavascriptInterface("ViewAssistApp")
+            webView!!.removeJavascriptInterface("externalApp")
+            webView!!.removeAllViews()
+        }
         screen.setDeviceBrightnessMode(true)
+        super.onDestroy()
     }
 
     fun setScreenBrightness(brightness: Float) {
