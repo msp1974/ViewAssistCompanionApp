@@ -17,7 +17,7 @@ class AuthUtils {
 
     companion object {
         val log = Logger()
-        const val CLIENT_URL = "vaca-auth.me"
+        const val CLIENT_URL = "vaca.homeassistant"
         var state: String = ""
 
         fun getURL(host: String): String {

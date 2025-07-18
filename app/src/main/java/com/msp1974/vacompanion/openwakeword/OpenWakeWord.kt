@@ -259,8 +259,9 @@ class Model internal constructor(context: Context, modelRunner: ONNXModelRunner?
         }
     }
 
-    fun stop() {
-        modelRunner.end()
+    fun reset() {
+        melspectrogramBuffer = Array(76) { FloatArray(32) }
+        //featureBuffer = this._getEmbeddings(this.generateRandomIntArray(16000 * 4), 76, 8)
     }
 
     fun getFeatures(nFeatureFrames: Int, startNdx: Int): Array<Array<FloatArray>> {

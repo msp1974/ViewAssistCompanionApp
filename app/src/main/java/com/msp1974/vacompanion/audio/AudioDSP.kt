@@ -1,8 +1,11 @@
 package com.msp1974.vacompanion.audio
 
+import kotlin.div
 import kotlin.math.cos
 import kotlin.math.exp
+import kotlin.math.min
 import kotlin.math.pow
+
 
 class AudioDSP {
     var gain: Int = 1
@@ -25,8 +28,9 @@ class AudioDSP {
         return filter.process(input)
     }
 
-    fun highPassFilter(input: FloatArray, cutoff: Float): FloatArray {
-        return input
+    fun highPassFilter(input: FloatArray, freq: Float, sampleRate: Float): FloatArray {
+        val filter = HighPassFilter(freq, sampleRate)
+        return filter.process(input)
     }
 
     fun bandPassFilter(input: FloatArray, freq: Float, bandwidth: Float, sampleRate: Float): FloatArray {
@@ -35,14 +39,33 @@ class AudioDSP {
     }
 
     fun normaliseAudioBuffer(audioBuffer: ShortArray, gain: Int = 1): FloatArray {
-        val floatBuffer = FloatArray(audioBuffer.size)
-        // Convert each short to float
-        for (i in audioBuffer.indices) {
-            // Convert by dividing by the maximum value of short to normalize
-            floatBuffer[i] = ((audioBuffer[i] * gain) / 32768.0f) // Normalize to range -1.0 to 1.0 if needed
-        }
+        val multiplier = gain / 32768.0f
+        val floatBuffer = audioBuffer.map { (-1f).coerceAtLeast(min(1f, (it.toFloat() * multiplier))) }.toFloatArray()
         return floatBuffer
     }
+
+    fun floatArrayToByteBuffer(audioBuffer: FloatArray, gain: Int = 1): ByteArray {
+        val multiplier = (32768.0f * gain).toInt()
+        val byteBuffer = ByteArray(audioBuffer.size * 2)
+        for (i in audioBuffer.indices) {
+            val value: Int = (audioBuffer[i] * multiplier).toInt()
+            byteBuffer[i * 2] = (value and 0xFF).toByte()
+            byteBuffer[i * 2 + 1] = (value shr 8).toByte()
+        }
+        return byteBuffer
+    }
+
+    fun shortArrayToByteBuffer(audioBuffer: ShortArray, gain: Int = 1): ByteArray {
+        val multiplier = (32768.0f * gain).toInt()
+        val byteBuffer = ByteArray(audioBuffer.size * 2)
+        for (i in audioBuffer.indices) {
+            val value: Int = (-32768).coerceAtLeast(min(32768, (audioBuffer[i] * gain)))
+            byteBuffer[i * 2] = (value and 0xFF).toByte()
+            byteBuffer[i * 2 + 1] = (value shr 8).toByte()
+        }
+        return byteBuffer
+    }
+
 }
 
 class LowPassSPFilter: IIRFilter {
@@ -71,6 +94,19 @@ class LowPassFSFilter: IIRFilter {
         b = floatArrayOf(4 * x, -6 * x * x, 4 * x * x * x, -x * x * x * x)
     }
 
+}
+
+class HighPassFilter: IIRFilter {
+    constructor(freq: Float, sampleRate: Float) : super(freq, sampleRate) {
+
+    }
+
+    override fun calcCoefficient() {
+        val freqFrac = getFrequency() / sampleRate
+        val x = exp(-2 * Math.PI * freqFrac).toFloat()
+        a = floatArrayOf((1+x)/2, -(1+x)/2)
+        b = floatArrayOf(x)
+    }
 }
 
 class BandPassFilter: IIRFilter {

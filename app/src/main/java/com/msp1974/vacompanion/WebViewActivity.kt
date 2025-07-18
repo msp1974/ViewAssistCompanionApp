@@ -319,11 +319,6 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
     }
 
     override fun onDestroy() {
-        if (webView != null) {
-            webView!!.removeJavascriptInterface("ViewAssistApp")
-            webView!!.removeJavascriptInterface("externalApp")
-            webView!!.removeAllViews()
-        }
         screen.setDeviceBrightnessMode(true)
         super.onDestroy()
     }

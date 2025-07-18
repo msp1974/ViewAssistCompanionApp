@@ -2,10 +2,10 @@ package com.msp1974.vacompanion.audio
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.NoiseSuppressor
 import android.os.Process
 import com.msp1974.vacompanion.settings.APPConfig
 
@@ -27,12 +27,18 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
         }
 
         audioRecord = AudioRecord(
-            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
             SAMPLE_RATE,
             CHANNEL_CONFIG,
             AUDIO_FORMAT,
             minBufferSize
         )
+        if (NoiseSuppressor.isAvailable()) {
+            var noiseFX = NoiseSuppressor.create(audioRecord.audioSessionId)
+            if (noiseFX != null) {
+                noiseFX.enabled = config.audioFilterEnabled
+            }
+        }
 
         if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
             // Initialization error handling

@@ -16,6 +16,7 @@ import com.msp1974.vacompanion.utils.Logger
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addAll
+import kotlinx.serialization.json.addJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -39,6 +40,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     private var runClient: Boolean = true
     private var satelliteStatus: SatelliteState = SatelliteState.STOPPED
     private var pipelineStatus: PipelineStatus = PipelineStatus.INACTIVE
+    private val connectionID: String = "${client.inetAddress.hostAddress}"
 
     private var pingTimer: Timer = Timer()
 
@@ -61,6 +63,11 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         }
     }
     val filter = IntentFilter().apply { addAction(BroadcastSender.WAKE_WORD_DETECTED) }
+
+    fun isValidConnection(): Boolean {
+        //TODO: Implement connection validation
+        return true
+    }
 
     fun run() {
         config.connectionCount += 1
@@ -101,17 +108,32 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
 
     private fun startSatellite() {
-        log.d("Starting satellite")
-        LocalBroadcastManager.getInstance(context).registerReceiver(wakeWordBroadcastReceiver, filter)
+        //TODO: Validate connection
 
-        server.pipelineClient = this
-        config.homeAssistantHTTPServerHost = "" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
-        config.homeAssistantURL = "http://" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
+        if (config.pairedDeviceID == "") {
+            config.pairedDeviceID = connectionID
+        }
 
-        satelliteStatus = SatelliteState.RUNNING
-        BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
-        server.satelliteStarted()
-        log.d("Satellite started")
+        if (config.pairedDeviceID == connectionID) {
+            log.d("Starting satellite")
+            LocalBroadcastManager.getInstance(context)
+                .registerReceiver(wakeWordBroadcastReceiver, filter)
+
+            server.pipelineClient = this
+            config.homeAssistantHTTPServerHost =
+                "" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
+            config.homeAssistantURL =
+                "http://" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
+
+            satelliteStatus = SatelliteState.RUNNING
+            BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
+            server.satelliteStarted()
+            log.d("Satellite started")
+        } else {
+            log.i("Invalid connection attempting to start satellite!")
+            log.i("Aborting connection")
+            stop()
+        }
     }
 
     private fun stopSatellite() {
@@ -151,99 +173,139 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             log.d("Received event: ${event.toMap()}")
         }
 
+        // Events not requiring running satellite
         when (event.type) {
             "ping" -> {
                 sendPong()
             }
             "describe" -> {
+                // Don't respond if paired and this is not paired client
+                if (config.pairedDeviceID != "" && config.pairedDeviceID != connectionID) {
+                    return
+                }
                 sendInfo()
             }
             "run-satellite" -> {
                 startSatellite()
             }
-            "pause-satellite" -> {
-                stopSatellite()
-            }
-            "audio-start" -> {
-                pipelineStatus = PipelineStatus.STREAMING
-                PCMMediaPlayer.play()
-            }
-            "audio-chunk" -> {
-                PCMMediaPlayer.writeAudio(event.payload)
-            }
-            "audio-stop" -> {
-                if (PCMMediaPlayer.isPlaying) {
-                    PCMMediaPlayer.stop()
-                }
-                pipelineStatus = PipelineStatus.INACTIVE
-                sendEvent(
-                    "played",
-                )
-                MusicPlayer.unDuckVolume()
+        }
 
-            }
-            "transcribe" -> {
-                requestInputAudioStream()
-            }
-            "transcript" -> {
-                releaseInputAudioStream()
-                val handler = Handler(Looper.getMainLooper())
-                handler.postDelayed({
-                    // Unduck volume if no tts audio stream in 1s
-                    if (pipelineStatus != PipelineStatus.STREAMING) {
-                        MusicPlayer.unDuckVolume()
+        // Events that must have a running satellite to be processed
+        if (satelliteStatus == SatelliteState.RUNNING) {
+            when (event.type) {
+                "pause-satellite" -> {
+                    stopSatellite()
+                }
+
+                "audio-start" -> {
+                    pipelineStatus = PipelineStatus.STREAMING
+                    PCMMediaPlayer.play()
+                }
+
+                "audio-chunk" -> {
+                    PCMMediaPlayer.writeAudio(event.payload)
+                }
+
+                "audio-stop" -> {
+                    if (PCMMediaPlayer.isPlaying) {
+                        PCMMediaPlayer.stop()
                     }
-                }, 1000) //
-            }
-            "voice-stopped" -> {
-                releaseInputAudioStream()
-            }
-            "error" -> {
-                releaseInputAudioStream()
-                MusicPlayer.unDuckVolume()
-            }
-            "custom-settings" -> {
-                config.processSettings(event.getProp("settings"))
-            }
-            "custom-action" -> {
-                when (event.getProp("action")) {
-                    "play-media" -> {
-                        if (event.getProp("payload") != "") {
-                            val values = JSONObject(event.getProp("payload"))
-                            MusicPlayer.play(values.getString("url"))
-                            MusicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
+                    pipelineStatus = PipelineStatus.INACTIVE
+                    sendEvent(
+                        "played",
+                    )
+                    MusicPlayer.unDuckVolume()
+
+                }
+
+                "transcribe" -> {
+                    requestInputAudioStream()
+                }
+
+                "transcript" -> {
+                    releaseInputAudioStream()
+                    val handler = Handler(Looper.getMainLooper())
+                    handler.postDelayed({
+                        // Unduck volume if no tts audio stream in 1s
+                        if (pipelineStatus != PipelineStatus.STREAMING) {
+                            MusicPlayer.unDuckVolume()
                         }
-                    }
-                    "play" -> {
-                        MusicPlayer.resume()
-                    }
-                    "pause" -> {
-                        MusicPlayer.pause()
-                    }
-                    "stop" -> {
-                        MusicPlayer.stop()
-                    }
-                    "set-volume" -> {
-                        if (event.getProp("payload") != "") {
-                            val values = JSONObject(event.getProp("payload"))
-                            MusicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
-                        }
-                    }
-                    "toast-message" -> {
-                        if (event.getProp("payload") != "") {
-                            val values = JSONObject(event.getProp("payload"))
-                            BroadcastSender.sendBroadcast(context, BroadcastSender.TOAST_MESSAGE, values.getString("message"))
-                        }
-                    }
-                    "screen" -> {
-                        if (event.getProp("payload") != "") {
-                            val values = JSONObject(event.getProp("payload"))
-                            if (values.getString("action") == "on") {
-                                BroadcastSender.sendBroadcast(context, BroadcastSender.SCREEN_ON)
-                            } else {
-                                BroadcastSender.sendBroadcast(context, BroadcastSender.SCREEN_OFF)
-                            }
-                        }
+                    }, 1000) //
+                }
+
+                "voice-stopped" -> {
+                    releaseInputAudioStream()
+                }
+
+                "error" -> {
+                    releaseInputAudioStream()
+                    MusicPlayer.unDuckVolume()
+                }
+
+                "custom-settings" -> {
+                    config.processSettings(event.getProp("settings"))
+                }
+
+                "custom-action" -> {
+                    handleCustomAction(event)
+                }
+            }
+        }
+    }
+
+    private fun handleCustomAction(event: WyomingPacket) {
+        when (event.getProp("action")) {
+            "play-media" -> {
+                if (event.getProp("payload") != "") {
+                    val values = JSONObject(event.getProp("payload"))
+                    MusicPlayer.play(values.getString("url"))
+                    MusicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
+                }
+            }
+
+            "play" -> {
+                MusicPlayer.resume()
+            }
+
+            "pause" -> {
+                MusicPlayer.pause()
+            }
+
+            "stop" -> {
+                MusicPlayer.stop()
+            }
+
+            "set-volume" -> {
+                if (event.getProp("payload") != "") {
+                    val values = JSONObject(event.getProp("payload"))
+                    MusicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
+                }
+            }
+
+            "toast-message" -> {
+                if (event.getProp("payload") != "") {
+                    val values = JSONObject(event.getProp("payload"))
+                    BroadcastSender.sendBroadcast(
+                        context,
+                        BroadcastSender.TOAST_MESSAGE,
+                        values.getString("message")
+                    )
+                }
+            }
+
+            "screen" -> {
+                if (event.getProp("payload") != "") {
+                    val values = JSONObject(event.getProp("payload"))
+                    if (values.getString("action") == "on") {
+                        BroadcastSender.sendBroadcast(
+                            context,
+                            BroadcastSender.SCREEN_ON
+                        )
+                    } else {
+                        BroadcastSender.sendBroadcast(
+                            context,
+                            BroadcastSender.SCREEN_OFF
+                        )
                     }
                 }
             }
@@ -281,14 +343,41 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         sendEvent(
             "info",
             buildJsonObject {
-                put("version", "1.5.4")
+                put("version", config.version)
                 putJsonArray("asr") {}
                 putJsonArray("tts") {}
                 putJsonArray("handle") {}
                 putJsonArray("intent") {}
                 putJsonArray("wake") {
-                    //addJsonArray {}
+                    add(
+                        buildJsonObject {
+                            put("name", "available_wake_words")
+                            putJsonObject("attribution") {
+                                put("name", "")
+                                put("url", "")
+                            }
+                            put("installed", true)
+                            putJsonArray("models") {
+                                addAll(ONNXModelRunner.Companion.getWakeWords().map {
+                                    buildJsonObject {
+                                        put("name", it)
+                                        putJsonObject("attribution") {
+                                            put("name", "")
+                                            put("url", "")
+                                        }
+                                        put("installed", true)
+                                        putJsonArray("languages") {
+                                            addAll(listOf("en"))
+                                        }
+                                        put("phrase", it)
+                                    }
+                                })
+                            }
+                        }
+                    )
                 }
+                putJsonArray("stt") {}
+
                 putJsonObject("satellite") {
                     put("name", "VACA ${config.uuid}")
                     putJsonObject("attribution") {
@@ -306,7 +395,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                         put("width", 2)
                     }
                     putJsonArray("active_wake_words") {
-                        addAll(ONNXModelRunner.Companion.getWakeWords())
+                        addAll(listOf(config.wakeWord))
                     }
                     put("max_active_wake_words", 1)
 

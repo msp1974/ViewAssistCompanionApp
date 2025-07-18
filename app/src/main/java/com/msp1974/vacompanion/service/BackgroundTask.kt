@@ -48,29 +48,36 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     override fun run() {
         assetManager = context.assets
 
-        startOpenWakeWordDetection()
-        startInputAudio(context)
+
 
         // Start wyoming server
         server = WyomingTCPServer(context, config.serverPort, object : WyomingCallback {
             override fun onSatelliteStarted() {
                 log.i("Background Task - Connection detected")
+                startOpenWakeWordDetection()
+                startInputAudio(context)
                 audioRoute = audioRouteOption.DETECT
             }
 
             override fun onSatelliteStopped() {
                 log.i("Background Task - Disconnection detected")
                 audioRoute = audioRouteOption.NONE
+                stopInputAudio()
+                stopOpenWakeWordDetection()
             }
 
             override fun onRequestInputAudioStream() {
                 log.i("Streaming audio to server")
-                audioRoute = audioRouteOption.STREAM
+                if (audioRoute == audioRouteOption.DETECT) {
+                    audioRoute = audioRouteOption.STREAM
+                }
             }
 
             override fun onReleaseInputAudioStream() {
                 log.i("Stopped streaming audio to server")
-                audioRoute = audioRouteOption.DETECT
+                if (audioRoute == audioRouteOption.STREAM) {
+                    audioRoute = audioRouteOption.DETECT
+                }
             }
         })
         thread { server.start() }
@@ -108,6 +115,11 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 audioDSP.gain = config.micGain
             }
         })
+        config.addChangeListener("audioFilterEnabled", object: InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("BackgroundTask - $property changed to ${config.audioFilterEnabled}")
+            }
+        })
 
         // Start mdns server
         log.i("Starting mdns server")
@@ -123,16 +135,16 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                     if (audioRoute == audioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         if (config.audioFilterEnabled) {
-                            floatBuffer = audioDSP.bandPassFilter(
+                            floatBuffer = audioDSP.highPassFilter(
                                 floatBuffer,
-                                1600f,
-                                2000f,
+                                150f,
                                 config.sampleRate.toFloat()
                             )
                         }
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == audioRouteOption.STREAM) {
-                        server.sendAudio(convertAudioToByteBuffer(audioBuffer))
+                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)
+                        server.sendAudio(bAudioBuffer)
                     }
                 }
                 override fun onError(err: String) {
@@ -156,9 +168,12 @@ internal class BackgroundTaskController (private val context: Context): Thread()
 
     fun processAudioToWakeWordEngine(context: Context, audioBuffer: FloatArray) {
         try {
-            val res = model!!.predict_WakeWord(audioBuffer)
-            if (res.toFloat() > config.wakeWordThreshold && calm == 0) {
-                log.i("Wake word detected")
+            val res = model!!.predict_WakeWord(audioBuffer).toFloat()
+            if (res >= 0.1) {
+                log.d("Wakeword probability value: $res")
+            }
+            if (res >= config.wakeWordThreshold && calm == 0) {
+                log.i("Wake word detected at $res, theshold is $config.wakeWordThreshold")
 
                 if (config.wakeWordSound != "none") {
                     WakeWordSoundPlayer(
@@ -171,6 +186,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                     ).play()
                 }
                 BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
+                model!!.reset()
 
                 // Process 20 audio buffers before sending detection event again
                 calm = 20
@@ -178,19 +194,10 @@ internal class BackgroundTaskController (private val context: Context): Thread()
             if (calm > 0) {
                 --calm
             }
+
         } catch (e: Exception) {
             log.d("Error processing to wake word engine: ${e.message.toString()}")
         }
-    }
-
-    private fun convertAudioToByteBuffer(audioBuffer: ShortArray): ByteArray {
-        val byteBuffer = ByteArray(audioBuffer.size * 2)
-        for (i in audioBuffer.indices) {
-            val value: Int = (audioBuffer[i] * config.micGain)
-            byteBuffer[i * 2] = (value and 0xFF).toByte()
-            byteBuffer[i * 2 + 1] = (value shr 8).toByte()
-        }
-        return byteBuffer
     }
 
     fun shutdown() {

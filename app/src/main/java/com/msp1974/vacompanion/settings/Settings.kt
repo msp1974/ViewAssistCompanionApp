@@ -134,6 +134,10 @@ class APPConfig(val context: Context) {
         get() = this.sharedPrefs.getLong("token_expiry", 0)
         set(value) = this.sharedPrefs.edit { putLong("token_expiry", value) }
 
+    var pairedDeviceID: String
+        get() = this.sharedPrefs.getString("paired_device_id", "") ?: ""
+        set(value) = this.sharedPrefs.edit { putString("paired_device_id", value) }
+
     fun processSettings(settingString: String) {
         initSettings = true
         val settings = JSONObject(settingString)
@@ -181,6 +185,9 @@ class APPConfig(val context: Context) {
         }
         if (settings.has("audio_filter_enabled")) {
             audioFilterEnabled = settings.getBoolean("audio_filter_enabled")
+        }
+        if (settings.has("wake_word_threshold")) {
+            wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10
         }
     }
 
@@ -238,7 +245,7 @@ class APPConfig(val context: Context) {
 
     companion object {
         const val NAME = "VACA"
-        const val VERSION = "0.2.4"
+        const val VERSION = "0.2.5"
         const val SERVER_PORT = 10800
         const val DEFAULT_HA_HTTP_PORT = 8123
         const val DEFAULT_WAKE_WORD = "hey_jarvis"
