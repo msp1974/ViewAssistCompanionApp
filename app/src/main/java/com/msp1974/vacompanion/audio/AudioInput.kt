@@ -33,12 +33,6 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
             AUDIO_FORMAT,
             minBufferSize
         )
-        if (NoiseSuppressor.isAvailable()) {
-            var noiseFX = NoiseSuppressor.create(audioRecord.audioSessionId)
-            if (noiseFX != null) {
-                noiseFX.enabled = config.audioFilterEnabled
-            }
-        }
 
         if (audioRecord.state != AudioRecord.STATE_INITIALIZED) {
             // Initialization error handling

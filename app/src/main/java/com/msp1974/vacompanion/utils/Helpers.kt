@@ -43,5 +43,11 @@ class Helpers {
             val cm = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
             return cm.activeNetwork != null
         }
+
+        fun isNumber(input: String): Boolean {
+            val integerChars = '0'..'9'
+            var dotOccurred = 0
+            return input.all { it in integerChars || it == '.' && dotOccurred++ < 1 }
+        }
     }
 }

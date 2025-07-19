@@ -11,29 +11,20 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.content.res.Resources
-import android.hardware.Sensor
-import android.hardware.SensorManager
-import android.net.ConnectivityManager
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.util.TypedValue
-import android.view.View
 import android.widget.ImageView
-import android.widget.RelativeLayout
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
-import androidx.annotation.RequiresPermission
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
-import com.msp1974.vacompanion.sensors.Sensors
 import com.msp1974.vacompanion.service.VABackgroundService
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Helpers
@@ -47,7 +38,6 @@ class MainActivity : AppCompatActivity() {
     private val log = Logger()
 
     private var screenOrientation: Int = 0
-    private var sensors: Sensors? = null
 
     @SuppressLint("HardwareIds", "SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -138,19 +128,6 @@ class MainActivity : AppCompatActivity() {
 
         findViewById<TextView>(R.id.ip).text = Helpers.getIpv4HostAddress()
         findViewById<TextView>(R.id.status_message).text = "Waiting for connection..."
-        val mSensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
-        val deviceSensors = mSensorManager.getSensorList(Sensor.TYPE_ALL)
-        for (i in 0..deviceSensors.size - 1) {
-            log.i("Sensor: ${deviceSensors.get(i)}")
-            //if (deviceSensors.get(i)!!.getType() === Sensor.TYPE_PRESSURE) {
-            //    mHasBarometer = true
-            //    break
-            //}
-        }
-        sensors = Sensors(this)
-        sensors?.registerLightSensorListener()
-        log.i("Orientation: ${sensors?.orientation}")
-
 
         // Initiate wake word broadcast receiver
         var satelliteBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {

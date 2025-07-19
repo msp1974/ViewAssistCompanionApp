@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.service
 import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
+import androidx.core.text.isDigitsOnly
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
 import com.msp1974.vacompanion.audio.AudioRecorderThread
@@ -15,15 +16,17 @@ import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
 import com.msp1974.vacompanion.wyoming.WyomingCallback
+import com.msp1974.vacompanion.utils.Helpers
 import kotlin.concurrent.thread
-import android.app.NotificationManager
-import android.content.Context.AUDIO_SERVICE
-import android.content.Context.NOTIFICATION_SERVICE
-import android.content.Intent
-import android.provider.MediaStore
-import android.provider.Settings
 import com.msp1974.vacompanion.audio.AudioDSP
+import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
+import com.msp1974.vacompanion.sensors.Sensors
 import com.msp1974.vacompanion.utils.SoundControl
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import kotlinx.serialization.json.putJsonObject
+import java.util.Date
 
 enum class audioRouteOption { NONE, DETECT, STREAM}
 
@@ -37,7 +40,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     var audioRoute: audioRouteOption = audioRouteOption.NONE
     var recorder: AudioRecorderThread? = null
     val audioDSP: AudioDSP = AudioDSP()
-
+    private var sensorRunner: Sensors? = null
     lateinit var assetManager: AssetManager
     lateinit var server: WyomingTCPServer
 
@@ -57,10 +60,17 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 startOpenWakeWordDetection()
                 startInputAudio(context)
                 audioRoute = audioRouteOption.DETECT
+                startSensors(this@BackgroundTaskController.context)
+                BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
             }
 
             override fun onSatelliteStopped() {
                 log.i("Background Task - Disconnection detected")
+                BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STOPPED)
+                if (sensorRunner != null) {
+                    sensorRunner!!.stop()
+                    sensorRunner = null
+                }
                 audioRoute = audioRouteOption.NONE
                 stopInputAudio()
                 stopOpenWakeWordDetection()
@@ -115,15 +125,30 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 audioDSP.gain = config.micGain
             }
         })
-        config.addChangeListener("audioFilterEnabled", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.audioFilterEnabled}")
-            }
-        })
 
         // Start mdns server
         log.i("Starting mdns server")
         Zeroconf(context).registerService(config.serverPort)
+    }
+
+    fun startSensors(context: Context) {
+        sensorRunner = Sensors(context, object : SensorUpdatesCallback {
+            override fun onUpdate(data: MutableMap<String, Any>) {
+                val data = buildJsonObject {
+                    put("timestamp", Date().toString())
+                    putJsonObject("sensors") {
+                        data.map { (key, value) ->
+                            if (Helpers.isNumber(value.toString())) {
+                                put(key, value.toString().toFloat())
+                            } else {
+                                put(key, value.toString())
+                            }
+                        }
+                    }
+                }
+                server.sendStatus(data)
+            }
+        })
     }
 
     fun startInputAudio(context: Context) {
@@ -134,13 +159,6 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 override fun onAudio(audioBuffer: ShortArray) {
                     if (audioRoute == audioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
-                        if (config.audioFilterEnabled) {
-                            floatBuffer = audioDSP.highPassFilter(
-                                floatBuffer,
-                                150f,
-                                config.sampleRate.toFloat()
-                            )
-                        }
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == audioRouteOption.STREAM) {
                         var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)

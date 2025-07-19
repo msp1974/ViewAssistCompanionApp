@@ -81,10 +81,6 @@ class APPConfig(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var audioFilterEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue)
-    }
-
     var screenBrightness: Float by Delegates.observable(DEFAULT_SCREEN_BRIGHTNESS) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -182,9 +178,6 @@ class APPConfig(val context: Context) {
         }
         if (settings.has("do_not_disturb")) {
             doNotDisturb = settings.getBoolean("do_not_disturb")
-        }
-        if (settings.has("audio_filter_enabled")) {
-            audioFilterEnabled = settings.getBoolean("audio_filter_enabled")
         }
         if (settings.has("wake_word_threshold")) {
             wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10

@@ -126,7 +126,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 "http://" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
 
             satelliteStatus = SatelliteState.RUNNING
-            BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
             server.satelliteStarted()
             log.d("Satellite started")
         } else {
@@ -145,7 +144,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             pipelineStatus = PipelineStatus.INACTIVE
             satelliteStatus = SatelliteState.STOPPED
-            BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STOPPED)
             server.satelliteStopped()
         } else {
             log.e("Closing orphaned satellite connection")
@@ -439,6 +437,13 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             buildJsonObject {
                 put("timestamp", Date().toString())
             }
+        )
+    }
+
+    fun sendStatus(data: JsonObject) {
+        sendEvent(
+            "custom-status",
+            data
         )
     }
 

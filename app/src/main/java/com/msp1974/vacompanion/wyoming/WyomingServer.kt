@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.wyoming
 
 import android.content.Context
 import com.msp1974.vacompanion.utils.Logger
+import kotlinx.serialization.json.JsonObject
 import java.net.ServerSocket
 import kotlin.concurrent.thread
 
@@ -42,6 +43,10 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
 
     fun sendAudio(audio: ByteArray) {
         pipelineClient?.sendAudio(audio)
+    }
+
+    fun sendStatus(data: JsonObject) {
+        pipelineClient?.sendStatus(data)
     }
 
     fun requestInputAudioStream() {
