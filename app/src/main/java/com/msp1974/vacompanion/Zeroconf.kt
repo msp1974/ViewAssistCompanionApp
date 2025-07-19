@@ -5,9 +5,6 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdManager.RegistrationListener
 import android.net.nsd.NsdServiceInfo
 import com.msp1974.vacompanion.settings.APPConfig
-import java.net.Inet4Address
-import java.net.InetAddress
-import java.net.NetworkInterface
 
 internal class Zeroconf(private val context: Context) {
     private var nsdManager: NsdManager? = null
@@ -55,7 +52,7 @@ internal class Zeroconf(private val context: Context) {
             }
 
             override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                // Unregistration failed. Put debugging code here to determine why.
+                // De-registration failed. Put debugging code here to determine why.
             }
         }
     }

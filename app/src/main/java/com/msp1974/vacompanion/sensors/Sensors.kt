@@ -1,6 +1,5 @@
 package com.msp1974.vacompanion.sensors
 
-import android.R
 import android.content.Context
 import android.content.Context.SENSOR_SERVICE
 import android.content.res.Configuration

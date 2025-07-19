@@ -1,15 +1,13 @@
 package com.msp1974.vacompanion.utils
 
 import android.content.ContextWrapper
-import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import com.msp1974.vacompanion.settings.APPConfig
 
-class ScreenUtils
-constructor(val activity: AppCompatActivity) : ContextWrapper(activity) {
+class ScreenUtils(val activity: AppCompatActivity) : ContextWrapper(activity) {
     var log = Logger()
     var config = APPConfig.getInstance(activity.applicationContext)
     private var wakeLock: PowerManager.WakeLock? = null
@@ -78,7 +76,7 @@ constructor(val activity: AppCompatActivity) : ContextWrapper(activity) {
                 }
             }
         } catch (e: SecurityException) {
-            log.e("Error setting screen brightness mode")
+            log.e("Error setting screen brightness mode: $e")
         }
     }
 
@@ -100,9 +98,7 @@ constructor(val activity: AppCompatActivity) : ContextWrapper(activity) {
         //if (!config.requiresScreenWritePermission) {
         //    return hasPermission
         //}
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            hasPermission = Settings.System.canWrite(applicationContext)
-        }
+        hasPermission = Settings.System.canWrite(applicationContext)
         return hasPermission
     }
 }

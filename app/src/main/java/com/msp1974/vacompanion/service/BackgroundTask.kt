@@ -3,7 +3,6 @@ package com.msp1974.vacompanion.service
 import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
-import androidx.core.text.isDigitsOnly
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
 import com.msp1974.vacompanion.audio.AudioRecorderThread
@@ -22,13 +21,12 @@ import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
 import com.msp1974.vacompanion.utils.SoundControl
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.util.Date
 
-enum class audioRouteOption { NONE, DETECT, STREAM}
+enum class AudioRouteOption { NONE, DETECT, STREAM}
 
 internal class BackgroundTaskController (private val context: Context): Thread() {
 
@@ -37,7 +35,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
 
     var modelRunner: ONNXModelRunner? = null
     var model: Model? = null
-    var audioRoute: audioRouteOption = audioRouteOption.NONE
+    var audioRoute: AudioRouteOption = AudioRouteOption.NONE
     var recorder: AudioRecorderThread? = null
     val audioDSP: AudioDSP = AudioDSP()
     private var sensorRunner: Sensors? = null
@@ -59,7 +57,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 log.i("Background Task - Connection detected")
                 startOpenWakeWordDetection()
                 startInputAudio(context)
-                audioRoute = audioRouteOption.DETECT
+                audioRoute = AudioRouteOption.DETECT
                 startSensors(this@BackgroundTaskController.context)
                 BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
             }
@@ -71,22 +69,22 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                     sensorRunner!!.stop()
                     sensorRunner = null
                 }
-                audioRoute = audioRouteOption.NONE
+                audioRoute = AudioRouteOption.NONE
                 stopInputAudio()
                 stopOpenWakeWordDetection()
             }
 
             override fun onRequestInputAudioStream() {
                 log.i("Streaming audio to server")
-                if (audioRoute == audioRouteOption.DETECT) {
-                    audioRoute = audioRouteOption.STREAM
+                if (audioRoute == AudioRouteOption.DETECT) {
+                    audioRoute = AudioRouteOption.STREAM
                 }
             }
 
             override fun onReleaseInputAudioStream() {
                 log.i("Stopped streaming audio to server")
-                if (audioRoute == audioRouteOption.STREAM) {
-                    audioRoute = audioRouteOption.DETECT
+                if (audioRoute == AudioRouteOption.STREAM) {
+                    audioRoute = AudioRouteOption.DETECT
                 }
             }
         })
@@ -157,10 +155,9 @@ internal class BackgroundTaskController (private val context: Context): Thread()
             audioDSP.gain = config.micGain
             recorder = AudioRecorderThread(context, object : AudioInCallback {
                 override fun onAudio(audioBuffer: ShortArray) {
-                    if (audioRoute == audioRouteOption.DETECT) {
+                    if (audioRoute == AudioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
-                    } else if (audioRoute == audioRouteOption.STREAM) {
                         var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)
                         server.sendAudio(bAudioBuffer)
                     }

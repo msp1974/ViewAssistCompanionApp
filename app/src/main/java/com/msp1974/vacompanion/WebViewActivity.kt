@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.os.Handler
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
 import android.view.Gravity
