@@ -33,6 +33,7 @@ import java.util.TimerTask
 class ClientHandler(private val context: Context, private val server: WyomingTCPServer, private val client: Socket) {
     private val log = Logger()
     private val config: APPConfig = APPConfig.getInstance(context)
+    private val client_id = client.port
     private val reader: DataInputStream = DataInputStream(client.getInputStream())
     private val writer: DataOutputStream = DataOutputStream(client.getOutputStream())
 
@@ -63,14 +64,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
     val filter = IntentFilter().apply { addAction(BroadcastSender.WAKE_WORD_DETECTED) }
 
-    fun isValidConnection(): Boolean {
-        //TODO: Implement connection validation
-        return true
-    }
-
     fun run() {
         config.connectionCount += 1
-        log.d("Client connected: ${client.inetAddress.hostAddress}. Connections: ${config.connectionCount}")
+        log.d("Client $client_id connected from ${client.inetAddress.hostAddress}. Connections: ${config.connectionCount}")
         startIntervalPing()
         while (runClient) {
             try {
@@ -83,9 +79,10 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 if (client.isClosed) {
                     runClient = false
                 }
+                Thread.sleep(10)
             } catch (ex: Exception) {
                 // TODO: Implement exception handling
-                log.e("Ending connection due to client handler exception: $ex")
+                log.e("Ending connection $client_id due to client handler exception: $ex")
                 runClient = false
             }
         }
@@ -93,7 +90,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
 
     private fun stop() {
-        log.d("Stopping client connection handler")
+        log.d("Stopping client $client_id connection handler")
         stopIntervalPing()
 
         if (satelliteStatus == SatelliteState.RUNNING) {
@@ -103,39 +100,44 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         if (config.connectionCount > 0) {
             config.connectionCount -= 1
         }
-        log.w("${client.inetAddress.hostAddress} closed the connection.  Connections remaining: ${config.connectionCount}")
+        log.w("${client.inetAddress.hostAddress}:$client_id closed the connection.  Connections remaining: ${config.connectionCount}")
     }
 
     private fun startSatellite() {
-        //TODO: Validate connection
-
         if (config.pairedDeviceID == "") {
             config.pairedDeviceID = connectionID
         }
 
         if (config.pairedDeviceID == connectionID) {
-            log.d("Starting satellite")
+            log.d("Starting satellite for ${client.port}")
             LocalBroadcastManager.getInstance(context)
                 .registerReceiver(wakeWordBroadcastReceiver, filter)
 
-            server.pipelineClient = this
             config.homeAssistantHTTPServerHost =
                 "" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
             config.homeAssistantURL =
                 "http://" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
 
-            satelliteStatus = SatelliteState.RUNNING
-            server.satelliteStarted()
-            log.d("Satellite started")
+            if (server.pipelineClient != null) {
+                log.d("Satellite taken over by $client_id from ${server.pipelineClient?.client_id}")
+                server.pipelineClient = this
+                satelliteStatus = SatelliteState.RUNNING
+            } else {
+                // Start satellite functions
+                server.pipelineClient = this
+                satelliteStatus = SatelliteState.RUNNING
+                server.satelliteStarted()
+                log.d("Satellite started for $client_id")
+            }
         } else {
-            log.i("Invalid connection attempting to start satellite!")
+            log.i("Invalid connection (${client.inetAddress.hostAddress}:$client_id) attempting to start satellite!")
             log.i("Aborting connection")
             stop()
         }
     }
 
     private fun stopSatellite() {
-        log.d("Stopping satellite")
+        log.d("Stopping satellite for $client_id")
         LocalBroadcastManager.getInstance(context).unregisterReceiver(wakeWordBroadcastReceiver)
         if (server.pipelineClient == this) {
             if (pipelineStatus == PipelineStatus.LISTENING) {
@@ -143,22 +145,23 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             pipelineStatus = PipelineStatus.INACTIVE
             satelliteStatus = SatelliteState.STOPPED
+            server.pipelineClient = null
             server.satelliteStopped()
         } else {
-            log.e("Closing orphaned satellite connection")
+            log.e("Closing orphaned satellite connection - $client_id")
         }
         runClient = false
         log.d("Satellite stopped")
     }
 
     private fun requestInputAudioStream() {
-        log.d("Streaming audio to server")
+        log.d("Streaming audio to server for $client_id")
         pipelineStatus = PipelineStatus.LISTENING
         server.requestInputAudioStream()
     }
 
     private fun releaseInputAudioStream() {
-        log.d("Stopping streaming audio to server")
+        log.d("Stopping streaming audio to server for $client_id")
         pipelineStatus = PipelineStatus.INACTIVE
         server.releaseInputAudioStream()
     }
@@ -167,7 +170,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     private fun handleEvent(event: WyomingPacket) {
 
         if (event.type != "ping" && event.type != "pong" && event.type != "audio-chunk") {
-            log.d("Received event: ${event.toMap()}")
+            log.d("Received event - $client_id: ${event.toMap()}")
         }
 
         // Events not requiring running satellite
@@ -176,10 +179,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 sendPong()
             }
             "describe" -> {
-                // Don't respond if paired and this is not paired client
-                if (config.pairedDeviceID != "" && config.pairedDeviceID != connectionID) {
-                    return
-                }
                 sendInfo()
             }
             "run-satellite" -> {
@@ -439,22 +438,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         )
     }
 
-    fun sendStatus(data: JsonObject) {
-        sendEvent(
-            "custom-status",
-            data
-        )
-    }
-
-    fun sendEvent(type: String, data: JsonObject = buildJsonObject {  }) {
-        val event = WyomingPacket(JSONObject(mapOf("type" to type, "data" to JSONObject(data.toString()))))
-        try {
-            writeEvent(event)
-        } catch (ex: Exception) {
-            log.e("Error sending event: $type - $ex")
-        }
-    }
-
     fun sendAudio(audio: ByteArray) {
         val data = buildJsonObject {
             put("rate", config.sampleRate)
@@ -468,6 +451,22 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             writeEvent(event)
         } catch (ex: Exception) {
             log.e("Error sending audio event: $ex")
+        }
+    }
+
+    fun sendStatus(data: JsonObject) {
+        sendEvent(
+            "custom-status",
+            data
+        )
+    }
+
+    fun sendEvent(type: String, data: JsonObject = buildJsonObject {  }) {
+        try {
+            val event = WyomingPacket(JSONObject(mapOf("type" to type, "data" to JSONObject(data.toString()))))
+            writeEvent(event)
+        } catch (ex: Exception) {
+            log.e("Error sending event: $type - $ex")
         }
     }
 
@@ -539,7 +538,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
     private fun writeEvent(p: WyomingPacket) {
         if (p.type != "ping" && p.type != "pong" && p.type != "audio-chunk") {
-            log.d("Sending: ${p.toMap()}")
+            log.d("Sending to $client_id: ${p.toMap()}")
         }
         val eventDict: MutableMap<String, Any> = p.toMap()
         eventDict["version"] = config.version
@@ -572,10 +571,10 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             writer.flush()
         } catch (ex: SocketException) {
-            log.e("Error sending event: $ex")
+            log.e("Error sending event: $ex. Likely just a closed socket and not an error!")
             runClient = false
         } catch (ex: Exception) {
-            log.e("Unknown eError sending event: $ex")
+            log.e("Unknown error sending event: $ex")
         }
 
     }
