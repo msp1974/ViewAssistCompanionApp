@@ -3,7 +3,6 @@ package com.msp1974.vacompanion.utils
 import android.net.Uri
 import kotlin.random.Random
 import androidx.core.net.toUri
-import com.msp1974.vacompanion.settings.APPConfig
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -166,31 +165,6 @@ class AuthUtils {
                     return ""
                 }
             }
-        }
-
-        fun generateInjectionJS(config: APPConfig): String {
-            val authData = JSONObject()
-            authData.put("access_token", config.accessToken)
-            authData.put("refresh_token", config.refreshToken)
-            authData.put("expires", config.tokenExpiry)
-            authData.put("expires_in", 1800)
-            authData.put("token_type", "Bearer")
-            authData.put("client_id", getClientId())
-            authData.put("hassUrl", getURL(config.homeAssistantHTTPServerHost))
-
-            val jsonData = authData.toString()
-
-            return """
-            try {
-                localStorage.setItem('hassTokens', '$jsonData');
-                console.log('Injected hassTokens via VACA helper');
-            } catch (e) {
-                console.error('Error injecting hassTokens:', e);
-                console.log('DATA: $jsonData');
-            }
-            """
-
-
         }
     }
 }
