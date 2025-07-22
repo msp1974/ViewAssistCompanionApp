@@ -5,6 +5,7 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
+import kotlin.concurrent.thread
 
 internal interface AudioInCallback {
     fun onAudio(audioBuffer: ShortArray)
@@ -41,6 +42,10 @@ internal class WakeWordSoundPlayer(private val context: Context, private val res
                 .build()
         )
         wwSound.start()
+        while (wwSound.isPlaying) {
+            Thread.sleep(100)
+        }
+        wwSound.release()
     }
 }
 
