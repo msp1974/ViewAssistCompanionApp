@@ -48,6 +48,7 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
 
     init {
         log.d("Starting sensors")
+
         // Register light sensor listener
         hasSensors = registerLightSensorListener()
         startIntervalTimer()
@@ -61,21 +62,19 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
         }
 
         // Start interval timer
-        if (hasSensors) {
-            timer = timer(name="sensorTimer", initialDelay = 1000, period = 5000) {
-                // Set orientation as not a listener sensor
-                val o = getOrientation()
-                if (orientationSensor != o) {
-                    sensorData.put("orientation", o)
-                    orientationSensor = o
+        timer = timer(name="sensorTimer", initialDelay = 5000, period = 5000) {
+            // Set orientation as not a listener sensor
+            val o = getOrientation()
+            if (orientationSensor != o) {
+                sensorData.put("orientation", o)
+                orientationSensor = o
 
-                }
+            }
 
-                // run callback if sensor updates
-                if (sensorData.isNotEmpty()) {
-                    cbFunc.onUpdate(data = sensorData)
-                    sensorData = mutableMapOf()
-                }
+            // run callback if sensor updates
+            if (sensorData.isNotEmpty()) {
+                cbFunc.onUpdate(data = sensorData)
+                sensorData = mutableMapOf()
             }
         }
     }
