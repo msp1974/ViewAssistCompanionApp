@@ -42,11 +42,15 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
     }
 
     fun sendAudio(audio: ByteArray) {
-        pipelineClient?.sendAudio(audio)
+        if (pipelineClient != null) {
+            pipelineClient?.sendAudio(audio)
+        }
     }
 
     fun sendStatus(data: JsonObject) {
-        pipelineClient?.sendStatus(data)
+        if (pipelineClient != null) {
+            pipelineClient?.sendStatus(data)
+        }
     }
 
     fun requestInputAudioStream() {
