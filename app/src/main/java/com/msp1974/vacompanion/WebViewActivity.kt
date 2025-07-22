@@ -21,6 +21,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
 import com.msp1974.vacompanion.jsinterface.WebAppInterface
@@ -30,6 +32,7 @@ import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.AuthUtils
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
+import com.msp1974.vacompanion.wyoming.SatelliteState
 
 
 public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener {
@@ -55,6 +58,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         swipeRefreshLayout = findViewById(R.id.swiperefresh)
 
         // Initial states
+        setDarkMode(config.darkMode)
         swipeRefreshLayout?.setEnabled(config.swipeRefresh)
         screen.setDeviceBrightnessMode(config.screenAutoBrightness)
         if (!config.screenAutoBrightness) {
@@ -92,6 +96,14 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 log.i("Screen Always On changed to ${config.screenAlwaysOn}")
                 runOnUiThread {
                     setScreenAlwaysOn(config.screenAlwaysOn)
+                }
+            }
+        })
+        config.addChangeListener("darkMode", object : InterfaceConfigChangeListener {
+            override fun onConfigChange(property: String) {
+                log.i("Dark mode changed to ${config.darkMode}")
+                runOnUiThread {
+                    setDarkMode(config.darkMode)
                 }
             }
         })
@@ -238,10 +250,9 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
             log.d("External auth callback in progress...")
             if (System.currentTimeMillis() > config.tokenExpiry && config.refreshToken != "") {
                 // Need to get new access token as it has expired
-                log.d("Auth token has expired.  Requesting new token using refresh token")
                 val success: Boolean = reAuthWithRefreshToken()
                 if (success) {
-                    log.d("Received new auth token - authorising")
+                    log.d("Authorising with token")
                     callAuthJS()
                 } else {
                     log.d("Failed to refresh auth token.  Proceeding to login screen")
@@ -279,7 +290,6 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 config.tokenExpiry = auth.expires
                 return true
             } else {
-                log.d("Failed to refresh auth token.  Proceeding to login screen")
                 return false
             }
         }
@@ -356,6 +366,12 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             window.decorView.keepScreenOn = false
+        }
+    }
+
+    fun setDarkMode(state: Boolean) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            WebSettingsCompat.setForceDark(webView!!.settings, if (state) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
         }
     }
 }

@@ -101,6 +101,10 @@ class APPConfig(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var darkMode: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     // SharedPreferences
     var isFirstTime: Boolean
         get() = this.sharedPrefs.getBoolean("first_time", true)
@@ -181,6 +185,9 @@ class APPConfig(val context: Context) {
         }
         if (settings.has("wake_word_threshold")) {
             wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10
+        }
+        if (settings.has("dark_mode")) {
+            darkMode = settings.getBoolean("dark_mode")
         }
     }
 
