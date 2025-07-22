@@ -33,7 +33,6 @@ import com.msp1974.vacompanion.utils.ScreenUtils
 
 
 class MainActivity : AppCompatActivity() {
-    private var recordPermissions: Boolean = false
     private lateinit var config: APPConfig
     private val log = Logger()
 
@@ -90,6 +89,7 @@ class MainActivity : AppCompatActivity() {
                     setTitle("Clear Paired Device Entry")
                     setMessage("This will delete the currently paired Home Assistant server and allow another server to connect and pair to this device.")
                     setPositiveButton("Confirm") { _: DialogInterface?, _: Int ->
+                        config.accessToken = ""
                         config.pairedDeviceID = ""
                         pairedDevice.text = "Not paired"
                     }
