@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.service
 import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
+import android.net.wifi.WifiManager
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
 import com.msp1974.vacompanion.audio.AudioRecorderThread
@@ -49,16 +50,14 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     override fun run() {
         assetManager = context.assets
 
-
-
         // Start wyoming server
         server = WyomingTCPServer(context, config.serverPort, object : WyomingCallback {
             override fun onSatelliteStarted() {
                 log.i("Background Task - Connection detected")
+                startSensors(context)
                 startOpenWakeWordDetection()
                 startInputAudio(context)
                 audioRoute = AudioRouteOption.DETECT
-                startSensors(this@BackgroundTaskController.context)
                 BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
             }
 
@@ -72,6 +71,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 audioRoute = AudioRouteOption.NONE
                 stopInputAudio()
                 stopOpenWakeWordDetection()
+                stopSensors()
             }
 
             override fun onRequestInputAudioStream() {
@@ -149,6 +149,10 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         })
     }
 
+    fun stopSensors() {
+        sensorRunner?.stop()
+    }
+
     fun startInputAudio(context: Context) {
         try {
             log.i("Starting input audio")
@@ -158,6 +162,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                     if (audioRoute == AudioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
+                    } else if (audioRoute == AudioRouteOption.STREAM) {
                         var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)
                         server.sendAudio(bAudioBuffer)
                     }
@@ -188,7 +193,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 log.d("Wakeword probability value: $res")
             }
             if (res >= config.wakeWordThreshold && calm == 0) {
-                log.i("Wake word detected at $res, theshold is $config.wakeWordThreshold")
+                log.i("Wake word detected at $res, theshold is ${config.wakeWordThreshold}")
 
                 if (config.wakeWordSound != "none") {
                     WakeWordSoundPlayer(
@@ -219,6 +224,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         Zeroconf(context).unregisterService()
         stopInputAudio()
         stopOpenWakeWordDetection()
+        stopSensors()
         server.stop()
 
     }
