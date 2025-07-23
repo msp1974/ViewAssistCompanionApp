@@ -22,7 +22,8 @@ class AuthUtils {
             val url = baseUrl.toUri()
                 .buildUpon()
                 .appendQueryParameter("external_auth", "1")
-            return url.build().toString()
+                .build()
+            return url.toString()
         }
 
         fun getAuthUrl(baseUrl: String): String {
@@ -37,7 +38,6 @@ class AuthUtils {
                 .appendQueryParameter("state", generateState())
                 .appendQueryParameter("scope", "homeassistant")
                 .build()
-            log.i("Auth URL is $url")
             return url.toString()
         }
 
