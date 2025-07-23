@@ -8,6 +8,7 @@ import android.os.Build.UNKNOWN
 import android.provider.Settings.Secure
 import androidx.preference.PreferenceManager
 import androidx.core.content.edit
+import com.msp1974.vacompanion.utils.Logger
 import org.json.JSONObject
 import java.util.UUID
 import kotlin.properties.Delegates
@@ -20,6 +21,7 @@ interface InterfaceConfigChangeListener {
 class APPConfig(val context: Context) {
     val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
     private var configChangeListeners: ArrayList<Map<String, InterfaceConfigChangeListener>> = arrayListOf()
+    private val log = Logger()
 
     init {
         sharedPrefs.registerOnSharedPreferenceChangeListener { prefs, key ->
@@ -34,8 +36,8 @@ class APPConfig(val context: Context) {
 
     // In memory only settings
     var initSettings: Boolean = false
+    var homeAssistantConnectedIP: String = ""
     var homeAssistantHTTPPort: Int = DEFAULT_HA_HTTP_PORT
-    var homeAssistantHTTPServerHost: String = ""
     var homeAssistantURL: String = ""
 
     var sampleRate: Int = 16000
@@ -143,6 +145,9 @@ class APPConfig(val context: Context) {
         val settings = JSONObject(settingString)
         if (settings.has("ha_port")) {
             homeAssistantHTTPPort = settings["ha_port"] as Int
+        }
+        if (settings.has("ha_url")) {
+            homeAssistantURL = settings["ha_url"] as String
         }
         if (settings.has("wake_word")) {
             wakeWord = settings["wake_word"] as String

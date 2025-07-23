@@ -146,17 +146,24 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         loadInitURL()
     }
 
+    fun getHAUrl(): String {
+        if (config.homeAssistantURL == "") {
+            return "http://${config.homeAssistantConnectedIP}:${config.homeAssistantHTTPPort}"
+        }
+        return config.homeAssistantURL
+    }
+
     fun loadInitURL() {
         //If we have auth token, load the home assistant URL
         //If not, do auth
         if (config.accessToken != "") {
             // We have valid token , load url
             log.d("Have auth token, logging in...")
-            webView!!.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost,))
+            webView!!.loadUrl(AuthUtils.getURL(getHAUrl()))
         } else {
             // We need to ask for login
             log.d("No auth token stored. Requesting login")
-            webView!!.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+            webView!!.loadUrl(AuthUtils.getAuthUrl(getHAUrl()))
         }
     }
 
@@ -201,7 +208,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                         swipeRefreshLayout = findViewById(R.id.swiperefresh)
                         initialiseWebView(webView)
                         setContentView(v, params)
-                        webView?.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost))
+                        webView?.loadUrl(AuthUtils.getURL(getHAUrl()))
                     }
 
                     return true
@@ -213,16 +220,16 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                         val authCode = AuthUtils.getReturnAuthCode(url)
                         if (authCode != "") {
                             // Get access token using auth token
-                            val auth = AuthUtils.authoriseWithAuthCode(config.homeAssistantHTTPServerHost, authCode)
+                            val auth = AuthUtils.authoriseWithAuthCode(getHAUrl(), authCode)
                             if (auth.accessToken == "") {
                                 // Not authorised.  Send back to login screen
-                                view.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+                                view.loadUrl(AuthUtils.getAuthUrl(getHAUrl()))
                             } else {
                                 // Authorised. Load HA default dashboard
                                 config.accessToken = auth.accessToken
                                 config.refreshToken = auth.refreshToken
                                 config.tokenExpiry = auth.expires
-                                view.loadUrl(AuthUtils.getURL(config.homeAssistantHTTPServerHost))
+                                view.loadUrl(AuthUtils.getURL(getHAUrl()))
                             }
                         }
                     }
@@ -257,7 +264,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 } else {
                     log.d("Failed to refresh auth token.  Proceeding to login screen")
                     runOnUiThread {
-                        webView!!.loadUrl(AuthUtils.getAuthUrl(config.homeAssistantHTTPServerHost))
+                        webView!!.loadUrl(AuthUtils.getAuthUrl(getHAUrl()))
                     }
                 }
             } else {
@@ -281,7 +288,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         private fun reAuthWithRefreshToken(): Boolean {
             log.i("Auth token has expired.  Requesting new token using refresh token")
             val auth = AuthUtils.refreshAccessToken(
-                config.homeAssistantHTTPServerHost,
+                getHAUrl(),
                 config.refreshToken
             )
             if (auth.accessToken != "" && auth.expires > System.currentTimeMillis()) {

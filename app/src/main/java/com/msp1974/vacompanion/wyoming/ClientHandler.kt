@@ -113,10 +113,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             LocalBroadcastManager.getInstance(context)
                 .registerReceiver(wakeWordBroadcastReceiver, filter)
 
-            config.homeAssistantHTTPServerHost =
-                "" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
-            config.homeAssistantURL =
-                "http://" + client.inetAddress.hostAddress + ':' + config.homeAssistantHTTPPort
+            // If HA url was blank in config sent from server set it here based on connected IP and port provided
+            // in config
+            config.homeAssistantConnectedIP = "${client.inetAddress.hostAddress}"
 
             if (server.pipelineClient != null) {
                 log.d("Satellite taken over by $client_id from ${server.pipelineClient?.client_id}")
@@ -146,6 +145,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             pipelineStatus = PipelineStatus.INACTIVE
             satelliteStatus = SatelliteState.STOPPED
             server.pipelineClient = null
+            config.homeAssistantConnectedIP = ""
             server.satelliteStopped()
         } else {
             log.e("Closing orphaned satellite connection - $client_id")

@@ -17,35 +17,36 @@ class AuthUtils {
         const val CLIENT_URL = "vaca.homeassistant"
         var state: String = ""
 
-        fun getURL(host: String): String {
-            val builder = Uri.Builder()
-            builder.scheme("http")
-            builder.encodedAuthority(host)
-            builder.appendQueryParameter("external_auth", "1")
-            return builder.build().toString()
+        fun getURL(baseUrl: String): String {
+            log.d("Getting URL for $baseUrl")
+            val url = baseUrl.toUri()
+                .buildUpon()
+                .appendQueryParameter("external_auth", "1")
+            return url.build().toString()
         }
 
-        fun getAuthUrl(host: String): String {
-            val builder = Uri.Builder()
-            builder.scheme("http")
-            builder.encodedAuthority(host)
-            builder.appendPath("auth")
-            builder.appendPath("authorize")
-
-            builder.appendQueryParameter("client_id", getClientId())
-            builder.appendQueryParameter("redirect_uri", getRedirectUri())
-            builder.appendQueryParameter("response_type", "code")
-            builder.appendQueryParameter("state", generateState())
-            return builder.build().toString()
+        fun getAuthUrl(baseUrl: String): String {
+            log.d("Getting Auth URL for $baseUrl")
+            val url = baseUrl.toUri()
+                .buildUpon()
+                .appendPath("auth")
+                .appendPath("authorize")
+                .appendQueryParameter("client_id", getClientId())
+                .appendQueryParameter("redirect_uri", getRedirectUri())
+                .appendQueryParameter("response_type", "code")
+                .appendQueryParameter("state", generateState())
+                .appendQueryParameter("scope", "homeassistant")
+                .build()
+            log.i("Auth URL is $url")
+            return url.toString()
         }
 
-        fun getTokenUrl(host: String): String {
-            val builder = Uri.Builder()
-            builder.scheme("http")
-            builder.encodedAuthority(host)
-            builder.appendPath("auth")
-            builder.appendPath("token")
-            return builder.build().toString()
+        fun getTokenUrl(baseUrl: String): String {
+            val url = baseUrl.toUri()
+                .buildUpon()
+                .appendPath("auth")
+                .appendPath("token")
+            return url.build().toString()
         }
 
         private fun generateState(): String {
@@ -87,8 +88,8 @@ class AuthUtils {
             }
         }
 
-        fun authoriseWithAuthCode(host: String, authCode: String): AuthToken {
-            val url: String = getTokenUrl(host)
+        fun authoriseWithAuthCode(baseUrl: String, authCode: String): AuthToken {
+            val url: String = getTokenUrl(baseUrl)
             val map: HashMap<String, String> = hashMapOf(
                 "grant_type" to "authorization_code",
                 "client_id" to getClientId(),
