@@ -13,6 +13,7 @@ import java.io.IOException
 import java.nio.FloatBuffer
 import java.util.ArrayDeque
 import java.util.Collections
+import java.util.Locale
 import java.util.Random
 import kotlin.math.max
 
@@ -169,7 +170,7 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
                 )
             // Extract the output tensor, convert it to the desired type
             result = outputs?.get(0)?.value as Array<FloatArray?>
-            resultant = String.format("%.5f", result[0]!![0].toDouble())
+            resultant = "%.5f".format(Locale.ROOT, result[0]!![0].toDouble())
         } catch (e: OrtException) {
             e.printStackTrace()
         } finally {
