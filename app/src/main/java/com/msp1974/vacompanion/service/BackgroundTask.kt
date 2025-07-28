@@ -3,7 +3,6 @@ package com.msp1974.vacompanion.service
 import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
-import android.net.wifi.WifiManager
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
 import com.msp1974.vacompanion.audio.AudioRecorderThread
@@ -17,7 +16,6 @@ import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
 import com.msp1974.vacompanion.wyoming.WyomingCallback
 import com.msp1974.vacompanion.utils.Helpers
-import kotlin.concurrent.thread
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
@@ -46,23 +44,32 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     var wwDetect = true
     var calm: Int = 0
 
-
     override fun run() {
         assetManager = context.assets
 
         // Start wyoming server
         server = WyomingTCPServer(context, config.serverPort, object : WyomingCallback {
             override fun onSatelliteStarted() {
-                log.i("Background Task - Connection detected")
-                startSensors(context)
-                startOpenWakeWordDetection()
-                startInputAudio(context)
-                audioRoute = AudioRouteOption.DETECT
-                BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
+                Thread {
+                    log.i("Background Task - Satellite starting")
+                    var maxWait = 5000
+                    var i = 0
+                    while (!config.initSettings && i < maxWait) {
+                        Thread.sleep(100)
+                        i ++
+                    }
+                    if (config.initSettings) {
+                        startSensors(context)
+                        startOpenWakeWordDetection()
+                        startInputAudio(context)
+                        audioRoute = AudioRouteOption.DETECT
+                        BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
+                    }
+                }.start()
             }
 
             override fun onSatelliteStopped() {
-                log.i("Background Task - Disconnection detected")
+                log.i("Background Task - satellite stopping")
                 BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STOPPED)
                 if (sensorRunner != null) {
                     sensorRunner!!.stop()
@@ -72,6 +79,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 stopInputAudio()
                 stopOpenWakeWordDetection()
                 stopSensors()
+                config.initSettings = false
             }
 
             override fun onRequestInputAudioStream() {
@@ -88,7 +96,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 }
             }
         })
-        thread { server.start() }
+        Thread{ server.start() }.start()
 
         // Add config change listeners
         config.addChangeListener("notificationVolume", object: InterfaceConfigChangeListener {
@@ -115,12 +123,6 @@ internal class BackgroundTaskController (private val context: Context): Thread()
             override fun onConfigChange(property: String) {
                 log.i("BackgroundTask - $property changed to ${config.doNotDisturb}")
                 setDoNotDisturb(config.doNotDisturb)
-            }
-        })
-        config.addChangeListener("micGain", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.micGain}")
-                audioDSP.gain = config.micGain
             }
         })
 
@@ -156,21 +158,19 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     fun startInputAudio(context: Context) {
         try {
             log.i("Starting input audio")
-            audioDSP.gain = config.micGain
             recorder = AudioRecorderThread(context, object : AudioInCallback {
                 override fun onAudio(audioBuffer: ShortArray) {
                     if (audioRoute == AudioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == AudioRouteOption.STREAM) {
-                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)
+                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer)
                         server.sendAudio(bAudioBuffer)
                     }
                 }
                 override fun onError(err: String) {
                 }
-            })
-            recorder?.start()
+            }).apply { start() }
         } catch (e: Exception) {
             log.d("Error starting mic audio: ${e.message.toString()}")
         }
@@ -194,7 +194,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
             }
             if (res >= config.wakeWordThreshold && calm == 0) {
                 log.i("Wake word detected at $res, theshold is ${config.wakeWordThreshold}")
-
+                server.sendWakeWordDetection()
                 if (config.wakeWordSound != "none") {
                     WakeWordSoundPlayer(
                         context,
@@ -205,9 +205,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                         )
                     ).play()
                 }
-                BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
                 model!!.reset()
-
                 // Process 20 audio buffers before sending detection event again
                 calm = 20
             }

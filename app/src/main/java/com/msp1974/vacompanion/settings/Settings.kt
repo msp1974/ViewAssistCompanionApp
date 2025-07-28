@@ -141,7 +141,6 @@ class APPConfig(val context: Context) {
         set(value) = this.sharedPrefs.edit { putString("paired_device_id", value) }
 
     fun processSettings(settingString: String) {
-        initSettings = true
         val settings = JSONObject(settingString)
         if (settings.has("ha_port")) {
             homeAssistantHTTPPort = settings["ha_port"] as Int
@@ -156,7 +155,7 @@ class APPConfig(val context: Context) {
             wakeWordSound = settings["wake_word_sound"] as String
         }
         if (settings.has("wake_word_threshold")) {
-            wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 100
+            wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10
         }
         if (settings.has("notification_volume")) {
             notificationVolume = settings.getInt("notification_volume").toFloat() / 100
@@ -188,12 +187,10 @@ class APPConfig(val context: Context) {
         if (settings.has("do_not_disturb")) {
             doNotDisturb = settings.getBoolean("do_not_disturb")
         }
-        if (settings.has("wake_word_threshold")) {
-            wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10
-        }
         if (settings.has("dark_mode")) {
             darkMode = settings.getBoolean("dark_mode")
         }
+        initSettings = true
     }
 
     @SuppressLint("HardwareIds")

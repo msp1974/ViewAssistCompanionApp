@@ -48,21 +48,13 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     private var PCMMediaPlayer: PCMMediaPlayer = PCMMediaPlayer(context)
     private var MusicPlayer: VAMediaPlayer = VAMediaPlayer.getInstance(context)
 
-    // Initiate wake word broadcast receiver
-    var wakeWordBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (satelliteStatus == SatelliteState.RUNNING) {
-                Thread(object : Runnable {
-                    override fun run() {
-                        MusicPlayer.duckVolume()
-                        sendWakeWordDetection()
-                        sendStartPipeline()
-                    }
-                }).start()
-            }
+    fun processWakeWordDetection() {
+        if (satelliteStatus == SatelliteState.RUNNING) {
+            MusicPlayer.duckVolume()
+            sendWakeWordDetection()
+            sendStartPipeline()
         }
     }
-    val filter = IntentFilter().apply { addAction(BroadcastSender.WAKE_WORD_DETECTED) }
 
     fun run() {
         config.connectionCount += 1
@@ -82,7 +74,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 Thread.sleep(10)
             } catch (ex: Exception) {
                 // TODO: Implement exception handling
-                log.e("Ending connection $client_id due to client handler exception: $ex")
+                log.e("Ending connection $client_id due to client handler exception: ${ex.printStackTrace()}")
                 runClient = false
             }
         }
@@ -110,8 +102,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
         if (config.pairedDeviceID == connectionID) {
             log.d("Starting satellite for ${client.port}")
-            LocalBroadcastManager.getInstance(context)
-                .registerReceiver(wakeWordBroadcastReceiver, filter)
 
             // If HA url was blank in config sent from server set it here based on connected IP and port provided
             // in config
@@ -137,7 +127,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
     private fun stopSatellite() {
         log.d("Stopping satellite for $client_id")
-        LocalBroadcastManager.getInstance(context).unregisterReceiver(wakeWordBroadcastReceiver)
         if (server.pipelineClient == this) {
             if (pipelineStatus == PipelineStatus.LISTENING) {
                 releaseInputAudioStream()
@@ -574,7 +563,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             log.e("Error sending event: $ex. Likely just a closed socket and not an error!")
             runClient = false
         } catch (ex: Exception) {
-            log.e("Unknown error sending event: $ex")
+            log.e("Unknown error sending event: ${ex.stackTraceToString()}")
         }
 
     }

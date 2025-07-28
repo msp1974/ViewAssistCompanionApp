@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.wyoming
 
 import android.content.Context
+import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Logger
 import kotlinx.serialization.json.JsonObject
 import java.net.ServerSocket
@@ -20,6 +21,7 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
     var log = Logger()
     var runServer: Boolean = true
     var pipelineClient: ClientHandler? = null
+    var config = APPConfig.getInstance(context)
 
     fun start() {
         try {
@@ -50,6 +52,12 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
     fun sendStatus(data: JsonObject) {
         if (pipelineClient != null) {
             pipelineClient?.sendStatus(data)
+        }
+    }
+
+    fun sendWakeWordDetection() {
+        if (pipelineClient != null) {
+            pipelineClient?.processWakeWordDetection()
         }
     }
 

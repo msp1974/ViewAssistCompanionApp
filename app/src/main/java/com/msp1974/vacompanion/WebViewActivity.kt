@@ -7,8 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.os.StrictMode
-import android.os.StrictMode.ThreadPolicy
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -32,10 +30,9 @@ import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.AuthUtils
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
-import com.msp1974.vacompanion.wyoming.SatelliteState
 
 
-public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener {
+class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener {
     private var log = Logger()
     private lateinit var config: APPConfig
     private lateinit var screen: ScreenUtils
@@ -138,10 +135,10 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         // Setup WebView and load html page
         swipeRefreshLayout?.setOnRefreshListener(this);
 
+    }
 
-        val policy = ThreadPolicy.Builder().permitAll().build()
-        StrictMode.setThreadPolicy(policy)
-
+    override fun onStart() {
+        super.onStart()
         initialiseWebView(webView)
         loadInitURL()
     }
