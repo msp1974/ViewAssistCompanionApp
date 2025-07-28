@@ -7,6 +7,7 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.util.concurrent.LinkedBlockingQueue
 
 data class AuthToken(val tokenType: String = "", val accessToken: String = "", val expires: Long = 0, val refreshToken: String = "")
 
@@ -141,6 +142,7 @@ class AuthUtils {
 
         fun httpPOST(url: String, parameters: HashMap<String, String>): String {
             var client = OkHttpClient()
+            val queue = LinkedBlockingQueue<String>()
             val builder = FormBody.Builder()
             val it = parameters.entries.iterator()
             while (it.hasNext()) {
@@ -153,19 +155,22 @@ class AuthUtils {
                 .url(url)
                 .post(formBody)
                 .build()
+            Thread {
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        log.e("Unexpected code $response")
+                        queue.add("")
+                    }
+                    try {
+                        queue.add(response.body()?.string().toString())
+                    } catch (e: Exception) {
+                        log.e(e.message.toString())
+                        queue.add("")
+                    }
+                }
+            }.start()
 
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    log.e("Unexpected code $response")
-                    return ""
-                }
-                try {
-                    return response.body()?.string().toString()
-                } catch (e: Exception) {
-                    log.e(e.message.toString())
-                    return ""
-                }
-            }
+            return queue.take()
         }
     }
 }
