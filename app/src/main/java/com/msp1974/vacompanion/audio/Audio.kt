@@ -33,19 +33,21 @@ internal class WakeWordSoundPlayer(private val context: Context, private val res
     fun play() {
         // Create MediaPlayer instance with a resource audio resource
         //TODO: This plays on music stream but needs to play on notification stream!!!
-        wwSound = MediaPlayer.create(context, resId)
-        wwSound.setAudioAttributes(
-            AudioAttributes.Builder()
-                .setLegacyStreamType(AudioManager.STREAM_NOTIFICATION)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                .build()
-        )
-        wwSound.start()
-        while (wwSound.isPlaying) {
-            Thread.sleep(100)
-        }
-        wwSound.release()
+        Thread {
+            wwSound = MediaPlayer.create(context, resId)
+            wwSound.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setLegacyStreamType(AudioManager.STREAM_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .build()
+            )
+            wwSound.start()
+            while (wwSound.isPlaying) {
+                Thread.sleep(100)
+            }
+            wwSound.release()
+        }.start()
     }
 }
 
