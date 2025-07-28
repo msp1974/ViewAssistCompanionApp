@@ -1,22 +1,31 @@
 package com.msp1974.vacompanion.audio
 
-import kotlin.div
+import com.msp1974.vacompanion.utils.Logger
 import kotlin.math.cos
 import kotlin.math.exp
-import kotlin.math.min
 import kotlin.math.pow
 
 
 class AudioDSP {
-    var gain: Int = 1
 
-    fun processGain(input: ShortArray, gain: Int): ShortArray {
-        val output = ShortArray(input.size)
-        for (i in input.indices) {
-            output[i] = (input[i] * gain).toShort()
-        }
+    fun preProcessAudio(input: ShortArray, sensitivity: Int): ShortArray {
+        //var audioBuffer = normaliseAudioBuffer(input)
+        //audioBuffer = bandPassFilter(audioBuffer, 1500f, 2500f, 16000f)
+        val gain = autoGain(input, sensitivity)
+        val output = input.map { (it * gain).toInt().toShort() }.toShortArray()
         return output
     }
+
+    fun autoGain(audioBuffer: ShortArray, sensitivity: Int = 0): Float {
+        // Auto gain
+        val max = audioBuffer.maxOrNull() ?: 0
+        val min = audioBuffer.minOrNull() ?: 0
+
+        val range = max - min
+        val gain = (20000f + (sensitivity * 1000)) / range
+        return gain
+    }
+
 
     fun lowPassSPFilter(input: FloatArray, freq: Float, sampleRate: Float): FloatArray {
         val filter = LowPassSPFilter(freq, sampleRate)
@@ -38,28 +47,15 @@ class AudioDSP {
         return filter.process(input)
     }
 
-    fun normaliseAudioBuffer(audioBuffer: ShortArray, gain: Int = 1): FloatArray {
-        val multiplier = gain / 32768.0f
-        val floatBuffer = audioBuffer.map { (-1f).coerceAtLeast(min(1f, (it.toFloat() * multiplier))) }.toFloatArray()
+    fun normaliseAudioBuffer(audioBuffer: ShortArray): FloatArray {
+        val floatBuffer = audioBuffer.map { (it.toFloat() / 32768.0f) }.toFloatArray()
         return floatBuffer
     }
 
-    fun floatArrayToByteBuffer(audioBuffer: FloatArray, gain: Int = 1): ByteArray {
-        val multiplier = (32768.0f * gain).toInt()
+    fun shortArrayToByteBuffer(audioBuffer: ShortArray): ByteArray {
         val byteBuffer = ByteArray(audioBuffer.size * 2)
         for (i in audioBuffer.indices) {
-            val value: Int = (audioBuffer[i] * multiplier).toInt()
-            byteBuffer[i * 2] = (value and 0xFF).toByte()
-            byteBuffer[i * 2 + 1] = (value shr 8).toByte()
-        }
-        return byteBuffer
-    }
-
-    fun shortArrayToByteBuffer(audioBuffer: ShortArray, gain: Int = 1): ByteArray {
-        val multiplier = (32768.0f * gain).toInt()
-        val byteBuffer = ByteArray(audioBuffer.size * 2)
-        for (i in audioBuffer.indices) {
-            val value: Int = (-32768).coerceAtLeast(min(32768, (audioBuffer[i] * gain)))
+            val value: Int = audioBuffer[i].toInt()
             byteBuffer[i * 2] = (value and 0xFF).toByte()
             byteBuffer[i * 2 + 1] = (value shr 8).toByte()
         }
