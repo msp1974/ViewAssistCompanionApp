@@ -247,7 +247,7 @@ class APPConfig(val context: Context) {
 
     companion object {
         const val NAME = "VACA"
-        const val VERSION = "0.3.2"
+        const val VERSION = "0.3.3"
         const val SERVER_PORT = 10800
         const val DEFAULT_HA_HTTP_PORT = 8123
         const val DEFAULT_WAKE_WORD = "hey_jarvis"
