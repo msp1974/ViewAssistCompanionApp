@@ -15,7 +15,6 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
     private lateinit var audioRecord: AudioRecord
     private var isRecording = false
     private var config: APPConfig = APPConfig.getInstance(context)
-    private var log = Logger()
     private var audioDSP = AudioDSP()
 
     @SuppressLint("MissingPermission", "ServiceCast")
@@ -43,13 +42,6 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
             return
         }
 
-        // Set auto gain control
-        //if (AutomaticGainControl.isAvailable()) {
-        //    log.i("Enabling auto gain control")
-        //    val agc = AutomaticGainControl.create(audioRecord.audioSessionId)
-        //    agc.enabled = true
-        //}
-
         val audioBuffer = ShortArray(bufferSizeInShorts) // Allocate buffer for 'chunk size' shorts
         audioRecord.startRecording()
         isRecording = true
@@ -58,11 +50,9 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
             // Reading data from the microphone in chunks
             if (!config.isMuted) {
                 audioRecord.read(audioBuffer, 0, audioBuffer.size)
-
                 cbAudio.onAudio(audioDSP.preProcessAudio(audioBuffer, config.micGain))
             }
         }
-
         releaseResources()
     }
 
