@@ -26,7 +26,7 @@ class AudioDSP {
         if (range == 0) {
             return 0f
         }
-        val gain = (20000f + (sensitivity * 1000)) / range
+        val gain = (12000f + (sensitivity * 800)) / range
         return gain
     }
 
