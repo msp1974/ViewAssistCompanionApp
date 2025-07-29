@@ -22,6 +22,10 @@ class AudioDSP {
         val min = audioBuffer.minOrNull() ?: 0
 
         val range = max - min
+        // Range will be 0 if mic is muted
+        if (range == 0) {
+            return 0f
+        }
         val gain = (20000f + (sensitivity * 1000)) / range
         return gain
     }
