@@ -164,10 +164,6 @@ class MainActivity : AppCompatActivity() {
         }
 
         log.i("Screen: w$screenWidth h$screenHeight o$orientation, Logo: w${imageView.layoutParams.width} h${imageView.layoutParams.height}")
-
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        window.decorView.keepScreenOn = true
-
     }
 
     // Listening to the orientation config
