@@ -111,10 +111,12 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 log.d("Satellite taken over by $client_id from ${server.pipelineClient?.client_id}")
                 server.pipelineClient = this
                 satelliteStatus = SatelliteState.RUNNING
+                config.isRunning = true
             } else {
                 // Start satellite functions
                 server.pipelineClient = this
                 satelliteStatus = SatelliteState.RUNNING
+                config.isRunning = true
                 server.satelliteStarted()
                 log.d("Satellite started for $client_id")
             }
@@ -133,6 +135,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             pipelineStatus = PipelineStatus.INACTIVE
             satelliteStatus = SatelliteState.STOPPED
+            config.isRunning = false
             server.pipelineClient = null
             config.homeAssistantConnectedIP = ""
             server.satelliteStopped()

@@ -16,6 +16,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -132,8 +133,11 @@ class MainActivity : AppCompatActivity() {
         // Initiate wake word broadcast receiver
         var satelliteBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
-                if (config.currentActivity != "WebViewActivity") {
-                    runWebViewIntent()
+                if (intent.action == BroadcastSender.SATELLITE_STARTED) {
+                    if (config.currentActivity != "WebViewActivity") {
+                        log.d("Starting webview activity")
+                        runWebViewIntent()
+                    }
                 }
             }
         }
@@ -160,6 +164,10 @@ class MainActivity : AppCompatActivity() {
         }
 
         log.i("Screen: w$screenWidth h$screenHeight o$orientation, Logo: w${imageView.layoutParams.width} h${imageView.layoutParams.height}")
+
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        window.decorView.keepScreenOn = true
+
     }
 
     // Listening to the orientation config
@@ -167,6 +175,15 @@ class MainActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != screenOrientation) {
             setScreenLayout()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        log.d("Main Activity resumed")
+        if (config.currentActivity != "WebViewActivity" && config.isRunning) {
+            log.d("Resuming webView activity")
+            runWebViewIntent()
         }
     }
 

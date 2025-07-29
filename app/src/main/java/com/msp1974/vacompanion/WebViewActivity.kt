@@ -111,6 +111,7 @@ class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListene
                 log.i("Handling broadcast in webview activity.  Event is ${intent.action}")
                 if (intent.action == BroadcastSender.SATELLITE_STOPPED) {
                     runOnUiThread {
+                        config.currentActivity = ""
                         LocalBroadcastManager.getInstance(context).unregisterReceiver(this)
                         webView!!.removeAllViews()
                         webView!!.destroy()
@@ -135,10 +136,6 @@ class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListene
         // Setup WebView and load html page
         swipeRefreshLayout?.setOnRefreshListener(this);
 
-    }
-
-    override fun onStart() {
-        super.onStart()
         initialiseWebView(webView)
         loadInitURL()
     }
@@ -229,8 +226,9 @@ class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListene
                                 view.loadUrl(AuthUtils.getURL(getHAUrl()))
                             }
                         }
+                        return true
                     }
-                    return true
+                    return false
                 }
             })
 
@@ -241,6 +239,8 @@ class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListene
                 allowContentAccess = true
                 mediaPlaybackRequiresUserGesture = false
                 allowFileAccess = true
+                javaScriptCanOpenWindowsAutomatically = false
+                mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             }
             view.removeAllViews()
 

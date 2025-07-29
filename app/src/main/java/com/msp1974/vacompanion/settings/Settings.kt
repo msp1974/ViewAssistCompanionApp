@@ -45,6 +45,7 @@ class APPConfig(val context: Context) {
     var audioWidth: Int = 2
 
     var connectionCount: Int = 0
+    var isRunning: Boolean = false
     var currentActivity: String = ""
 
     var hasRecordAudioPermission: Boolean = true
