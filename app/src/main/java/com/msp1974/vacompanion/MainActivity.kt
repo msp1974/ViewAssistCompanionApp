@@ -16,7 +16,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.enableEdgeToEdge
@@ -37,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var config: APPConfig
     private val log = Logger()
 
+    private lateinit var screen: ScreenUtils
     private var screenOrientation: Int = 0
 
     @SuppressLint("HardwareIds", "SetTextI18n")
@@ -46,6 +46,7 @@ class MainActivity : AppCompatActivity() {
         this.enableEdgeToEdge()
 
         config = APPConfig.getInstance(this)
+        screen = ScreenUtils(this)
         screenOrientation = resources.configuration.orientation
 
 
@@ -177,7 +178,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         log.d("Main Activity resumed")
-        if (config.currentActivity != "WebViewActivity" && config.isRunning) {
+        if (screen.isScreenOn() && config.currentActivity != "WebViewActivity" && config.isRunning) {
             log.d("Resuming webView activity")
             runWebViewIntent()
         }
