@@ -97,8 +97,9 @@ class AuthUtils {
                 "code" to authCode
             )
 
-            val response = httpPOST(url, map)
+
             try {
+                val response = httpPOST(url, map)
                 val json = JSONObject(response)
                 val expiresIn = System.currentTimeMillis() + (json.getString("expires_in").toInt() * 1000)
 
@@ -122,8 +123,8 @@ class AuthUtils {
                 "client_id" to getClientId(),
                 "refresh_token" to refreshToken
             )
-            val response = httpPOST(url, map)
             try {
+                val response = httpPOST(url, map)
                 val json = JSONObject(response)
                 val expiresIn = System.currentTimeMillis() + (json.getString("expires_in").toInt() * 1000)
 
@@ -156,17 +157,17 @@ class AuthUtils {
                 .post(formBody)
                 .build()
             Thread {
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        log.e("Unexpected code $response")
-                        queue.add("")
-                    }
-                    try {
+                try {
+                    client.newCall(request).execute().use { response ->
+                        if (!response.isSuccessful) {
+                            log.e("Unexpected code $response")
+                            queue.add("")
+                        }
                         queue.add(response.body()?.string().toString())
-                    } catch (e: Exception) {
-                        log.e(e.message.toString())
-                        queue.add("")
                     }
+                } catch (e: Exception) {
+                    log.e(e.message.toString())
+                    queue.add("")
                 }
             }.start()
 
