@@ -108,19 +108,15 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         config.addChangeListener("wakeWord", object: InterfaceConfigChangeListener {
             override fun onConfigChange(property: String) {
                 log.i("BackgroundTask - $property changed to ${config.wakeWord}")
-                restartWakeWordDetection()
+                if (audioRoute != AudioRouteOption.NONE) {
+                    restartWakeWordDetection()
+                }
             }
         })
         config.addChangeListener("doNotDisturb", object: InterfaceConfigChangeListener {
             override fun onConfigChange(property: String) {
                 log.i("BackgroundTask - $property changed to ${config.doNotDisturb}")
                 setDoNotDisturb(config.doNotDisturb)
-            }
-        })
-        config.addChangeListener("micGain", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.micGain}")
-                audioDSP.gain = config.micGain
             }
         })
 
@@ -156,14 +152,13 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     fun startInputAudio(context: Context) {
         try {
             log.i("Starting input audio")
-            audioDSP.gain = config.micGain
             recorder = AudioRecorderThread(context, object : AudioInCallback {
                 override fun onAudio(audioBuffer: ShortArray) {
                     if (audioRoute == AudioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == AudioRouteOption.STREAM) {
-                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer, config.micGain)
+                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer)
                         server.sendAudio(bAudioBuffer)
                     }
                 }
