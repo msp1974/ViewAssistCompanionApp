@@ -181,6 +181,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "describe" -> {
                 sendInfo()
             }
+            "custom-settings" -> {
+                config.processSettings(event.getProp("settings"))
+            }
             "run-satellite" -> {
                 startSatellite()
             }
@@ -236,10 +239,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 "error" -> {
                     releaseInputAudioStream()
                     MusicPlayer.unDuckVolume()
-                }
-
-                "custom-settings" -> {
-                    config.processSettings(event.getProp("settings"))
                 }
 
                 "custom-action" -> {
