@@ -263,7 +263,7 @@ class APPConfig(val context: Context) {
         const val DEFAULT_SWIPE_REFRESH = true
         const val DEFAULT_DUCKING_VOLUME = 0.1f
         const val DEFAULT_MUTE = false
-        const val DEFAULT_MIC_GAIN = 1
+        const val DEFAULT_MIC_GAIN = 0
 
         @Volatile
         private var instance: APPConfig? = null
