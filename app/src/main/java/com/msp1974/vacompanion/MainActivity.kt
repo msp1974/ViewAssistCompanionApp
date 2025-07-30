@@ -36,6 +36,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var config: APPConfig
     private val log = Logger()
 
+    private lateinit var screen: ScreenUtils
     private var screenOrientation: Int = 0
 
     @SuppressLint("HardwareIds", "SetTextI18n")
@@ -45,6 +46,7 @@ class MainActivity : AppCompatActivity() {
         this.enableEdgeToEdge()
 
         config = APPConfig.getInstance(this)
+        screen = ScreenUtils(this)
         screenOrientation = resources.configuration.orientation
 
 
@@ -167,6 +169,15 @@ class MainActivity : AppCompatActivity() {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != screenOrientation) {
             setScreenLayout()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        log.d("Main Activity resumed")
+        if (screen.isScreenOn() && config.currentActivity != "WebViewActivity" && config.isRunning) {
+            log.d("Resuming webView activity")
+            runWebViewIntent()
         }
     }
 

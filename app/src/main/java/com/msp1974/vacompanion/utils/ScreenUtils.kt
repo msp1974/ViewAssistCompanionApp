@@ -101,4 +101,9 @@ class ScreenUtils(val activity: AppCompatActivity) : ContextWrapper(activity) {
         hasPermission = Settings.System.canWrite(applicationContext)
         return hasPermission
     }
+
+    fun isScreenOn(): Boolean {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        return pm.isInteractive
+    }
 }

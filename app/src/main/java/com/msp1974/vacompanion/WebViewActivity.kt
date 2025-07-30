@@ -115,6 +115,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 if (intent.action == BroadcastSender.SATELLITE_STOPPED) {
                     runOnUiThread {
                         LocalBroadcastManager.getInstance(context).unregisterReceiver(this)
+                        config.currentActivity = ""
                         webView!!.removeAllViews()
                         webView!!.destroy()
                     }

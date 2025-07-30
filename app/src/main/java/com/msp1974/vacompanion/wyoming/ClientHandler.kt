@@ -133,6 +133,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             log.i("Aborting connection")
             stop()
         }
+        config.isRunning = satelliteStatus == SatelliteState.RUNNING
     }
 
     private fun stopSatellite() {
@@ -152,6 +153,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         }
         runClient = false
         log.d("Satellite stopped")
+        config.isRunning = satelliteStatus == SatelliteState.RUNNING
     }
 
     private fun requestInputAudioStream() {

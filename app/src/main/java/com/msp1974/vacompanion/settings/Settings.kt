@@ -46,6 +46,7 @@ class APPConfig(val context: Context) {
 
     var connectionCount: Int = 0
     var currentActivity: String = ""
+    var isRunning: Boolean = false
 
     var hasRecordAudioPermission: Boolean = true
     var hasPostNotificationPermission: Boolean = true
