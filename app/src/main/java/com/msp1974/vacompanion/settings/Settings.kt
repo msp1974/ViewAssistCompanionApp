@@ -8,6 +8,8 @@ import android.os.Build.UNKNOWN
 import android.provider.Settings.Secure
 import androidx.preference.PreferenceManager
 import androidx.core.content.edit
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventNotifier
 import com.msp1974.vacompanion.utils.Logger
 import org.json.JSONObject
 import java.util.UUID
@@ -20,13 +22,14 @@ interface InterfaceConfigChangeListener {
 
 class APPConfig(val context: Context) {
     val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
-    private var configChangeListeners: ArrayList<Map<String, InterfaceConfigChangeListener>> = arrayListOf()
     private val log = Logger()
+    var eventBroadcaster: EventNotifier
 
     init {
         sharedPrefs.registerOnSharedPreferenceChangeListener { prefs, key ->
             onSharedPreferenceChangedListener(prefs, key)
         }
+        eventBroadcaster = EventNotifier()
     }
 
     // Constant values
@@ -109,10 +112,6 @@ class APPConfig(val context: Context) {
     }
 
     // SharedPreferences
-    var isFirstTime: Boolean
-        get() = this.sharedPrefs.getBoolean("first_time", true)
-        set(value) = this.sharedPrefs.edit { putBoolean("first_time", value) }
-
     var canSetScreenWritePermission: Boolean
         get() = this.sharedPrefs.getBoolean("can_set_screen_write_permission", true)
         set(value) = this.sharedPrefs.edit { putBoolean("can_set_screen_write_permission", value) }
@@ -214,7 +213,7 @@ class APPConfig(val context: Context) {
         return uid.slice(0..8)
 
     }
-
+    /*
     fun addChangeListener(key: String, listener: InterfaceConfigChangeListener) {
         val map : Map<String, InterfaceConfigChangeListener> = mapOf(key to listener)
         configChangeListeners.add(map)
@@ -224,34 +223,23 @@ class APPConfig(val context: Context) {
         val map : Map<String, InterfaceConfigChangeListener> = mapOf(key to listener)
         configChangeListeners.remove(map)
     }
+    */
 
     fun onSharedPreferenceChangedListener(prefs: SharedPreferences, key: String?) {
-        configChangeListeners.forEach {
-            for (entry in it.entries) {
-                if (entry.key == key) {
-                    entry.value.onConfigChange(
-                        key.toString(),
-                    )
-                }
-            }
-        }
+        val event = Event(key.toString(), "", "")
+        eventBroadcaster.notifyEvent(event)
     }
 
     fun onValueChangedListener(property: KProperty<*>, oldValue: Any, newValue: Any) {
         if (oldValue != newValue) {
-            configChangeListeners.forEach {
-                for (entry in it.entries) {
-                    if (entry.key == property.name) {
-                        entry.value.onConfigChange(entry.key.toString())
-                    }
-                }
-            }
+            val event = Event(property.name, oldValue, newValue)
+            eventBroadcaster.notifyEvent(event)
         }
     }
 
     companion object {
         const val NAME = "VACA"
-        const val VERSION = "0.3.3-rc1"
+        const val VERSION = "0.3.3"
         const val SERVER_PORT = 10800
         const val DEFAULT_HA_HTTP_PORT = 8123
         const val DEFAULT_WAKE_WORD = "hey_jarvis"

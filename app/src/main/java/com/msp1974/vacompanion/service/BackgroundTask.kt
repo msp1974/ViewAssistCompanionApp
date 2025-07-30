@@ -21,6 +21,8 @@ import kotlin.concurrent.thread
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.SoundControl
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -29,7 +31,7 @@ import java.util.Date
 
 enum class AudioRouteOption { NONE, DETECT, STREAM}
 
-internal class BackgroundTaskController (private val context: Context): Thread() {
+internal class BackgroundTaskController (private val context: Context): Thread(), EventListener {
 
     private val log = Logger()
     private var config: APPConfig = APPConfig.getInstance(context)
@@ -91,38 +93,34 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         thread { server.start() }
 
         // Add config change listeners
-        config.addChangeListener("notificationVolume", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.notificationVolume}")
-                setVolume(AudioManager.STREAM_NOTIFICATION, config.notificationVolume)
-            }
-        })
-
-        config.addChangeListener("musicVolume", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.musicVolume}")
-                setVolume(AudioManager.STREAM_MUSIC, config.musicVolume)
-            }
-        })
-
-        config.addChangeListener("wakeWord", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.wakeWord}")
-                if (audioRoute != AudioRouteOption.NONE) {
-                    restartWakeWordDetection()
-                }
-            }
-        })
-        config.addChangeListener("doNotDisturb", object: InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("BackgroundTask - $property changed to ${config.doNotDisturb}")
-                setDoNotDisturb(config.doNotDisturb)
-            }
-        })
+        config.eventBroadcaster.addListener(this)
 
         // Start mdns server
         log.i("Starting mdns server")
         Zeroconf(context).registerService(config.serverPort)
+    }
+
+    override fun onEventTriggered(event: Event) {
+        when (event.eventName) {
+            "notificationVolume" -> {
+                log.i("BackgroundTask - notificationVolume changed to ${event.newValue}")
+                setVolume(AudioManager.STREAM_NOTIFICATION, event.newValue as Float)
+            }
+            "musicVolume" -> {
+                log.i("BackgroundTask - musicVolume changed to ${event.newValue}")
+                setVolume(AudioManager.STREAM_MUSIC, event.newValue as Float)
+            }
+            "wakeWord" -> {
+                log.i("BackgroundTask - wakeWord changed to ${event.newValue}")
+                if (audioRoute != AudioRouteOption.NONE) {
+                    restartWakeWordDetection()
+                }
+            }
+            "doNotDisturb" -> {
+                log.i("BackgroundTask - doNotDisturb changed to ${event.newValue}")
+                setDoNotDisturb(event.newValue as Boolean)
+            }
+        }
     }
 
     fun startSensors(context: Context) {

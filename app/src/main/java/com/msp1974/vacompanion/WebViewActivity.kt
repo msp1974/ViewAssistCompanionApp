@@ -30,12 +30,12 @@ import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.AuthUtils
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
-import com.msp1974.vacompanion.wyoming.SatelliteState
 
-
-public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener {
+public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener, EventListener {
     private var log = Logger()
     private lateinit var config: APPConfig
     private lateinit var screen: ScreenUtils
@@ -66,47 +66,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         }
         setScreenAlwaysOn(config.screenAlwaysOn)
 
-        // Config change listeners to react to config changes sent by HA
-        config.addChangeListener("screenBrightness", object : InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("Screen brightness changed to ${config.screenBrightness}")
-                runOnUiThread {
-                    setScreenBrightness(config.screenBrightness)
-                }
-            }
-        })
-        config.addChangeListener("swipeRefresh", object : InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("Swipe refresh changed to ${config.swipeRefresh}")
-                runOnUiThread {
-                    swipeRefreshLayout?.setEnabled(config.swipeRefresh)
-                }
-            }
-        })
-        config.addChangeListener("screenAutoBrightness", object : InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("Screen Auto Brightness changed to ${config.screenAutoBrightness}")
-                runOnUiThread {
-                    setScreenAutoBrightness(config.screenAutoBrightness)
-                }
-            }
-        })
-        config.addChangeListener("screenAlwaysOn", object : InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("Screen Always On changed to ${config.screenAlwaysOn}")
-                runOnUiThread {
-                    setScreenAlwaysOn(config.screenAlwaysOn)
-                }
-            }
-        })
-        config.addChangeListener("darkMode", object : InterfaceConfigChangeListener {
-            override fun onConfigChange(property: String) {
-                log.i("Dark mode changed to ${config.darkMode}")
-                runOnUiThread {
-                    setDarkMode(config.darkMode)
-                }
-            }
-        })
+        // Add config change listeners
+        config.eventBroadcaster.addListener(this)
 
         // Initiate broadcast receiver for action broadcasts
         var satelliteBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -115,7 +76,6 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 if (intent.action == BroadcastSender.SATELLITE_STOPPED) {
                     runOnUiThread {
                         LocalBroadcastManager.getInstance(context).unregisterReceiver(this)
-                        config.currentActivity = ""
                         webView!!.removeAllViews()
                         webView!!.destroy()
                     }
@@ -145,6 +105,41 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
         initialiseWebView(webView)
         loadInitURL()
+    }
+
+    override fun onEventTriggered(event: Event) {
+        when (event.eventName) {
+            "screenBrightness" -> {
+                log.i("Screen brightness changed to ${event.newValue}")
+                runOnUiThread {
+                    setScreenBrightness(event.newValue as Float)
+                }
+            }
+            "swipeRefresh" -> {
+                log.i("Swipe refresh changed to ${event.newValue}")
+                runOnUiThread {
+                    swipeRefreshLayout?.setEnabled(event.newValue as Boolean)
+                }
+            }
+            "screenAutoBrightness" -> {
+                log.i("Screen Auto Brightness changed to ${event.newValue}")
+                runOnUiThread {
+                    setScreenAutoBrightness(event.newValue as Boolean)
+                }
+            }
+            "screenAlwaysOn" -> {
+                log.i("Screen Always On changed to ${event.newValue}")
+                runOnUiThread {
+                    setScreenAlwaysOn(event.newValue as Boolean)
+                }
+            }
+            "darkMode" -> {
+                log.i("Dark mode changed to ${event.newValue}")
+                runOnUiThread {
+                    setDarkMode(event.newValue as Boolean)
+                }
+            }
+        }
     }
 
     fun getHAUrl(): String {
@@ -336,6 +331,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
     }
 
     override fun onDestroy() {
+        config.eventBroadcaster.removeListener(this)
         screen.setDeviceBrightnessMode(true)
         super.onDestroy()
     }
@@ -374,6 +370,15 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
             window.decorView.keepScreenOn = false
+        }
+    }
+
+    fun darkModeListener() = object: InterfaceConfigChangeListener {
+        override fun onConfigChange(property: String) {
+            log.i("Dark mode changed to ${config.darkMode}")
+            runOnUiThread {
+                setDarkMode(config.darkMode)
+            }
         }
     }
 
