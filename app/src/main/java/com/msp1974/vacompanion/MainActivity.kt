@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         log.d("Main Activity resumed")
-        if (screen.isScreenOn() && config.currentActivity != "WebViewActivity" && config.isRunning) {
+        if (screen.isScreenOn() && config.isRunning) {
             log.d("Resuming webView activity")
             runWebViewIntent()
         }
