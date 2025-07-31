@@ -8,22 +8,17 @@ import kotlin.math.pow
 
 class AudioDSP {
 
-    fun preProcessAudio(input: ShortArray, sensitivity: Int): ShortArray {
-        //var audioBuffer = normaliseAudioBuffer(input)
-        //audioBuffer = bandPassFilter(audioBuffer, 1500f, 2500f, 16000f)
-        val gain = autoGain(input, sensitivity)
-        val output = input.map { (it * gain).toInt().toShort() }.toShortArray()
-        return output
-    }
-
-    fun autoGain(audioBuffer: ShortArray, sensitivity: Int = 0): Float {
-        // Auto gain
+    fun autoGain(audioBuffer: ShortArray, sensitivity: Int = 0): ShortArray {
         val max = audioBuffer.maxOrNull() ?: 0
         val min = audioBuffer.minOrNull() ?: 0
-
         val range = max - min
         val gain = (20000f + (sensitivity * 1000)) / range
-        return gain
+
+        if (gain != 1f) {
+            val output = audioBuffer.map { (it * gain).toInt().toShort() }.toShortArray()
+            return output
+        }
+        return audioBuffer
     }
 
 

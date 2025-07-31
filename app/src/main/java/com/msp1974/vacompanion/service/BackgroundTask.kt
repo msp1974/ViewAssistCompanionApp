@@ -80,12 +80,14 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 log.i("Streaming audio to server")
                 if (audioRoute == AudioRouteOption.DETECT) {
                     audioRoute = AudioRouteOption.STREAM
+                    stopOpenWakeWordDetection()
                 }
             }
 
             override fun onReleaseInputAudioStream() {
                 log.i("Stopped streaming audio to server")
                 if (audioRoute == AudioRouteOption.STREAM) {
+                    thread{startOpenWakeWordDetection()}
                     audioRoute = AudioRouteOption.DETECT
                 }
             }
@@ -156,7 +158,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == AudioRouteOption.STREAM) {
-                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioBuffer)
+                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioDSP.autoGain(audioBuffer, config.micGain))
                         server.sendAudio(bAudioBuffer)
                     }
                 }
@@ -181,33 +183,34 @@ internal class BackgroundTaskController (private val context: Context): Thread()
 
     fun processAudioToWakeWordEngine(context: Context, audioBuffer: FloatArray) {
         try {
-            val res = model!!.predict_WakeWord(audioBuffer).toFloat()
-            if (res >= 0.1) {
-                log.d("Wakeword probability value: $res")
-            }
-            if (res >= config.wakeWordThreshold && calm == 0) {
-                log.i("Wake word detected at $res, theshold is ${config.wakeWordThreshold}")
-
-                if (config.wakeWordSound != "none") {
-                    WakeWordSoundPlayer(
-                        context,
-                        context.resources.getIdentifier(
-                            config.wakeWordSound,
-                            "raw",
-                            context.packageName
-                        )
-                    ).play()
+            if (model != null) {
+                val res = model!!.predict_WakeWord(audioBuffer).toFloat()
+                if (res >= 0.1) {
+                    log.d("Wakeword probability value: $res")
                 }
-                BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
-                model!!.reset()
+                if (res >= config.wakeWordThreshold && calm == 0) {
+                    log.i("Wake word detected at $res, theshold is ${config.wakeWordThreshold}")
 
-                // Process 20 audio buffers before sending detection event again
-                calm = 20
-            }
-            if (calm > 0) {
-                --calm
-            }
+                    if (config.wakeWordSound != "none") {
+                        WakeWordSoundPlayer(
+                            context,
+                            context.resources.getIdentifier(
+                                config.wakeWordSound,
+                                "raw",
+                                context.packageName
+                            )
+                        ).play()
+                    }
+                    BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
+                    //model!!.reset()
 
+                    // Process 20 audio buffers before sending detection event again
+                    calm = 20
+                }
+                if (calm > 0) {
+                    --calm
+                }
+            }
         } catch (e: Exception) {
             log.d("Error processing to wake word engine: ${e.message.toString()}")
         }
@@ -235,7 +238,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
 
     fun stopOpenWakeWordDetection() {
         log.i("Stopping wake word detection")
-        //model?.stop()
+        model = null
     }
 
     fun restartWakeWordDetection() {

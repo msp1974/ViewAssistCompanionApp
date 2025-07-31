@@ -59,7 +59,7 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
             if (!config.isMuted) {
                 audioRecord.read(audioBuffer, 0, audioBuffer.size)
 
-                cbAudio.onAudio(audioDSP.preProcessAudio(audioBuffer, config.micGain))
+                cbAudio.onAudio(audioBuffer)
             }
         }
 
