@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.os.Bundle
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
@@ -16,6 +17,8 @@ import android.view.WindowManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.PopupWindow
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
@@ -34,6 +37,7 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
+import androidx.core.graphics.drawable.toDrawable
 
 public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener, EventListener {
     private var log = Logger()
@@ -42,6 +46,10 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
     private var swipeRefreshLayout: SwipeRefreshLayout? = null
     private var webView: WebView? = null
+    private var popup: PopupWindow? = null
+
+    private var maxPrediction: Float = 0.0f
+    private var diagnosticIterations = 0
 
     @SuppressLint("SetJavaScriptEnabled", "SetTextI18n", "ClickableViewAccessibility")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -139,6 +147,17 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                     setDarkMode(event.newValue as Boolean)
                 }
             }
+            "diagnosticsEnabled" -> {
+                log.i("Diagnostics enabled changed to ${event.newValue}")
+                runOnUiThread {
+                    showDiagnosticsPopup(event.newValue as Boolean)
+                }
+            }
+            "diagnosticStats" -> {
+                runOnUiThread {
+                    updateDiagnosticStats(event.oldValue as Float, event.newValue as Float)
+                }
+            }
         }
     }
 
@@ -184,6 +203,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 override fun onPageFinished(view: WebView, url: String) {
                     val swipe = view.parent as SwipeRefreshLayout
                     swipe.isRefreshing = false
+                    showDiagnosticsPopup(config.diagnosticsEnabled)
                 }
 
                 override fun onRenderProcessGone(
@@ -373,18 +393,53 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
         }
     }
 
-    fun darkModeListener() = object: InterfaceConfigChangeListener {
-        override fun onConfigChange(property: String) {
-            log.i("Dark mode changed to ${config.darkMode}")
-            runOnUiThread {
-                setDarkMode(config.darkMode)
+    fun setDarkMode(state: Boolean) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            WebSettingsCompat.setForceDark(webView!!.settings, if (state) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
+        }
+    }
+
+    fun showDiagnosticsPopup(show: Boolean) {
+        if (show) {
+            try {
+                if (popup == null) {
+                    val view: View =
+                        this@WebViewActivity.layoutInflater.inflate(R.layout.view_popup, null)
+
+                    popup = PopupWindow(
+                        view,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    popup?.setBackgroundDrawable(Color.WHITE.toDrawable())
+                    popup?.showAtLocation(webView, Gravity.TOP, 0, 0)
+                }
+            } catch (e: Exception) {
+                log.e("Error showing diagnostics popup: ${e.message}")
+            }
+
+        } else {
+            if (popup != null && popup!!.isShowing) {
+                log.d("Dismissing diagnostics popup")
+                popup?.dismiss()
+                popup = null
             }
         }
     }
 
-    fun setDarkMode(state: Boolean) {
-        if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-            WebSettingsCompat.setForceDark(webView!!.settings, if (state) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
+    fun updateDiagnosticStats(level: Float, prediction: Float) {
+        if (popup != null && popup!!.isShowing) {
+            if (diagnosticIterations > 50) {
+                maxPrediction = prediction
+                diagnosticIterations = 0
+            }
+            if (prediction > maxPrediction) {
+                maxPrediction = prediction
+            } else {
+                ++diagnosticIterations
+            }
+            val data = "  Mic Audio Level: ${"%.4f".format(level * 10)}     Wake Word Prediction: ${"%.1f".format(maxPrediction * 10)}"
+            popup?.contentView?.findViewById<TextView>(R.id.data)?.text = data
         }
     }
 }

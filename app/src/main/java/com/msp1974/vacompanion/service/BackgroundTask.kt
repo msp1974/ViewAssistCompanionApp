@@ -158,7 +158,12 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
                         processAudioToWakeWordEngine(context, floatBuffer)
                     } else if (audioRoute == AudioRouteOption.STREAM) {
-                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(audioDSP.autoGain(audioBuffer, config.micGain))
+                        val gAudioBuffer = audioDSP.autoGain(audioBuffer, config.micGain)
+                        var bAudioBuffer = audioDSP.shortArrayToByteBuffer(gAudioBuffer)
+                        if (config.diagnosticsEnabled) {
+                            val event = Event("diagnosticStats", (gAudioBuffer.max()/32768f).toFloat(), 0f)
+                            config.eventBroadcaster.notifyEvent(event)
+                        }
                         server.sendAudio(bAudioBuffer)
                     }
                 }
@@ -185,6 +190,12 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         try {
             if (model != null) {
                 val res = model!!.predict_WakeWord(audioBuffer).toFloat()
+
+                if (config.diagnosticsEnabled) {
+                    val event = Event("diagnosticStats", audioBuffer.maxOrNull() ?: 0, res)
+                    config.eventBroadcaster.notifyEvent(event)
+                }
+
                 if (res >= 0.1) {
                     log.d("Wakeword probability value: $res")
                 }

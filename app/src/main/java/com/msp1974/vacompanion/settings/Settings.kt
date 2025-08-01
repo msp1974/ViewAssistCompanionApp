@@ -111,6 +111,10 @@ class APPConfig(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var diagnosticsEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     // SharedPreferences
     var canSetScreenWritePermission: Boolean
         get() = this.sharedPrefs.getBoolean("can_set_screen_write_permission", true)
@@ -193,6 +197,9 @@ class APPConfig(val context: Context) {
         }
         if (settings.has("dark_mode")) {
             darkMode = settings.getBoolean("dark_mode")
+        }
+        if (settings.has("diagnostics_enabled")) {
+            diagnosticsEnabled = settings.getBoolean("diagnostics_enabled")
         }
     }
 
