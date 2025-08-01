@@ -29,6 +29,7 @@ import java.nio.charset.Charset
 import java.util.Date
 import java.util.Timer
 import java.util.TimerTask
+import kotlin.concurrent.thread
 
 class ClientHandler(private val context: Context, private val server: WyomingTCPServer, private val client: Socket) {
     private val log = Logger()
@@ -304,6 +305,14 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                             BroadcastSender.SCREEN_OFF
                         )
                     }
+                }
+            }
+
+            "wake" -> {
+                thread{
+                    MusicPlayer.duckVolume()
+                    sendWakeWordDetection()
+                    sendStartPipeline()
                 }
             }
         }
