@@ -16,10 +16,6 @@ import java.util.UUID
 import kotlin.properties.Delegates
 import kotlin.reflect.KProperty
 
-interface InterfaceConfigChangeListener {
-    fun onConfigChange(property: String)
-}
-
 class APPConfig(val context: Context) {
     val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
     private val log = Logger()
@@ -220,17 +216,6 @@ class APPConfig(val context: Context) {
         return uid.slice(0..8)
 
     }
-    /*
-    fun addChangeListener(key: String, listener: InterfaceConfigChangeListener) {
-        val map : Map<String, InterfaceConfigChangeListener> = mapOf(key to listener)
-        configChangeListeners.add(map)
-    }
-
-    fun removeChangeListener(key: String, listener: InterfaceConfigChangeListener) {
-        val map : Map<String, InterfaceConfigChangeListener> = mapOf(key to listener)
-        configChangeListeners.remove(map)
-    }
-    */
 
     fun onSharedPreferenceChangedListener(prefs: SharedPreferences, key: String?) {
         val event = Event(key.toString(), "", "")
