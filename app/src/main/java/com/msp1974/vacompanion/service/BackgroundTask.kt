@@ -3,7 +3,6 @@ package com.msp1974.vacompanion.service
 import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
-import android.net.wifi.WifiManager
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
 import com.msp1974.vacompanion.audio.AudioRecorderThread
@@ -12,7 +11,6 @@ import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.openwakeword.Model
 import com.msp1974.vacompanion.openwakeword.ONNXModelRunner
 import com.msp1974.vacompanion.settings.APPConfig
-import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
 import com.msp1974.vacompanion.wyoming.WyomingCallback

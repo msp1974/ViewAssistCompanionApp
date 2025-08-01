@@ -2,21 +2,16 @@ package com.msp1974.vacompanion.audio
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Context.AUDIO_SERVICE
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.os.Process
-import androidx.core.content.ContextCompat.getSystemService
 import com.msp1974.vacompanion.settings.APPConfig
-import com.msp1974.vacompanion.utils.Logger
 
 internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCallback) : Thread() {
     private lateinit var audioRecord: AudioRecord
     private var isRecording = false
     private var config: APPConfig = APPConfig.getInstance(context)
-    private var log = Logger()
-    private var audioDSP = AudioDSP()
 
     @SuppressLint("MissingPermission", "ServiceCast")
     override fun run() {
@@ -42,13 +37,6 @@ internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCal
             // Initialization error handling
             return
         }
-
-        // Set auto gain control
-        //if (AutomaticGainControl.isAvailable()) {
-        //    log.i("Enabling auto gain control")
-        //    val agc = AutomaticGainControl.create(audioRecord.audioSessionId)
-        //    agc.enabled = true
-        //}
 
         val audioBuffer = ShortArray(bufferSizeInShorts) // Allocate buffer for 'chunk size' shorts
         audioRecord.startRecording()

@@ -1,6 +1,5 @@
 package com.msp1974.vacompanion.audio
 
-import com.msp1974.vacompanion.utils.Logger
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.pow
