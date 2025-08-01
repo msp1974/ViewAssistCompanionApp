@@ -31,13 +31,13 @@ import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
 import com.msp1974.vacompanion.jsinterface.WebAppInterface
 import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
 import com.msp1974.vacompanion.settings.APPConfig
-import com.msp1974.vacompanion.settings.InterfaceConfigChangeListener
 import com.msp1974.vacompanion.utils.AuthUtils
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
 import androidx.core.graphics.drawable.toDrawable
+import kotlin.math.abs
 
 public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener, EventListener {
     private var log = Logger()
@@ -429,16 +429,17 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
 
     fun updateDiagnosticStats(level: Float, prediction: Float) {
         if (popup != null && popup!!.isShowing) {
-            if (diagnosticIterations > 50) {
+            if (diagnosticIterations > 40) {
                 maxPrediction = prediction
                 diagnosticIterations = 0
             }
             if (prediction > maxPrediction) {
                 maxPrediction = prediction
+                diagnosticIterations = 0
             } else {
                 ++diagnosticIterations
             }
-            val data = "  Mic Audio Level: ${"%.4f".format(level * 10)}     Wake Word Prediction: ${"%.1f".format(maxPrediction * 10)}"
+            val data = "  Mic Audio Level: ${"%.4f".format(level * 10)}     Wake Word Prediction: ${"%.1f".format(abs(maxPrediction) * 10)}"
             popup?.contentView?.findViewById<TextView>(R.id.data)?.text = data
         }
     }
