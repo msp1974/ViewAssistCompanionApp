@@ -1,6 +1,8 @@
 package com.msp1974.vacompanion.wyoming
 
 import android.content.Context
+import com.msp1974.vacompanion.utils.DeviceCapabilitiesData
+import com.msp1974.vacompanion.utils.DeviceCapabilitiesManager
 import com.msp1974.vacompanion.utils.Logger
 import kotlinx.serialization.json.JsonObject
 import java.net.ServerSocket
@@ -20,6 +22,8 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
     var log = Logger()
     var runServer: Boolean = true
     var pipelineClient: ClientHandler? = null
+
+    var deviceInfo: DeviceCapabilitiesData = DeviceCapabilitiesManager(context).getDeviceInfo()
 
     fun start() {
         try {

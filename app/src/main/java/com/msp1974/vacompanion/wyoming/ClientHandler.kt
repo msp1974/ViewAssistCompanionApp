@@ -14,6 +14,7 @@ import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Logger
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addAll
 import kotlinx.serialization.json.buildJsonObject
@@ -186,6 +187,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             "custom-settings" -> {
                 config.processSettings(event.getProp("settings"))
+            }
+            "capabilities" -> {
+                sendCapabilities()
             }
             "run-satellite" -> {
                 startSatellite()
@@ -404,7 +408,6 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                         addAll(listOf(config.wakeWord))
                     }
                     put("max_active_wake_words", 1)
-
                 }
             }
         )
@@ -469,6 +472,21 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "custom-status",
             data
         )
+    }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    fun sendCapabilities() {
+        sendEvent("capabilities", buildJsonObject {
+            put("device_signature", server.deviceInfo.deviceSignature)
+            put("app_version", server.deviceInfo.appVersion)
+            put("sdk_version", server.deviceInfo.sdkVersion)
+            put("release", server.deviceInfo.release)
+            put("has_battery", server.deviceInfo.hasBattery)
+            put("has_front_camera", server.deviceInfo.hasFrontCamera)
+            putJsonArray("sensors") {
+                addAll(server.deviceInfo.sensors)
+            }
+        })
     }
 
     fun sendEvent(type: String, data: JsonObject = buildJsonObject {  }) {
