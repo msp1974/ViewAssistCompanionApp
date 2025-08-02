@@ -211,7 +211,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                     detail: RenderProcessGoneDetail?
                 ): Boolean {
                     log.d("Webview render process gone: $detail")
-                    if (webView!! == view) {
+                    if (webView!! == view && detail?.didCrash() == true) {
                         val container = swipeRefreshLayout?.parent as ViewGroup
                         val params = container.layoutParams
                         container.removeView(swipeRefreshLayout)
@@ -260,6 +260,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 allowContentAccess = true
                 mediaPlaybackRequiresUserGesture = false
                 allowFileAccess = true
+                loadWithOverviewMode = true
+                useWideViewPort = true
             }
             view.removeAllViews()
 
