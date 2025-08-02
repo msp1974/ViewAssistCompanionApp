@@ -261,8 +261,12 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     }
 
     fun setVolume(stream: Int, volume: Float) {
-        val audioManager = com.msp1974.vacompanion.audio.AudioManager(context)
-        audioManager.setVolume(stream, volume)
+        try {
+            val audioManager = com.msp1974.vacompanion.audio.AudioManager(context)
+            audioManager.setVolume(stream, volume)
+        } catch (e: Exception) {
+            log.d("Error setting volume: ${e.message.toString()}")
+        }
     }
 
     fun setDoNotDisturb(enable: Boolean) {
