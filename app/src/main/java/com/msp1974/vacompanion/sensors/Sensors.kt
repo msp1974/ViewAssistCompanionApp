@@ -2,11 +2,15 @@ package com.msp1974.vacompanion.sensors
 
 import android.content.Context
 import android.content.Context.SENSOR_SERVICE
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.Configuration
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.BatteryManager
+import com.msp1974.vacompanion.utils.DeviceCapabilitiesManager
 import com.msp1974.vacompanion.utils.Logger
 import java.util.Timer
 import kotlin.concurrent.timer
@@ -26,6 +30,9 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
     var sensorLastValue: MutableMap<String, Any> = mutableMapOf()
     var timer: Timer? = null
 
+    var hasBattery = false
+    var hasLightSensor = false
+
     val sensorListener: SensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type == Sensor.TYPE_LIGHT) {
@@ -36,22 +43,27 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
 
         }
-
-        fun updateSensorData(name: String, value: Float, changeRequired: Float) {
-            var lastValue = sensorLastValue.getOrDefault(name,0f) as Float
-            if (abs(value - lastValue) >= changeRequired) {
-                sensorData.put(name, value)
-                sensorLastValue.put(name, value)
-            }
-        }
     }
 
     init {
         log.d("Starting sensors")
+        val dm = DeviceCapabilitiesManager(context)
+        hasBattery = dm.hasBattery()
 
         // Register light sensor listener
-        hasSensors = registerLightSensorListener()
+        hasLightSensor = dm.hasLightSensor()
+        if (hasLightSensor) {
+            hasSensors = registerLightSensorListener()
+        }
         startIntervalTimer()
+    }
+
+    fun updateSensorData(name: String, value: Float, changeRequired: Float) {
+        val lastValue = sensorLastValue.getOrDefault(name,-1f) as Float
+        if (abs(value - lastValue) >= changeRequired) {
+            sensorData.put(name, value)
+            sensorLastValue.put(name, value)
+        }
     }
 
     private fun startIntervalTimer() {
@@ -71,6 +83,11 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
 
             }
 
+            // Battery info
+            if (hasBattery) {
+                getBatteryState()
+            }
+
             // run callback if sensor updates
             if (sensorData.isNotEmpty()) {
                 cbFunc.onUpdate(data = sensorData)
@@ -86,14 +103,6 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
             timer!!.cancel()
             timer = null
         }
-    }
-
-    fun getAvailableSensors(): List<Sensor> {
-        val deviceSensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
-        for (i in 0..deviceSensors.size - 1) {
-            log.i("Sensor: ${deviceSensors[i]}")
-        }
-        return deviceSensors
     }
 
     fun getOrientation(): String {
@@ -115,6 +124,20 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
             log.d("No light sensor found")
             return false
         }
+    }
+
+    private fun getBatteryState() {
+        val intentFilter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
+        val batteryStatus = context.registerReceiver(null, intentFilter)
+        val batteryStatusIntExtra = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = batteryStatusIntExtra == BatteryManager.BATTERY_STATUS_CHARGING || batteryStatusIntExtra == BatteryManager.BATTERY_STATUS_FULL
+        val chargePlug = batteryStatus?.getIntExtra(BatteryManager.EXTRA_PLUGGED, -1) ?: -1
+        val usbCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_USB
+        val acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC
+        val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+
+        updateSensorData("battery_level", level.toFloat(), 1f)
+        updateSensorData("battery_charging", if (isCharging) 1f else 0f, 1f)
     }
 }
 
