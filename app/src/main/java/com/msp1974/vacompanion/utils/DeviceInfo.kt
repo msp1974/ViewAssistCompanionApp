@@ -1,10 +1,8 @@
 package com.msp1974.vacompanion.utils
 
 import android.content.Context
-import android.content.Context.SENSOR_SERVICE
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
@@ -46,7 +44,7 @@ class DeviceCapabilitiesManager(val context: Context) {
     fun getAvailableSensors(): List<String> {
         // Get list of available sensor types
         val sensors: MutableList<String> = mutableListOf()
-        val sensorManager: SensorManager = context.getSystemService(SENSOR_SERVICE) as SensorManager
+        val sensorManager: SensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val deviceSensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
 
         deviceSensors.forEach { sensor: Sensor ->
@@ -75,7 +73,7 @@ class DeviceCapabilitiesManager(val context: Context) {
     }
 
     fun hasLightSensor(): Boolean {
-        val sensorManager: SensorManager = context.getSystemService(SENSOR_SERVICE) as SensorManager
+        val sensorManager: SensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val deviceSensors = sensorManager.getSensorList(Sensor.TYPE_LIGHT)
         return deviceSensors.isNotEmpty()
     }
