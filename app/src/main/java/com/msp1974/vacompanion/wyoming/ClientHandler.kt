@@ -485,8 +485,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
 
     fun sendStatus(data: JsonObject) {
-        sendEvent(
-            "custom-status",
+        sendCustomEvent(
+            "status",
             data
         )
     }
