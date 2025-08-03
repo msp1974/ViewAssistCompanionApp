@@ -194,6 +194,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "run-satellite" -> {
                 startSatellite()
             }
+            "custom-event" -> {
+                handleCustomEvent(event)
+            }
         }
 
         // Events that must have a running satellite to be processed
@@ -251,6 +254,20 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 "custom-action" -> {
                     handleCustomAction(event)
                 }
+            }
+        }
+    }
+
+    private fun handleCustomEvent(event: WyomingPacket) {
+        when (event.getProp("event_type")) {
+            "action" -> {
+                handleCustomAction(event)
+            }
+            "settings" -> {
+                config.processSettings(event.getProp("settings"))
+            }
+            "capabilities" -> {
+                sendCapabilities()
             }
         }
     }
@@ -476,17 +493,27 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
     @OptIn(ExperimentalSerializationApi::class)
     fun sendCapabilities() {
-        sendEvent("capabilities", buildJsonObject {
-            put("device_signature", server.deviceInfo.deviceSignature)
-            put("app_version", server.deviceInfo.appVersion)
-            put("sdk_version", server.deviceInfo.sdkVersion)
-            put("release", server.deviceInfo.release)
-            put("has_battery", server.deviceInfo.hasBattery)
-            put("has_front_camera", server.deviceInfo.hasFrontCamera)
-            putJsonArray("sensors") {
-                addAll(server.deviceInfo.sensors)
+        sendCustomEvent("capabilities", buildJsonObject {
+            putJsonObject("capabilities") {
+                put("device_signature", server.deviceInfo.deviceSignature)
+                put("app_version", server.deviceInfo.appVersion)
+                put("sdk_version", server.deviceInfo.sdkVersion)
+                put("release", server.deviceInfo.release)
+                put("has_battery", server.deviceInfo.hasBattery)
+                put("has_front_camera", server.deviceInfo.hasFrontCamera)
+                putJsonArray("sensors") {
+                    addAll(server.deviceInfo.sensors)
+                }
             }
         })
+    }
+
+    fun sendCustomEvent(type: String, data: JsonObject) {
+        val customEventData = buildJsonObject {
+            put("event_type", type)
+            put("data", data)
+        }
+        sendEvent("custom-event", customEventData)
     }
 
     fun sendEvent(type: String, data: JsonObject = buildJsonObject {  }) {
