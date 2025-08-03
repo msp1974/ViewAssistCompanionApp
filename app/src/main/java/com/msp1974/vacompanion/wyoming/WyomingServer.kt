@@ -33,7 +33,7 @@ class WyomingTCPServer (val context: Context, val port: Int, val cbCallback: Wyo
             while (runServer) {
                 val client = server.accept()
                 // Run client in it's own thread.
-                thread { ClientHandler(context, this, client).run() }
+                thread(name = "ClientHandler-${client.port}") { ClientHandler(context, this, client).run() }
             }
         } catch (e: Exception) {
             log.e("Server exception: $e")
