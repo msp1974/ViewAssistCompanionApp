@@ -5,7 +5,6 @@ import android.content.res.AssetManager
 import android.media.AudioManager
 import com.msp1974.vacompanion.Zeroconf
 import com.msp1974.vacompanion.audio.AudioInCallback
-import com.msp1974.vacompanion.audio.AudioRecorderThread
 import com.msp1974.vacompanion.audio.WakeWordSoundPlayer
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.openwakeword.Model
@@ -17,6 +16,7 @@ import com.msp1974.vacompanion.wyoming.WyomingCallback
 import com.msp1974.vacompanion.utils.Helpers
 import kotlin.concurrent.thread
 import com.msp1974.vacompanion.audio.AudioDSP
+import com.msp1974.vacompanion.audio.AudioRecorder
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
 import com.msp1974.vacompanion.utils.Event
@@ -29,7 +29,7 @@ import java.util.Date
 
 enum class AudioRouteOption { NONE, DETECT, STREAM}
 
-internal class BackgroundTaskController (private val context: Context): Thread(), EventListener {
+internal class BackgroundTaskController (private val context: Context): EventListener {
 
     private val log = Logger()
     private var config: APPConfig = APPConfig.getInstance(context)
@@ -37,7 +37,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     var modelRunner: ONNXModelRunner? = null
     var model: Model? = null
     var audioRoute: AudioRouteOption = AudioRouteOption.NONE
-    var recorder: AudioRecorderThread? = null
+    var recorder: AudioRecorder? = null
     val audioDSP: AudioDSP = AudioDSP()
     private var sensorRunner: Sensors? = null
     lateinit var assetManager: AssetManager
@@ -47,7 +47,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     var calm: Int = 0
 
 
-    override fun run() {
+    fun start() {
         assetManager = context.assets
 
         // Start wyoming server
@@ -90,7 +90,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                 }
             }
         })
-        thread { server.start() }
+        thread(name="WyomingServer") { server.start() }
 
         // Add config change listeners
         config.eventBroadcaster.addListener(this)
@@ -98,6 +98,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
         // Start mdns server
         log.i("Starting mdns server")
         Zeroconf(context).registerService(config.serverPort)
+        log.d("Background task initialisation completed")
     }
 
     override fun onEventTriggered(event: Event) {
@@ -150,7 +151,7 @@ internal class BackgroundTaskController (private val context: Context): Thread()
     fun startInputAudio(context: Context) {
         try {
             log.i("Starting input audio")
-            recorder = AudioRecorderThread(context, object : AudioInCallback {
+            recorder = AudioRecorder(context, object : AudioInCallback {
                 override fun onAudio(audioBuffer: ShortArray) {
                     if (audioRoute == AudioRouteOption.DETECT) {
                         var floatBuffer = audioDSP.normaliseAudioBuffer(audioBuffer)
@@ -159,16 +160,21 @@ internal class BackgroundTaskController (private val context: Context): Thread()
                         val gAudioBuffer = audioDSP.autoGain(audioBuffer, config.micGain)
                         var bAudioBuffer = audioDSP.shortArrayToByteBuffer(gAudioBuffer)
                         if (config.diagnosticsEnabled) {
-                            val event = Event("diagnosticStats", (gAudioBuffer.max()/32768f).toFloat(), 0f)
+                            val event = Event(
+                                "diagnosticStats",
+                                (gAudioBuffer.max() / 32768f).toFloat(),
+                                0f
+                            )
                             config.eventBroadcaster.notifyEvent(event)
                         }
                         server.sendAudio(bAudioBuffer)
                     }
                 }
+
                 override fun onError(err: String) {
                 }
             })
-            recorder?.start()
+            thread(name="AudioInput") {recorder?.start()}
         } catch (e: Exception) {
             log.d("Error starting mic audio: ${e.message.toString()}")
         }

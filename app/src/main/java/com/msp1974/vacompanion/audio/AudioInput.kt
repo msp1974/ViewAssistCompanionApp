@@ -8,13 +8,13 @@ import android.media.MediaRecorder
 import android.os.Process
 import com.msp1974.vacompanion.settings.APPConfig
 
-internal class AudioRecorderThread(val context: Context, val cbAudio: AudioInCallback) : Thread() {
+internal class AudioRecorder(val context: Context, val cbAudio: AudioInCallback) {
     private lateinit var audioRecord: AudioRecord
     private var isRecording = false
     private var config: APPConfig = APPConfig.getInstance(context)
 
     @SuppressLint("MissingPermission", "ServiceCast")
-    override fun run() {
+    fun start() {
         Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO)
 
         // Ensure the buffer size is at least as large as the chunk size needed
