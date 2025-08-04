@@ -36,7 +36,7 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
     val sensorListener: SensorEventListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             if (event.sensor.type == Sensor.TYPE_LIGHT) {
-                updateSensorData("light", event.values[0].toFloat(), 10f)
+                updateFloatSensorData("light", event.values[0].toFloat(), 10f)
             }
         }
 
@@ -58,9 +58,25 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
         startIntervalTimer()
     }
 
-    fun updateSensorData(name: String, value: Float, changeRequired: Float) {
+    fun updateFloatSensorData(name: String, value: Float, changeRequired: Float) {
         val lastValue = sensorLastValue.getOrDefault(name,-1f) as Float
         if (abs(value - lastValue) >= changeRequired) {
+            sensorData.put(name, value)
+            sensorLastValue.put(name, value)
+        }
+    }
+
+    fun updateStringSensorData(name: String, value: String) {
+        val lastValue = sensorLastValue.getOrDefault(name,"") as String
+        if (value != lastValue) {
+        sensorData.put(name, value)
+        sensorLastValue.put(name, value)
+        }
+    }
+
+    fun updateBoolSensorData(name: String, value: Boolean) {
+        val lastValue = sensorLastValue[name] as Boolean?
+        if (value != lastValue) {
             sensorData.put(name, value)
             sensorLastValue.put(name, value)
         }
@@ -136,8 +152,8 @@ class Sensors(val context: Context, val cbFunc: SensorUpdatesCallback) {
         val acCharge = chargePlug == BatteryManager.BATTERY_PLUGGED_AC
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
 
-        updateSensorData("battery_level", level.toFloat(), 1f)
-        updateSensorData("battery_charging", if (isCharging) 1f else 0f, 1f)
+        updateFloatSensorData("battery_level", level.toFloat(), 1f)
+        updateBoolSensorData("battery_charging", isCharging)
     }
 }
 
