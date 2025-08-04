@@ -6,6 +6,7 @@ import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import kotlin.concurrent.thread
+import androidx.core.net.toUri
 
 internal interface AudioInCallback {
     fun onAudio(audioBuffer: ShortArray)
@@ -34,17 +35,20 @@ internal class WakeWordSoundPlayer(private val context: Context, private val res
         // Create MediaPlayer instance with a resource audio resource
         //TODO: This plays on music stream but needs to play on notification stream!!!
         thread(name="WakeWordSoundPlayer") {
-            wwSound = MediaPlayer.create(context, resId)
-            wwSound.setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setLegacyStreamType(AudioManager.STREAM_NOTIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                    .build()
-            )
-            wwSound.start()
+            wwSound = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setLegacyStreamType(AudioManager.STREAM_NOTIFICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                        .build()
+                )
+                setDataSource(context, "android.resource://${context.packageName}/$resId".toUri())
+                prepare()
+                start()
+            }
             while (wwSound.isPlaying) {
-                Thread.sleep(100)
+                Thread.sleep(50)
             }
             wwSound.release()
         }
