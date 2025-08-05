@@ -303,12 +303,16 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
             "toast-message" -> {
                 if (event.getProp("payload") != "") {
-                    val values = JSONObject(event.getProp("payload"))
-                    BroadcastSender.sendBroadcast(
-                        context,
-                        BroadcastSender.TOAST_MESSAGE,
-                        values.getString("message")
-                    )
+                    try {
+                        val values = JSONObject(event.getProp("payload"))
+                        BroadcastSender.sendBroadcast(
+                            context,
+                            BroadcastSender.TOAST_MESSAGE,
+                            values.getString("message")
+                        )
+                    } catch (ex: Exception) {
+                        log.e("Error sending toast message: $ex")
+                    }
                 }
             }
 

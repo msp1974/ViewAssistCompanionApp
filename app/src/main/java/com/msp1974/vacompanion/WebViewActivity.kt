@@ -37,6 +37,7 @@ import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
 import androidx.core.graphics.drawable.toDrawable
+import com.google.android.material.snackbar.Snackbar
 import kotlin.math.abs
 
 public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener, EventListener {
@@ -91,9 +92,8 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 }
                 if (intent.action == BroadcastSender.TOAST_MESSAGE) {
                     runOnUiThread {
-                        val toast = Toast.makeText(context, intent.getStringExtra("extra"), Toast.LENGTH_SHORT)
-                        toast.setGravity(Gravity.TOP or Gravity.CENTER_HORIZONTAL, 0, 0);
-                        toast.show()
+                        val snackbar = Snackbar.make(findViewById(android.R.id.content),intent.getStringExtra("extra").toString(), Snackbar.LENGTH_LONG)
+                        snackbar.show()
                     }
                 }
             }
@@ -406,7 +406,7 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
             try {
                 if (popup == null) {
                     val view: View =
-                        this@WebViewActivity.layoutInflater.inflate(R.layout.view_popup, null)
+                        this@WebViewActivity.layoutInflater.inflate(R.layout.popup_diagnostics, null)
 
                     popup = PopupWindow(
                         view,
@@ -441,8 +441,11 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
             } else {
                 ++diagnosticIterations
             }
-            val data = "  Mic Audio Level: ${"%.4f".format(level * 10)}     Wake Word Prediction: ${"%.1f".format(abs(maxPrediction) * 10)}"
-            popup?.contentView?.findViewById<TextView>(R.id.data)?.text = data
+            val micLevel = "Mic Audio Level: ${"%.4f".format(level * 10)}"
+            val wakeWordPrediction = "Wake Word Prediction: ${"%.1f".format(abs(maxPrediction) * 10)}"
+            popup?.contentView?.findViewById<TextView>(R.id.audioLevel)?.text = micLevel
+            popup?.contentView?.findViewById<TextView>(R.id.wakePrediction)?.text = wakeWordPrediction
+            popup?.update()
         }
     }
 }
