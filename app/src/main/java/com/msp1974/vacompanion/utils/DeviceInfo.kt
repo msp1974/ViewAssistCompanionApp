@@ -6,18 +6,21 @@ import android.content.IntentFilter
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
-import android.os.BatteryManager
 import android.hardware.camera2.CameraManager
+import android.os.BatteryManager
 import android.os.Build
+import android.webkit.WebView
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.Serializable
+
 
 @Serializable
 data class DeviceCapabilitiesData(
     val deviceSignature: String,
     val appVersion: String,
     val sdkVersion: Int,
+    val webViewVersion: String,
     val release: String,
     val hasBattery: Boolean,
     val hasFrontCamera: Boolean,
@@ -34,6 +37,7 @@ class DeviceCapabilitiesManager(val context: Context) {
             deviceSignature = Helpers.getDeviceName().toString(),
             appVersion = context.packageManager.getPackageInfo(context.packageName, 0).versionName.toString(),
             sdkVersion = Build.VERSION.SDK_INT,
+            webViewVersion = getWebViewVersion(),
             release = Build.VERSION.RELEASE.toString(),
             hasBattery = hasBattery(),
             hasFrontCamera = hasFrontCamera(),
@@ -60,6 +64,11 @@ class DeviceCapabilitiesManager(val context: Context) {
             sensors.add(s.toString())
         }
         return sensors
+    }
+
+    fun getWebViewVersion(): String {
+        val info = WebView.getCurrentWebViewPackage()
+        return info!!.versionName!!
     }
 
     fun hasBattery(): Boolean {

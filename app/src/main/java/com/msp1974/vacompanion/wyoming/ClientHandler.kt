@@ -498,6 +498,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 put("device_signature", server.deviceInfo.deviceSignature)
                 put("app_version", server.deviceInfo.appVersion)
                 put("sdk_version", server.deviceInfo.sdkVersion)
+                put("webview_version", server.deviceInfo.webViewVersion)
                 put("release", server.deviceInfo.release)
                 put("has_battery", server.deviceInfo.hasBattery)
                 put("has_front_camera", server.deviceInfo.hasFrontCamera)
