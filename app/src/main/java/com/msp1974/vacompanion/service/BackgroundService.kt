@@ -22,6 +22,8 @@ class VABackgroundService : Service() {
     private var wifiLock: WifiManager.WifiLock? = null
     private var keyguardLock: KeyguardManager.KeyguardLock? = null
 
+    private val backgroundTask = BackgroundTaskController(this)
+
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
@@ -87,7 +89,6 @@ class VABackgroundService : Service() {
             ex.printStackTrace()
         }
 
-        val backgroundTask = BackgroundTaskController(this)
         backgroundTask.start()
         log.i("Background Service Started")
         return START_STICKY
@@ -103,6 +104,7 @@ class VABackgroundService : Service() {
 
     override fun onDestroy() {
         log.i("Stopping Background Service")
+        backgroundTask.shutdown()
 
         // Release any lock from this app
         if (wifiLock != null && wifiLock!!.isHeld) {
