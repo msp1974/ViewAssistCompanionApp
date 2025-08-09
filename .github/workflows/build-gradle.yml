@@ -16,5 +16,7 @@ jobs:
         java-version: 17
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4
-    - name: Build with Gradle
+      with:
+        gradle-version: '8.14.3'
+    - name: Build with Gradle 8.14.3
       run: ./gradlew build
