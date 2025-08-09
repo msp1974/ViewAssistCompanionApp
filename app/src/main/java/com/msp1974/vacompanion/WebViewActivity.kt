@@ -1,20 +1,27 @@
 package com.msp1974.vacompanion
 
 import android.annotation.SuppressLint
+import android.app.Instrumentation
+import android.app.UiModeManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
 import android.os.StrictMode.ThreadPolicy
+import android.os.SystemClock
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.inputmethod.BaseInputConnection
 import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.PopupWindow
@@ -22,6 +29,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import androidx.webkit.WebSettingsCompat
@@ -38,6 +46,8 @@ import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
 import androidx.core.graphics.drawable.toDrawable
 import com.google.android.material.snackbar.Snackbar
+import java.io.IOException
+import kotlin.concurrent.thread
 import kotlin.math.abs
 
 public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefreshListener, EventListener {
@@ -85,6 +95,10 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 if (intent.action == BroadcastSender.SATELLITE_STOPPED) {
                     runOnUiThread {
                         LocalBroadcastManager.getInstance(context).unregisterReceiver(this)
+                        if (popup != null && popup!!.isShowing) {
+                            popup?.dismiss()
+                        }
+                        swipeRefreshLayout!!.removeAllViews()
                         webView!!.removeAllViews()
                         webView!!.destroy()
                     }
@@ -96,11 +110,17 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                         snackbar.show()
                     }
                 }
+                if (intent.action == BroadcastSender.REFRESH) {
+                    runOnUiThread {
+                        onRefresh()
+                    }
+                }
             }
         }
         val filter = IntentFilter().apply {
             addAction(BroadcastSender.SATELLITE_STOPPED)
             addAction(BroadcastSender.TOAST_MESSAGE)
+            addAction(BroadcastSender.REFRESH)
         }
         LocalBroadcastManager.getInstance(this).registerReceiver(satelliteBroadcastReceiver, filter)
 
@@ -212,22 +232,12 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 ): Boolean {
                     log.d("Webview render process gone: $detail")
                     if (webView!! == view && detail?.didCrash() == true) {
-                        val container = swipeRefreshLayout?.parent as ViewGroup
-                        val params = container.layoutParams
-                        container.removeView(swipeRefreshLayout)
-                        webView = null
-                        swipeRefreshLayout = null
+                        swipeRefreshLayout!!.removeAllViews()
+                        view.removeAllViews()
                         view.destroy()
-
-                        val v = layoutInflater.inflate(R.layout.activity_webview, container, false)
-                        webView = findViewById(R.id.haWebview)
-                        swipeRefreshLayout = findViewById(R.id.swiperefresh)
-                        initialiseWebView(webView)
-                        setContentView(v, params)
-                        webView?.loadUrl(AuthUtils.getURL(getHAUrl()))
+                        finish()
                     }
-
-                    return true
+                    return super.onRenderProcessGone(view, detail)
                 }
 
                 override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
@@ -253,18 +263,21 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
                 }
             })
 
-            view.setLayerType(View.LAYER_TYPE_HARDWARE, null);
             view.settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
-                allowContentAccess = true
-                mediaPlaybackRequiresUserGesture = false
+                javaScriptCanOpenWindowsAutomatically = true
+                cacheMode = WebSettings.LOAD_NO_CACHE
                 allowFileAccess = true
+                allowContentAccess = true
+                setSupportZoom(true)
                 loadWithOverviewMode = true
                 useWideViewPort = true
+                setRenderPriority(WebSettings.RenderPriority.HIGH)
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             }
             view.removeAllViews()
-
         }
 
     }
@@ -396,10 +409,22 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
     }
 
     fun setDarkMode(state: Boolean) {
+        if(WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
+            WebSettingsCompat.setForceDarkStrategy(webView!!.getSettings(), if (state) WebSettingsCompat.DARK_STRATEGY_WEB_THEME_DARKENING_ONLY else WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING);
+        }
+
         if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
             WebSettingsCompat.setForceDark(webView!!.settings, if (state) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF)
         }
+
+        val uiModeManager = getSystemService(UI_MODE_SERVICE) as UiModeManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            uiModeManager.setApplicationNightMode(if (state) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO)
+        } else {
+            AppCompatDelegate.setDefaultNightMode(if (state) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+        }
     }
+
 
     fun showDiagnosticsPopup(show: Boolean) {
         if (show) {
@@ -448,4 +473,5 @@ public class WebViewActivity : AppCompatActivity(), SwipeRefreshLayout.OnRefresh
             popup?.update()
         }
     }
+
 }

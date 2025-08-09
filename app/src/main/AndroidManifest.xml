@@ -39,13 +39,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.VACompanion"
+        android:hardwareAccelerated="true"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:enabled="true"
-            android:exported="true"
-            android:hardwareAccelerated="true">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -54,16 +54,14 @@
         </activity>
         <activity
             android:name=".WebViewActivity"
-            android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
-            android:exported="false">
+            android:configChanges="orientation|screenSize|keyboardHidden|uiMode" >
         </activity>
 
         <!--Service-->
         <service
             android:name=".service.VABackgroundService"
             android:enabled="true"
-            android:exported="true"
-            android:stopWithTask="true"
+            android:exported="false"
             android:foregroundServiceType="microphone|mediaPlayback" />
 
         <!--Broadcast Receiver (Optional)-->
