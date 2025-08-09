@@ -62,8 +62,8 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
                 modelInputStream.read(melBytes)
             }
             val sessionOptions = SessionOptions()
-            //sessionOptions.setInterOpNumThreads(2)
-            //sessionOptions.setIntraOpNumThreads(2)
+            sessionOptions.setInterOpNumThreads(1)
+            sessionOptions.setIntraOpNumThreads(1)
 
             melspec_model = ort_env.createSession(melBytes, sessionOptions)
         }
@@ -115,8 +115,8 @@ class ONNXModelRunner(var assetManager: AssetManager, wakeWord: String) {
             `is`.close()
 
             val sessionOptions = SessionOptions()
-            //sessionOptions.setInterOpNumThreads(2)
-            //sessionOptions.setIntraOpNumThreads(2)
+            sessionOptions.setInterOpNumThreads(1)
+            sessionOptions.setIntraOpNumThreads(1)
 
             embedding_model = ort_env.createSession(embedBytes, sessionOptions)
         }
