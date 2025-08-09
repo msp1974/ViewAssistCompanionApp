@@ -13,8 +13,7 @@ class BroadcastSender {
         internal const val SATELLITE_STARTED = "SATELLITE_STARTED"
         internal const val SATELLITE_STOPPED = "SATELLITE_STOPPED"
         internal const val TOAST_MESSAGE = "TOAST_MESSAGE"
-        internal const val SCREEN_ON = "SCREEN_ON"
-        internal const val SCREEN_OFF = "SCREEN_OFF"
+        internal const val REFRESH = "REFRESH"
 
 
         fun sendBroadcast(context: Context, action: String, extra: String? = null) {
