@@ -98,7 +98,7 @@ class MainActivity : AppCompatActivity() {
                     setNegativeButton("Cancel") { _: DialogInterface?, _: Int -> }
                 }.create().show()
             }
-            true
+            false
         }
 
         startOnBoot.setChecked(config.startOnBoot)
