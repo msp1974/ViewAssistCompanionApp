@@ -316,21 +316,11 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 }
             }
 
-            "screen" -> {
-                if (event.getProp("payload") != "") {
-                    val values = JSONObject(event.getProp("payload"))
-                    if (values.getString("action") == "on") {
-                        BroadcastSender.sendBroadcast(
-                            context,
-                            BroadcastSender.SCREEN_ON
-                        )
-                    } else {
-                        BroadcastSender.sendBroadcast(
-                            context,
-                            BroadcastSender.SCREEN_OFF
-                        )
-                    }
-                }
+            "refresh" -> {
+                BroadcastSender.sendBroadcast(
+                    context,
+                    BroadcastSender.REFRESH
+                )
             }
 
             "wake" -> {
