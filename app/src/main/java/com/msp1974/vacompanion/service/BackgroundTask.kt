@@ -4,28 +4,29 @@ import android.content.Context
 import android.content.res.AssetManager
 import android.media.AudioManager
 import com.msp1974.vacompanion.Zeroconf
+import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.AudioInCallback
+import com.msp1974.vacompanion.audio.AudioRecorder
 import com.msp1974.vacompanion.audio.WakeWordSoundPlayer
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.openwakeword.Model
 import com.msp1974.vacompanion.openwakeword.ONNXModelRunner
-import com.msp1974.vacompanion.settings.APPConfig
-import com.msp1974.vacompanion.utils.Logger
-import com.msp1974.vacompanion.wyoming.WyomingTCPServer
-import com.msp1974.vacompanion.wyoming.WyomingCallback
-import com.msp1974.vacompanion.utils.Helpers
-import kotlin.concurrent.thread
-import com.msp1974.vacompanion.audio.AudioDSP
-import com.msp1974.vacompanion.audio.AudioRecorder
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
+import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
+import com.msp1974.vacompanion.utils.Helpers
+import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.SoundControl
+import com.msp1974.vacompanion.wyoming.WyomingCallback
+import com.msp1974.vacompanion.wyoming.WyomingTCPServer
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.util.Date
+import kotlin.concurrent.thread
+
 
 enum class AudioRouteOption { NONE, DETECT, STREAM}
 
@@ -33,6 +34,8 @@ internal class BackgroundTaskController (private val context: Context): EventLis
 
     private val log = Logger()
     private var config: APPConfig = APPConfig.getInstance(context)
+
+    val zeroConf: Zeroconf = Zeroconf(context)
 
     var modelRunner: ONNXModelRunner? = null
     var model: Model? = null
@@ -43,8 +46,11 @@ internal class BackgroundTaskController (private val context: Context): EventLis
     lateinit var assetManager: AssetManager
     lateinit var server: WyomingTCPServer
 
-    var wwDetect = true
-    var calm: Int = 0
+    var debounce: Int = 0
+
+    object Constants {
+        const val DEBOUNCE_COUNTER = 20
+    }
 
 
     fun start() {
@@ -78,14 +84,12 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 log.i("Streaming audio to server")
                 if (audioRoute == AudioRouteOption.DETECT) {
                     audioRoute = AudioRouteOption.STREAM
-                    stopOpenWakeWordDetection()
                 }
             }
 
             override fun onReleaseInputAudioStream() {
                 log.i("Stopped streaming audio to server")
                 if (audioRoute == AudioRouteOption.STREAM) {
-                    thread{startOpenWakeWordDetection()}
                     audioRoute = AudioRouteOption.DETECT
                 }
             }
@@ -96,8 +100,10 @@ internal class BackgroundTaskController (private val context: Context): EventLis
         config.eventBroadcaster.addListener(this)
 
         // Start mdns server
-        log.i("Starting mdns server")
-        Zeroconf(context).registerService(config.serverPort)
+        if (config.pairedDeviceID == "") {
+            log.d("Starting mdns server")
+            zeroConf.registerService(config.serverPort)
+        }
         log.d("Background task initialisation completed")
     }
 
@@ -120,6 +126,15 @@ internal class BackgroundTaskController (private val context: Context): EventLis
             "doNotDisturb" -> {
                 log.i("BackgroundTask - doNotDisturb changed to ${event.newValue}")
                 setDoNotDisturb(event.newValue as Boolean)
+            }
+            "paired_device_id" -> {
+                if (config.pairedDeviceID != "") {
+                    log.d("Device paired, stopping Zeroconf")
+                    zeroConf.unregisterService()
+                } else {
+                    log.d("Device unpaired, starting Zeroconf")
+                    zeroConf.registerService(config.serverPort)
+                }
             }
         }
     }
@@ -193,17 +208,18 @@ internal class BackgroundTaskController (private val context: Context): EventLis
     fun processAudioToWakeWordEngine(context: Context, audioBuffer: FloatArray) {
         try {
             if (model != null) {
-                val res = model!!.predict_WakeWord(audioBuffer).toFloat()
+                val res = debouncedDetection(model!!.predict_WakeWord(audioBuffer).toFloat())
 
                 if (config.diagnosticsEnabled) {
                     val event = Event("diagnosticStats", audioBuffer.maxOrNull() ?: 0, res)
                     config.eventBroadcaster.notifyEvent(event)
                 }
 
-                if (res >= 0.1) {
-                    log.d("Wakeword probability value: $res")
+                if (res > 0.1) {
+                    log.d("Wake word prediction: $res")
                 }
-                if (res >= config.wakeWordThreshold && calm == 0) {
+
+                if (res >= config.wakeWordThreshold) {
                     log.i("Wake word detected at $res, theshold is ${config.wakeWordThreshold}")
 
                     if (config.wakeWordSound != "none") {
@@ -217,13 +233,6 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                         ).play()
                     }
                     BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
-                    //model!!.reset()
-
-                    // Process 20 audio buffers before sending detection event again
-                    calm = 20
-                }
-                if (calm > 0) {
-                    --calm
                 }
             }
         } catch (e: Exception) {
@@ -231,8 +240,18 @@ internal class BackgroundTaskController (private val context: Context): EventLis
         }
     }
 
+    fun debouncedDetection(prediction: Float) : Float {
+        if (debounce > 0) {
+            --debounce
+            return 0f
+        } else if (prediction >= config.wakeWordThreshold) {
+            debounce = Constants.DEBOUNCE_COUNTER
+        }
+        return prediction
+    }
+
     fun shutdown() {
-        Zeroconf(context).unregisterService()
+        zeroConf.unregisterService()
         stopInputAudio()
         stopOpenWakeWordDetection()
         stopSensors()
@@ -259,10 +278,10 @@ internal class BackgroundTaskController (private val context: Context): EventLis
     fun restartWakeWordDetection() {
         if (config.initSettings) {
             log.i("Restarting wake word detection")
-            wwDetect = false
+            stopInputAudio()
             stopOpenWakeWordDetection()
             startOpenWakeWordDetection()
-            wwDetect = true
+            startInputAudio(context)
         }
     }
 
