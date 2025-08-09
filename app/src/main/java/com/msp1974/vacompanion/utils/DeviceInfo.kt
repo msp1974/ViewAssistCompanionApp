@@ -11,6 +11,7 @@ import android.os.BatteryManager
 import android.os.Build
 import android.webkit.WebView
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -24,7 +25,7 @@ data class DeviceCapabilitiesData(
     val release: String,
     val hasBattery: Boolean,
     val hasFrontCamera: Boolean,
-    val sensors: List<String>,
+    val sensors: List<JsonObject>,
 )
 
 
@@ -45,9 +46,9 @@ class DeviceCapabilitiesManager(val context: Context) {
         )
     }
 
-    fun getAvailableSensors(): List<String> {
+    fun getAvailableSensors(): List<JsonObject> {
         // Get list of available sensor types
-        val sensors: MutableList<String> = mutableListOf()
+        val sensors: MutableList<JsonObject> = mutableListOf()
         val sensorManager: SensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
         val deviceSensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
 
@@ -57,11 +58,11 @@ class DeviceCapabilitiesManager(val context: Context) {
                 put("name", sensor.name)
                 put("type", sensor.type)
                 put("maxRange", sensor.maximumRange)
-                put ("resolution", sensor.resolution)
+                put("resolution", sensor.resolution)
                 put("stringType", sensor.stringType)
                 put("reportingMode", sensor.reportingMode)
             }
-            sensors.add(s.toString())
+            sensors.add(s)
         }
         return sensors
     }
