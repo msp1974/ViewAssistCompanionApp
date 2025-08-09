@@ -30,7 +30,10 @@ internal class Zeroconf(private val context: Context) {
     }
 
     fun unregisterService() {
-        nsdManager!!.unregisterService(registrationListener)
+        nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+        if (registrationListener != null) {
+            nsdManager!!.unregisterService(registrationListener)
+        }
     }
 
     fun initializeRegistrationListener() {
