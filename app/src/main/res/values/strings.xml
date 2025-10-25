@@ -19,7 +19,7 @@
 
     <string name="button_update_required">Install update</string>
 
-    <string name="status_initialising">Initialising</string>
+    <string name="status_initialising">Initializing</string>
     <string name="status_checking_for_update">Checking for update</string>
     <string name="status_no_permissions">Incorrect permissions</string>
     <string name="status_waiting_for_network">Waiting for network</string>
