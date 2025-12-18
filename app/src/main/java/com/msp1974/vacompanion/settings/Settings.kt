@@ -85,6 +85,10 @@ class APPConfig(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var wakeWordVolumeThreshold: Float by Delegates.observable(DEFAULT_WAKE_WORD_VOLUME_THRESHOLD) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var continueConversation: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -254,6 +258,11 @@ class APPConfig(val context: Context) {
         if (settings.has("wake_word_threshold")) {
             wakeWordThreshold = settings.getInt("wake_word_threshold").toFloat() / 10
         }
+        if (settings.has("wake_word_volume_threshold")) {
+            val sensitivity = settings.getInt("wake_word_volume_threshold")
+            // Converts from 1-100 scale to 0.1 - 0.001
+            wakeWordVolumeThreshold = (0.101f - (sensitivity * 0.001f))
+        }
         if (settings.has("continue_conversation")) {
             continueConversation = settings["continue_conversation"] as Boolean
         }
@@ -372,6 +381,7 @@ class APPConfig(val context: Context) {
         const val DEFAULT_WAKE_WORD = "hey_jarvis"
         const val DEFAULT_WAKE_WORD_SOUND = "none"
         const val DEFAULT_WAKE_WORD_THRESHOLD = 0.6f
+        const val DEFAULT_WAKE_WORD_VOLUME_THRESHOLD = 0.05f
         const val DEFAULT_NOTIFICATION_VOLUME = 0.5f
         const val DEFAULT_MUSIC_VOLUME = 0.8f
         const val DEFAULT_SCREEN_BRIGHTNESS = 0.5f

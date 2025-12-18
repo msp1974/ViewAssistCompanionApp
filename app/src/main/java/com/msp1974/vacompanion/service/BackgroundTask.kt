@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.res.AssetManager
 import android.media.AudioManager
+import androidx.lifecycle.viewModelScope
 import com.msp1974.vacompanion.wyoming.Zeroconf
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.AudioManager as AudManager
@@ -18,6 +19,7 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
+import com.msp1974.vacompanion.utils.ScreenUtils
 import com.msp1974.vacompanion.utils.WakeWords
 import com.msp1974.vacompanion.wyoming.WyomingCallback
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
@@ -251,7 +253,7 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                                 AudioRouteOption.DETECT -> {
                                     audioLevel = audioBuffer.max()
 
-                                    if (audioLevel > 0.005f) { // volume threshold
+                                    if (audioLevel > config.wakeWordVolumeThreshold) { // volume threshold
                                         isAudioGateOpen = true
                                         audioGateJob?.cancel()
                                         audioGateJob = scope.launch {
@@ -345,18 +347,13 @@ internal class BackgroundTaskController (private val context: Context): EventLis
 
             wakeWordJob = scope.launch {
                 wakeWordEngine?.detections?.collect { detection ->
-                    Timber.i("${detection.model.name} wake word detected at ${detection.score}, theshold is ${config.wakeWordThreshold}")
-                    firebase.logEvent(
-                        FirebaseManager.WAKE_WORD_DETECTED, mapOf(
-                            "wake_word" to config.wakeWord,
-                            "threshold" to config.wakeWordThreshold.toString(),
-                            "prediction" to detection.score.toString()
-                        )
-                    )
-                    // if wake up on ww, send event
-                    if (config.screenOnWakeWord) {
-                        config.eventBroadcaster.notifyEvent(Event("screenWake", "", ""))
-                    }
+                    if (isAudioGateOpen) {
+                        Timber.i("${detection.model.name} wake word detected at ${detection.score}, theshold is ${config.wakeWordThreshold}")
+
+                        // if wake up on ww, send event
+                        if (config.screenOnWakeWord) {
+                            config.eventBroadcaster.notifyEvent(Event("screenWake", "", ""))
+                        }
 
                         if (config.wakeWordSound != "none") {
                             WakeWordSoundPlayer(
@@ -369,6 +366,8 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                             ).play()
                         }
                         BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
+                    } else {
+                        Timber.d("Wake word detected but audio gate was closed (score: ${detection.score})")
                     }
                 }
             }
@@ -378,6 +377,7 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 }
             }
         }
+    }
 
     private fun holdLastDetectionLevel(detectionLevel: Float, duration: Long = 2000) {
         if (detectionLevel > lastWakeWordDetectionScore) {
