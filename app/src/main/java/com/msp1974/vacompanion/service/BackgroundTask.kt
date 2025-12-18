@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.res.AssetManager
 import android.media.AudioManager
-import androidx.lifecycle.viewModelScope
 import com.msp1974.vacompanion.wyoming.Zeroconf
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.AudioManager as AudManager
@@ -19,7 +18,6 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
-import com.msp1974.vacompanion.utils.ScreenUtils
 import com.msp1974.vacompanion.utils.WakeWords
 import com.msp1974.vacompanion.wyoming.WyomingCallback
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
@@ -55,6 +53,8 @@ internal class BackgroundTaskController (private val context: Context): EventLis
     private var holdDetectionLevelJob: Job? = null
     private var detectionScoreMonitorJob: Job? = null
     private var lastWakeWordDetectionScore = 0f
+    private var audioGateJob: Job? = null
+    private var isAudioGateOpen = false
 
 
     val zeroConf: Zeroconf = Zeroconf(context)
@@ -249,10 +249,20 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                                 }
 
                                 AudioRouteOption.DETECT -> {
+                                    audioLevel = audioBuffer.max()
+
+                                    if (audioLevel > 0.005f) { // volume threshold
+                                        isAudioGateOpen = true
+                                        audioGateJob?.cancel()
+                                        audioGateJob = scope.launch {
+                                            delay(1000L) // gate duration
+                                            isAudioGateOpen = false
+                                        }
+                                    }
+
                                     if (wakeWordEngine != null) wakeWordEngine!!.processAudio(
                                         audioBuffer
                                     )
-                                    audioLevel = audioBuffer.max()
                                 }
 
                                 AudioRouteOption.STREAM -> {
@@ -348,17 +358,18 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                         config.eventBroadcaster.notifyEvent(Event("screenWake", "", ""))
                     }
 
-                    if (config.wakeWordSound != "none") {
-                        WakeWordSoundPlayer(
-                            context,
-                            context.resources.getIdentifier(
-                                config.wakeWordSound,
-                                "raw",
-                                context.packageName
-                            )
-                        ).play()
+                        if (config.wakeWordSound != "none") {
+                            WakeWordSoundPlayer(
+                                context,
+                                context.resources.getIdentifier(
+                                    config.wakeWordSound,
+                                    "raw",
+                                    context.packageName
+                                )
+                            ).play()
+                        }
+                        BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
                     }
-                    BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
                 }
             }
             detectionScoreMonitorJob = scope.launch {
@@ -367,7 +378,6 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 }
             }
         }
-    }
 
     private fun holdLastDetectionLevel(detectionLevel: Float, duration: Long = 2000) {
         if (detectionLevel > lastWakeWordDetectionScore) {
