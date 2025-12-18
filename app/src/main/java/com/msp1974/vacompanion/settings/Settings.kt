@@ -381,7 +381,7 @@ class APPConfig(val context: Context) {
         const val DEFAULT_WAKE_WORD = "hey_jarvis"
         const val DEFAULT_WAKE_WORD_SOUND = "none"
         const val DEFAULT_WAKE_WORD_THRESHOLD = 0.6f
-        const val DEFAULT_WAKE_WORD_VOLUME_THRESHOLD = 0.05f
+        const val DEFAULT_WAKE_WORD_VOLUME_THRESHOLD = 0.001f
         const val DEFAULT_NOTIFICATION_VOLUME = 0.5f
         const val DEFAULT_MUSIC_VOLUME = 0.8f
         const val DEFAULT_SCREEN_BRIGHTNESS = 0.5f
