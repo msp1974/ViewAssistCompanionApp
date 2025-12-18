@@ -335,13 +335,6 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 WakeWordModel(name = wakeWordInfo.name, modelPath = wakeWordInfo.fileName, builtIn = wakeWordInfo.builtIn, threshold = config.wakeWordThreshold)
             )
             Timber.i("Starting wake word detection with params: $models")
-            firebase.logEvent(
-                FirebaseManager.WAKE_WORD_DETECTED, mapOf(
-                    "wake_word" to config.wakeWord,
-                    "threshold" to config.wakeWordThreshold.toString(),
-                    "prediction" to detection.score.toString()
-                )
-            )
             wakeWordEngine = WakeWordEngine(
                 context = context,
                 models = models,
@@ -356,6 +349,13 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 wakeWordEngine?.detections?.collect { detection ->
                     if (isAudioGateOpen) {
                         Timber.i("${detection.model.name} wake word detected at ${detection.score}, theshold is ${config.wakeWordThreshold}")
+                        firebase.logEvent(
+                            FirebaseManager.WAKE_WORD_DETECTED, mapOf(
+                                "wake_word" to config.wakeWord,
+                                "threshold" to config.wakeWordThreshold.toString(),
+                                "prediction" to detection.score.toString()
+                            )
+                        )
 
                         // if wake up on ww, send event
                         if (config.screenOnWakeWord) {
