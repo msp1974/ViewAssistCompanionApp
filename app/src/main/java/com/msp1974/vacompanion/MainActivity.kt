@@ -853,7 +853,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     private fun checkAndRequestDeviceAdminPermission() {
-        if (!permissions.isDeviceAdmin()) {
+        val isAndroidThings = packageManager.hasSystemFeature("android.hardware.type.embedded")
+        if (isAndroidThings) log.d("Android Things device detected - skipping Device Admin request")
+        if (!isAndroidThings && !permissions.isDeviceAdmin()) {
             val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, ComponentName(this, VACADeviceAdminReceiver::class.java))
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "This application requires Device Admin rights to be able to control the screen.")
