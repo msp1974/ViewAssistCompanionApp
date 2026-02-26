@@ -35,7 +35,9 @@ import timber.log.Timber
 import kotlin.math.absoluteValue
 import kotlin.math.max
 import kotlin.math.min
-
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetectorOptions
 
 class CameraBackgroundTask(val context: Context) {
 
