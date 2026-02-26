@@ -46,7 +46,8 @@ class CameraBackgroundTask(val context: Context) {
 
     private var checkInterval: Long = 500
     private var lastCheck: Long = 0
-    private val detector = AggregateLumaMotionDetection()
+    private val faceDetectorOptions = FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build()
+    private val faceDetector = FaceDetection.getClient(faceDetectorOptions)
 
     // Camera2-related stuff
     private var cameraManager: CameraManager? = null
@@ -73,7 +74,6 @@ class CameraBackgroundTask(val context: Context) {
     }
 
     fun setSensitivity(sensitivity: Int) {
-        detector.setLeniency(min(MAX_LENIENCY, max(0, MAX_LENIENCY - (sensitivity))))
     }
 
     fun startCamera() {
@@ -122,34 +122,27 @@ class CameraBackgroundTask(val context: Context) {
     }
 
 
-    private val imageListener = ImageReader.OnImageAvailableListener { reader ->
-
-        val image = reader?.acquireLatestImage()
-
-        val now = System.currentTimeMillis()
-        if (now - lastCheck > checkInterval) {
-            lastCheck = now
-
-            if (image != null) {
-                val buffer = image.planes[0].buffer
-                buffer.rewind()
-                val data = ByteArray(buffer.capacity())
-                buffer.get(data)
-
-                val img = ImageProcessing.decodeYUV420SPtoLuma(data, image.width, image.height)
+private val imageListener = ImageReader.OnImageAvailableListener { reader ->
+    val image = reader?.acquireLatestImage()
+    if (image != null) {
+        val inputImage = InputImage.fromMediaImage(image, 0)
+        faceDetector.process(inputImage)
+            .addOnSuccessListener { faces ->
                 if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
-                    if (detector.detect(img, image.width, image.height)) {
+                    if (faces.isNotEmpty()) {
                         if (System.currentTimeMillis() - lastDetection > MOTION_INTERVAL) {
-                            log.d("Motion detected")
+                            log.d("Face detected as motion")
                             config.eventBroadcaster.notifyEvent(Event("motion", "", ""))
                             lastDetection = System.currentTimeMillis()
                         }
                     }
                 }
             }
-        }
-        image?.close()
+            .addOnCompleteListener {
+                image.close()
+            }
     }
+}
 
     private val stateCallback = object : CameraDevice.StateCallback() {
 
