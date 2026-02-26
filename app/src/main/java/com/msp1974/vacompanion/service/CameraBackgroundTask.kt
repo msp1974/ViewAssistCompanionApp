@@ -48,6 +48,7 @@ class CameraBackgroundTask(val context: Context) {
     private var lastCheck: Long = 0
     private val faceDetectorOptions = FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build()
     private val faceDetector = FaceDetection.getClient(faceDetectorOptions)
+    private var isFaceCurrentlyDetected = false
 
     // Camera2-related stuff
     private var cameraManager: CameraManager? = null
@@ -122,27 +123,37 @@ class CameraBackgroundTask(val context: Context) {
     }
 
 
-private val imageListener = ImageReader.OnImageAvailableListener { reader ->
-    val image = reader?.acquireLatestImage()
-    if (image != null) {
-        val inputImage = InputImage.fromMediaImage(image, 0)
-        faceDetector.process(inputImage)
-            .addOnSuccessListener { faces ->
-                if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
-                    if (faces.isNotEmpty()) {
-                        if (System.currentTimeMillis() - lastDetection > MOTION_INTERVAL) {
-                            log.d("Face detected as motion")
-                            config.eventBroadcaster.notifyEvent(Event("motion", "", ""))
-                            lastDetection = System.currentTimeMillis()
+    private val imageListener = ImageReader.OnImageAvailableListener { reader ->
+        val image = reader?.acquireLatestImage()
+        if (image != null) {
+            val inputImage = InputImage.fromMediaImage(image, 0)
+            faceDetector.process(inputImage)
+                .addOnSuccessListener { faces ->
+                    if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
+                        
+                        if (faces.isNotEmpty()) {
+                            // A face just entered the frame
+                            if (!isFaceCurrentlyDetected) {
+                                isFaceCurrentlyDetected = true
+                                log.d("Face detected as motion")
+                                config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", true))
+                            }
+                        } else {
+                            // The face just left the frame
+                            if (isFaceCurrentlyDetected) {
+                                isFaceCurrentlyDetected = false
+                                log.d("Face no longer detected")
+                                config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", false))
+                            }
                         }
+                        
                     }
                 }
-            }
-            .addOnCompleteListener {
-                image.close()
-            }
+                .addOnCompleteListener {
+                    image.close()
+                }
+        }
     }
-}
 
     private val stateCallback = object : CameraDevice.StateCallback() {
 
