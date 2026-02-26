@@ -213,6 +213,16 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                     }
                 )
             }
+            "faceStateChanged" -> {
+                val state = event.newValue as Boolean
+                server.sendStatus(
+                    buildJsonObject {
+                        putJsonObject("sensors", {
+                            put("motion_detected", state)
+                        })
+                    }
+                )
+            }
             "lastActivity" -> {
                 server.sendStatus(
                     buildJsonObject {
