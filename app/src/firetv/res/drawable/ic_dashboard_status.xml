@@ -1,0 +1,35 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="800dp"
+    android:height="800dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Battery body (hollow) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M7,6 H17 V22 H7 Z"/>
+
+    <!-- Battery cap (hollow) -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineJoin="round"
+        android:strokeLineCap="round"
+        android:pathData="M10,2 H14 V6 H10 Z"/>
+
+    <!-- Level bars (space for 3; draw only middle & bottom) -->
+    <!-- Middle bar (unchanged) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9,13 H15 V16 H9 Z"/>
+
+    <!-- Bottom bar (moved up) -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M9,17 H15 V20 H9 Z"/>
+</vector>

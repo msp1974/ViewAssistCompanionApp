@@ -20,14 +20,11 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.os.StrictMode
 import android.provider.Settings
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.webkit.WebView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -81,21 +78,19 @@ import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import java.time.Instant
 import java.time.format.DateTimeFormatter
-import kotlin.concurrent.thread
 import kotlin.getValue
 
-
-class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
+open class BaseMainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     val viewModel: VAViewModel by viewModels()
 
     private val log = Logger()
     private val firebase = FirebaseManager.getInstance()
 
-    private lateinit var config: APPConfig
-    private lateinit var webView: CustomWebView
+    lateinit var config: APPConfig
+    lateinit var webView: CustomWebView
     private lateinit var webViewClient: CustomWebViewClient
 
-    private lateinit var screen: ScreenUtils
+    lateinit var screen: ScreenUtils
     private lateinit var updater: Updater
     private lateinit var permissions: Permissions
     private var screenOrientation: Int = 0
@@ -162,6 +157,30 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         // Init webview setup
         initWebView()
 
+        buildContent()
+
+        // Check and get required user permissions
+        log.d("Checking permissions")
+        updatePermissionStatus()
+        if (!viewModel.vacaState.value.permissions.hasCorePermissions || !viewModel.vacaState.value.permissions.hasOptionalPermissions) {
+            // Need to get permissions
+            LocalBroadcastManager.getInstance(this).registerReceiver(satelliteBroadcastReceiver, IntentFilter().apply {
+                addAction(BroadcastSender.REQUEST_MISSING_PERMISSIONS)
+            })
+
+            // Turn on screen for startup to show permission request
+            screenOffStartUp = false
+
+            setScreenSettings()
+            checkAndRequestPermissions()
+        } else {
+            log.d("All permissions already granted")
+            initialise()
+        }
+
+    }
+
+    protected open fun buildContent() {
         setContent {
             val vaUiState by viewModel.vacaState.collectAsState()
             AppTheme(darkMode = config.darkMode, dynamicColor = false) {
@@ -202,26 +221,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 }
             }
         }
-
-        // Check and get required user permissions
-        log.d("Checking permissions")
-        updatePermissionStatus()
-        if (!viewModel.vacaState.value.permissions.hasCorePermissions || !viewModel.vacaState.value.permissions.hasOptionalPermissions) {
-            // Need to get permissions
-            LocalBroadcastManager.getInstance(this).registerReceiver(satelliteBroadcastReceiver, IntentFilter().apply {
-                addAction(BroadcastSender.REQUEST_MISSING_PERMISSIONS)
-            })
-
-            // Turn on screen for startup to show permission request
-            screenOffStartUp = false
-
-            setScreenSettings()
-            checkAndRequestPermissions()
-        } else {
-            log.d("All permissions already granted")
-            initialise()
-        }
-
     }
 
     fun setScreenSettings() {
@@ -259,8 +258,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         webView = CustomWebView.getView(this)
         webView.initialise(config, webViewClient)
         webView.layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
         )
     }
 
@@ -348,14 +347,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         override fun onReceive(context: Context, intent: Intent) {
             Timber.d("Broadcast received: ${intent.action}")
             when (intent.action) {
-                BroadcastSender.SATELLITE_STARTED -> {
-                    viewModel.setSatelliteRunning(true)
-                    webView.setZoomLevel(config.zoomLevel)
-                    config.screenOn = screen.isScreenOn()
-                    val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
-                    log.d("Loading URL: $url")
-                    webView.loadUrl(url)
-                }
+                BroadcastSender.SATELLITE_STARTED -> onSatelliteStarted()
                 BroadcastSender.SATELLITE_STOPPED -> {
                     viewModel.setSatelliteRunning(false)
                     if (!config.backgroundTaskRunning) {
@@ -394,6 +386,14 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
+    protected open fun onSatelliteStarted() {
+        viewModel.setSatelliteRunning(true)
+        webView.setZoomLevel(config.zoomLevel)
+        config.screenOn = screen.isScreenOn()
+        val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
+        log.d("Loading URL: $url")
+        webView.loadUrl(url)
+    }
 
     fun registerWifiMonitor() {
         val connectivityManager = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -417,10 +417,10 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                         if (config.enableNetworkRecovery) {
                             val delaySecs = 10
                             log.d("Disabling wifi for ${delaySecs}s")
-                            Helpers.enableWifi(this@MainActivity, false)
+                            Helpers.enableWifi(this@BaseMainActivity, false)
                             delay(delaySecs.toLong() * 1000)
                             log.d("Enabling wifi")
-                            Helpers.enableWifi(this@MainActivity, true)
+                            Helpers.enableWifi(this@BaseMainActivity, true)
                         }
                     }
                 }
@@ -531,7 +531,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     "screenAlwaysOn" -> {
                         val enabled = event.newValue as Boolean
                         //if (enabled) {
-                            //screenWake()
+                        //screenWake()
                         //}
                         screen.setScreenAlwaysOn(window, enabled)
                     }
@@ -707,7 +707,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         viewModel.setPermissionsStatus(corePermissions, optionalPermissions)
     }
 
-    private fun checkAndRequestPermissions() {
+    /*protected open fun checkAndRequestPermissions() {
         var requiredPermissions: Array<String> = arrayOf()
         var requestID: Int = 0
 
@@ -756,7 +756,73 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             log.d("Main permissions already granted")
             checkAndRequestWriteSettingsPermission()
         }
+    }*/
+
+    protected open fun checkAndRequestPermissions() {
+        var requiredPermissions: Array<String> = arrayOf()
+        var requestID: Int = 0
+
+        log.d("Checking main permissions")
+
+        // Hook 1: audio permission (firetv can override to skip/force)
+        val (perms, id) = getAudioPermissions(requiredPermissions, requestID)
+        requiredPermissions = perms
+        requestID = id
+
+        // Hook 2: extra permissions (firetv adds Bluetooth here)
+        requiredPermissions += getExtraPermissions()
+
+        if (DeviceCapabilitiesManager(this).hasFrontCamera()) {
+            if (ContextCompat.checkSelfPermission(this, permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                requiredPermissions += permission.CAMERA
+                requestID += CAMERA_PERMISSIONS_REQUEST
+            } else {
+                config.hasCameraPermission = true
+            }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requiredPermissions += permission.POST_NOTIFICATIONS
+                requestID += NOTIFICATION_PERMISSIONS_REQUEST
+            } else {
+                config.hasPostNotificationPermission = true
+            }
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                requiredPermissions += permission.WRITE_EXTERNAL_STORAGE
+                requestID += WRITE_EXTERNAL_STORAGE_PERMISSIONS_REQUEST
+            } else {
+                config.hasWriteExternalStoragePermission = true
+            }
+        }
+
+        if (requiredPermissions.isNotEmpty()) {
+            log.d("Requesting main permissions")
+            log.d("Permissions: ${requiredPermissions.map { it }}")
+            ActivityCompat.requestPermissions(this, requiredPermissions, requestID)
+        } else {
+            log.d("Main permissions already granted")
+            checkAndRequestWriteSettingsPermission()
+        }
     }
+
+    // Default: request audio normally
+    protected open fun getAudioPermissions(
+        requiredPermissions: Array<String>,
+        requestID: Int
+    ): Pair<Array<String>, Int> {
+        return if (ContextCompat.checkSelfPermission(this, permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            Pair(requiredPermissions + permission.RECORD_AUDIO, requestID + RECORD_AUDIO_PERMISSIONS_REQUEST)
+        } else {
+            config.hasRecordAudioPermission = true
+            Pair(requiredPermissions, requestID)
+        }
+    }
+
+    // Default: no extra permissions
+    protected open fun getExtraPermissions(): Array<String> = arrayOf()
 
 
     override fun onRequestPermissionsResult(
@@ -817,7 +883,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         checkAndRequestNotificationAccessPolicyPermission()
     }
 
-    private fun checkAndRequestWriteSettingsPermission() {
+    protected open fun checkAndRequestWriteSettingsPermission() {
         if (config.canSetScreenWritePermission && !ScreenUtils(this).canWriteScreenSetting()) {
             val alertDialog = AlertDialog.Builder(this)
             log.d("Requesting write settings permission")
@@ -851,7 +917,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         checkAndRequestDeviceAdminPermission()
     }
 
-    private fun checkAndRequestNotificationAccessPolicyPermission() {
+    protected open fun checkAndRequestNotificationAccessPolicyPermission() {
         val notificationManager =  this.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (config.canSetNotificationPolicyAccess && !notificationManager.isNotificationPolicyAccessGranted) {
             // If not granted, prompt the user to give permission.

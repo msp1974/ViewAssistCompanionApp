@@ -10,6 +10,9 @@ import com.msp1974.vacompanion.wyoming.Zeroconf
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.SoundClipPlayer
 import com.msp1974.vacompanion.audio.AudioManager as AudManager
+//MH
+import com.msp1974.vacompanion.BuildConfig
+//MH-end
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.sensors.SensorUpdatesCallback
 import com.msp1974.vacompanion.sensors.Sensors
@@ -75,8 +78,17 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                 Timber.i("Background Task - Connection detected")
                 setInitialValues()
                 startSensors(context)
-                startOpenWakeWordDetection()
-                startInputAudio()
+                //MH
+                if (!BuildConfig.AUDIO_INPUT_DISABLED) {
+                    startOpenWakeWordDetection()
+                    startInputAudio()
+                    audioRoute = AudioRouteOption.DETECT
+                } else {
+                    audioRoute = AudioRouteOption.NONE
+                }
+                //startOpenWakeWordDetection()
+                //startInputAudio()
+                //MH end
                 BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
                 zeroConf.unregisterService()
             }
