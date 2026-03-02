@@ -147,6 +147,10 @@ class BleRemoteService : Service() {
                             uiConnectedEmitted = false
                             Log.i(TAG_RX, "TIMEOUT: no adverts from selected MAC $mac for ${CONNECT_TIMEOUT_MS}ms -> UI disconnected")
                             doBroadcastState(false, selectedName, selectedMac, currentRssi())
+
+                            // Forget sequences on timeout so the next wake-up isn't incorrectly rejected
+                            lastDeliveredSeq.remove(mac)
+                            lastSeenSeq.remove(mac)
                         }
                     } else if (!uiConnectedEmitted) {
                         if (!gateConnections) {

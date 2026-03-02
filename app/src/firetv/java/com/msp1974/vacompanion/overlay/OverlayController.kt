@@ -456,6 +456,9 @@ class OverlayController private constructor(
                             log.i("*** CONNECTING overlay SUPPRESSED: clock")
                             host?.shrinkToBubble()
                             sendSystemReadyOnce()
+                            // Return true so handlePossibleInAppNavigation continues
+                            // and properly anchors/shows the overlay window.
+                            return true
                         } else {
                             sendSystemReadyOnce()
                         }

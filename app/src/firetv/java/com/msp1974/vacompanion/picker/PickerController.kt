@@ -427,6 +427,7 @@ class PickerController(
     private val systemReadyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             inputsEnabled = true
+            startHaWebSocket()
             if (wakePending && !visible) requestWake()
             lbm.unregisterReceiver(this)
         }
