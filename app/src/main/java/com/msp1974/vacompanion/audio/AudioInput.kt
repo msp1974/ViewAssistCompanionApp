@@ -11,9 +11,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.awaitCancellation
 import android.content.Context
 import kotlin.coroutines.coroutineContext
 import android.annotation.SuppressLint
+import com.msp1974.vacompanion.BuildConfig
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
@@ -59,6 +61,12 @@ internal class AudioRecorder(
      */
     @SuppressLint("MissingPermission")
     fun startRecording(): Flow<FloatArray> = flow {
+        if (BuildConfig.AUDIO_INPUT_DISABLED) {
+            Timber.i("Audio input is disabled via BuildConfig. Suspending recording flow.")
+            awaitCancellation()
+            return@flow
+        }
+
         require(hasRecordPermission()) { "RECORD_AUDIO permission not granted" }
 
         val minBufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
@@ -87,8 +95,8 @@ internal class AudioRecorder(
 
                 if (readCount > 0) {
                     audioFloatBuffer = FloatArray(readCount) { i -> audioBuffer[i] / MAX_LEVEL}
-                    // Mic boost
 
+                    // Mic boost
                     if (config.useAdvancedGain) {
                         val max = audioFloatBuffer.max()
                         if (max > minAmplification) {

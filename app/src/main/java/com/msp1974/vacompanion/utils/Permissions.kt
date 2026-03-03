@@ -12,6 +12,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import com.msp1974.vacompanion.BuildConfig
 import com.msp1974.vacompanion.VACADeviceAdminReceiver
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
@@ -24,11 +25,15 @@ class Permissions(val context: Context) {
         const val WRITE_EXTERNAL_STORAGE = Manifest.permission.WRITE_EXTERNAL_STORAGE
         @RequiresApi(Build.VERSION_CODES.TIRAMISU)
         const val POST_NOTIFICATIONS = Manifest.permission.POST_NOTIFICATIONS
-
     }
 
     fun hasCorePermissions(): Boolean {
-        val permissions = mutableListOf(RECORD_AUDIO)
+        val permissions = mutableListOf<String>()
+
+        if (!BuildConfig.AUDIO_INPUT_DISABLED) {
+            permissions.add(RECORD_AUDIO)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions.add(POST_NOTIFICATIONS)
         }
@@ -76,7 +81,6 @@ class Permissions(val context: Context) {
         val result = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
         Timber.d("Permission $permission = $result")
         return result
-
     }
 
     fun hasWriteSettingsPermission(): Boolean {

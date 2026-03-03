@@ -7,6 +7,29 @@ plugins {
 }
 
 android {
+    //MH - build flavors
+    buildFeatures {
+        buildConfig = true
+    }
+
+    flavorDimensions += "target"
+    productFlavors {
+        create("universal") {
+            dimension = "target"
+            buildConfigField("boolean","AUDIO_INPUT_DISABLED","false")
+            buildConfigField("boolean", "SUPPORTS_DND_PERMISSION", "true")
+            buildConfigField("boolean", "SUPPORTS_WRITE_SETTINGS", "true")
+        }
+        create("firetv") {
+            dimension = "target"
+            // No mic in this flavor
+            buildConfigField("boolean","AUDIO_INPUT_DISABLED","true")
+            buildConfigField("boolean", "SUPPORTS_DND_PERMISSION", "false")
+            buildConfigField("boolean", "SUPPORTS_WRITE_SETTINGS", "false")
+        }
+    }
+    //MH-end
+
     namespace = "com.msp1974.vacompanion"
     compileSdk = 36
 
@@ -51,6 +74,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 }
+
+kotlin {
+    jvmToolchain(17) // MH - added to fix JAVA incompatibility error in AndroidStudio
+}
+
 
 
 dependencies {

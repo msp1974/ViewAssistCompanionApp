@@ -3,6 +3,12 @@ package com.msp1974.vacompanion.service
 import android.Manifest
 import android.app.KeyguardManager
 import android.app.PendingIntent
+//MH
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import com.msp1974.vacompanion.BuildConfig
+//MH-end
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -26,7 +32,6 @@ import com.msp1974.vacompanion.utils.Logger
 import timber.log.Timber
 import java.util.Timer
 import java.util.TimerTask
-
 
 class VAForegroundService : Service() {
     private lateinit var config: APPConfig
@@ -61,9 +66,23 @@ class VAForegroundService : Service() {
         }
     }
 
+    //MH
+    private fun createNotification(): Notification {
+        val channelId = "va_service_channel"
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val channel = NotificationChannel(channelId, "VA Service", NotificationManager.IMPORTANCE_LOW)
+        notificationManager.createNotificationChannel(channel)
+        return NotificationCompat.Builder(this, channelId)
+            .setContentTitle("VACA Background Service")
+            .setContentText("Running background tasks...")
+            .setSmallIcon(R.drawable.splash_image)
+            .build()
+    }
+    //MH-end
+
     /**
-    * Main process for the service
-    * */
+     * Main process for the service
+     * */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         var action = intent?.action ?: Actions.START.toString()
         Timber.v("onStartCommand action: $action")
@@ -76,16 +95,25 @@ class VAForegroundService : Service() {
         when (action) {
             Actions.START.toString() -> {
                 Firebase.crashlytics.log("Background service starting")
-                if (!checkIfPermissionIsGranted()) return START_STICKY
 
-                //need core 1.12 and higher and SDK 30 and higher
+                //MH
+                if (!BuildConfig.AUDIO_INPUT_DISABLED && !checkIfPermissionIsGranted()) {
+                    return START_NOT_STICKY
+                }
+                //if (!checkIfPermissionIsGranted()) return START_STICKY
+                //MH-end
+
+                // Fix: Conditionally apply foreground service types using bitwise OR (safer than +=)
                 var requires: Int = 0
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    requires = requires or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                    requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                    // Only request the microphone foreground service type if the flag allows it
+                    if (!BuildConfig.AUDIO_INPUT_DISABLED) {
+                        requires = requires or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    }
+                    requires = requires or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
                 }
 
                 val notification =
@@ -94,7 +122,7 @@ class VAForegroundService : Service() {
                         .setContentTitle("View Assist Companion App")
                         .setContentText("Service is running")
                         .addAction(
-                           R.drawable.outline_stop_circle_24, getString(R.string.stop_service),
+                            R.drawable.outline_stop_circle_24, getString(R.string.stop_service),
                             stopServiceIntent(Actions.STOP.toString())
                         )
                         .build()
@@ -165,7 +193,9 @@ class VAForegroundService : Service() {
     private fun restartActivityWatchdog() {
         watchdogTimer.schedule(object: TimerTask() {
             override fun run() {
-                if (VACAApplication.activityManager.activity == null) {
+                //MH
+                //if (VACAApplication.activityManager.activity == null) {
+                if (VACAApplication.activityManager.activity == null && config.currentActivity == "") { //MH-end
                     Timber.d("Watchdog detected activity not running.  Restarting...")
                     startActivity(this@VAForegroundService)
                 }
@@ -204,5 +234,4 @@ class VAForegroundService : Service() {
             Firebase.crashlytics.recordException(ex)
         }
     }
-
 }
