@@ -404,6 +404,18 @@ class OverlayController private constructor(
             log.i("OverlayController.install: considering current URL=${webView.url}")
             oc.considerCurrentUrl(webView.url)
 
+            // Proactively show the bubble clock and attach the overlay root
+            // to the WindowManager.  On the FireTV Cube the WebView is in a
+            // detached view tree until shrinkToBubble() runs; HA's Lovelace
+            // frontend may refuse to process SPA navigation commands while
+            // detached, creating a deadlock (no clock URL → no bubble → no
+            // attach → HA can't navigate).  Calling shrinkToBubble() here
+            // breaks the deadlock: the overlay is attached immediately and
+            // the bubble clock is visible from boot.
+            host?.shrinkToBubble()
+            oc.bubbleShownAtBoot = true
+            log.i("OverlayController.install: bubble shown proactively at install")
+
             return oc
         }
     }
