@@ -67,6 +67,7 @@ class OverlayController private constructor(
 
     private var bootstrapTicker: Runnable? = null
     private var lastNativeHref: String? = null
+    private var bubbleShownAtBoot = false
 
     private fun startJsBootstrapTicker() {
         stopJsBootstrapTicker()
@@ -87,6 +88,15 @@ class OverlayController private constructor(
                         lastNativeHref = href
                         handlePossibleInAppNavigation(href, "native-poll")
                     }
+                }
+                // Fallback: if HA never navigates to /view-assist/clock
+                // (e.g. the satellite hasn't pushed a view yet), show the
+                // bubble clock proactively so the overlay is visible at boot.
+                if (!bubbleShownAtBoot && attempts == 20) {
+                    log.i("Bubble fallback: no /view-assist/clock seen after ${attempts} ticks, showing bubble")
+                    bubbleShownAtBoot = true
+                    connectPhase = ConnectPhase.RUNNING
+                    host?.shrinkToBubble()
                 }
                 main.postDelayed(this, if (attempts < 20) 500 else 5000)
             }
@@ -417,6 +427,7 @@ class OverlayController private constructor(
 
         if (profile == "clock") {
             log.i("Clock → shrinkToBubble (rootToken=${host?.root?.windowToken != null})")
+            bubbleShownAtBoot = true
             host?.shrinkToBubble()
             return
         }
@@ -484,6 +495,7 @@ class OverlayController private constructor(
                         host?.setBubbleOnline(true)
                         if (SUPPRESS_CONNECTING) {
                             log.i("*** CONNECTING overlay SUPPRESSED: clock")
+                            bubbleShownAtBoot = true
                             host?.shrinkToBubble()
                             sendSystemReadyOnce()
                             // Return true so handlePossibleInAppNavigation continues
