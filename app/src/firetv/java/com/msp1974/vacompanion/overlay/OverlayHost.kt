@@ -327,6 +327,13 @@ class OverlayHost private constructor(
         bubbleLabel.visibility = View.VISIBLE
         bubbleLabel.bringToFront()
 
+        // Set root VISIBLE *before* attaching to WindowManager so the
+        // compositor sees a visible surface from the start.  On the FireTV
+        // Cube the GONE→VISIBLE transition after addView() is not picked up
+        // without an extra updateViewLayout(), which left the bubble clock
+        // invisible at boot.
+        root.visibility = View.VISIBLE
+
         lp.width = dpInt(110f)
         lp.height = dpInt(32f)
         lp.gravity = Gravity.TOP or Gravity.END
@@ -336,7 +343,6 @@ class OverlayHost private constructor(
         startBubbleTicker()
 
         overlayExpanded = false
-        root.visibility = View.VISIBLE
 
         // notify controller after collapse (webview is invisible)
         try { onCollapsed?.invoke() } catch (_: Throwable) {}
