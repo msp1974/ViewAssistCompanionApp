@@ -60,12 +60,14 @@ class OverlayController private constructor(
         @JavascriptInterface
         fun onPathChange(hrefRaw: String?) {
             if (hrefRaw.isNullOrBlank()) return
-            log.d("JS NavBridge → $hrefRaw")
+            log.i("JS NavBridge → $hrefRaw")
             main.post { handlePossibleInAppNavigation(hrefRaw, "js-nav-hook") }
         }
     }
 
     private var bootstrapTicker: Runnable? = null
+    private var lastNativeHref: String? = null
+
     private fun startJsBootstrapTicker() {
         stopJsBootstrapTicker()
         var attempts = 0
@@ -75,6 +77,17 @@ class OverlayController private constructor(
                 injectSpaNavigationHook()
                 // also keep kiosk CSS in place in case HA re-renders
                 forceHideHaChrome()
+                // Native-level URL poll: evaluateJavascript with a callback
+                // does NOT depend on in-page setTimeout/setInterval timers,
+                // so it works even when the WebView is in a detached view tree.
+                webView.evaluateJavascript("location.href") { raw ->
+                    val href = raw?.trim()?.removeSurrounding("\"")
+                    if (!href.isNullOrBlank() && href != "about:blank" && href != lastNativeHref) {
+                        log.i("native-poll URL changed: $href (was: $lastNativeHref) attempt=$attempts")
+                        lastNativeHref = href
+                        handlePossibleInAppNavigation(href, "native-poll")
+                    }
+                }
                 main.postDelayed(this, if (attempts < 20) 500 else 5000)
             }
         }
@@ -336,23 +349,27 @@ class OverlayController private constructor(
         private var instance: WeakReference<OverlayController>? = null
 
         fun install(activity: Activity, webView: WebView): OverlayController {
+            val log = Logger()
             instance?.get()?.let {
-                it.log.w("OverlayController.install called again – reusing existing instance")
+                it.log.w(“OverlayController.install called again – reusing existing instance”)
                 return it
             }
+
+            log.i(“OverlayController.install: creating host, webView.url=${webView.url}”)
 
             val host = OverlayHost.create(activity)
             val oc = OverlayController(activity, webView, host)
             instance = WeakReference(oc)
 
-            //host?.onCollapsed   = { oc.navigateToPath("/view-assist/placeholder") }
-            //host?.onPickerShown = { oc.navigateToPath("/view-assist/placeholder") }
+            //host?.onCollapsed   = { oc.navigateToPath(“/view-assist/placeholder”) }
+            //host?.onPickerShown = { oc.navigateToPath(“/view-assist/placeholder”) }
 
             // Hand the WebView to the host container
             host?.webViewContainer = webView
+            log.i(“OverlayController.install: webView reparented into overlay root (detached, rootToken=${host?.root?.windowToken})”)
 
             // ✅ Expose NavBridge to JS so injectSpaNavigationHook() can call it
-            webView.addJavascriptInterface(oc.NavBridge(), "ViewAssistNav")
+            webView.addJavascriptInterface(oc.NavBridge(), “ViewAssistNav”)
 
             // Create picker (unchanged)
             if (host != null) {
@@ -374,6 +391,7 @@ class OverlayController private constructor(
             oc.startBleRemote()
 
             // Seed overlay state from the current URL (optional but helpful)
+            log.i(“OverlayController.install: considering current URL=${webView.url}”)
             oc.considerCurrentUrl(webView.url)
 
             return oc
@@ -382,12 +400,14 @@ class OverlayController private constructor(
 
     // --- Navigation handling --------------------------------------------------------
     private fun handlePossibleInAppNavigation(href: String, source: String) {
+        log.i("handleNav($source): $href")
         if (href.endsWith("/view-assist") || href.endsWith("/viewassist")) {
             resetConnectSuppression()
         }
         if (!href.contains("/viewassist/") && !href.contains("/view-assist/")) return
 
         val profile = parseViewType(href)
+        log.i("handleNav($source): profile=$profile phase=$connectPhase")
 
         // Ignore auto /clock while picker is visible
         if (profile == "clock" && (host?.isPickerVisible() == true)) {
@@ -396,7 +416,7 @@ class OverlayController private constructor(
         }
 
         if (profile == "clock") {
-            log.i("Clock nav ignored")
+            log.i("Clock → shrinkToBubble (rootToken=${host?.root?.windowToken != null})")
             host?.shrinkToBubble()
             return
         }

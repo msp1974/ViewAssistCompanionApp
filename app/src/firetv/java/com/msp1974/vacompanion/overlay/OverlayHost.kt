@@ -321,6 +321,8 @@ class OverlayHost private constructor(
     }
 
     fun shrinkToBubble() {
+        log.i("shrinkToBubble: rootToken=${root.windowToken != null} rootVis=${root.visibility}")
+
         webViewContainer?.alpha = 0f
         webViewContainer?.visibility = View.VISIBLE
 
@@ -339,6 +341,7 @@ class OverlayHost private constructor(
         lp.gravity = Gravity.TOP or Gravity.END
         lp.x = 0; lp.y = 0
         safelyAttachOrUpdate()
+        log.i("shrinkToBubble: after attach rootToken=${root.windowToken != null} lp=${lp.width}x${lp.height}")
         updateTime()
         startBubbleTicker()
 
