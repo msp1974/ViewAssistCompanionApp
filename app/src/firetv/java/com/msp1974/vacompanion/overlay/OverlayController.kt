@@ -89,7 +89,17 @@ class OverlayController private constructor(
         val js = """
             (function() {
               try {
-                if (window.__vaNavHooked) { window.__vaLastHref = location.href; return; }
+                if (window.__vaNavHooked) {
+                  var href = location.href;
+                  if (href !== window.__vaLastHref) {
+                    window.__vaLastHref = href;
+                    window.__vaDebouncing = false;
+                    if (window.ViewAssistNav && ViewAssistNav.onPathChange) {
+                      ViewAssistNav.onPathChange(href);
+                    }
+                  }
+                  return;
+                }
                 window.__vaNavHooked = true;
                 window.__vaLastHref = location.href;
                 window.__vaDebouncing = false;
