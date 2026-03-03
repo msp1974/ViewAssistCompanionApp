@@ -393,7 +393,7 @@ class OverlayHost private constructor(
         // Cancel any pending dashboard hide timer so it can't fire while the picker is up.
         root.removeCallbacks(hideRunnable)
 
-        // Hide bubble first so it never “jumps” during resizing
+        // Hide bubble first so it never "jumps" during resizing
         if (bubbleLabel.visibility == View.VISIBLE) {
             stopBubbleTicker()
             bubbleLabel.visibility = View.GONE

@@ -351,25 +351,25 @@ class OverlayController private constructor(
         fun install(activity: Activity, webView: WebView): OverlayController {
             val log = Logger()
             instance?.get()?.let {
-                it.log.w(“OverlayController.install called again – reusing existing instance”)
+                it.log.w("OverlayController.install called again – reusing existing instance")
                 return it
             }
 
-            log.i(“OverlayController.install: creating host, webView.url=${webView.url}”)
+            log.i("OverlayController.install: creating host, webView.url=${webView.url}")
 
             val host = OverlayHost.create(activity)
             val oc = OverlayController(activity, webView, host)
             instance = WeakReference(oc)
 
-            //host?.onCollapsed   = { oc.navigateToPath(“/view-assist/placeholder”) }
-            //host?.onPickerShown = { oc.navigateToPath(“/view-assist/placeholder”) }
+            //host?.onCollapsed   = { oc.navigateToPath("/view-assist/placeholder") }
+            //host?.onPickerShown = { oc.navigateToPath("/view-assist/placeholder") }
 
             // Hand the WebView to the host container
             host?.webViewContainer = webView
-            log.i(“OverlayController.install: webView reparented into overlay root (detached, rootToken=${host?.root?.windowToken})”)
+            log.i("OverlayController.install: webView reparented into overlay root (detached, rootToken=${host?.root?.windowToken})")
 
             // ✅ Expose NavBridge to JS so injectSpaNavigationHook() can call it
-            webView.addJavascriptInterface(oc.NavBridge(), “ViewAssistNav”)
+            webView.addJavascriptInterface(oc.NavBridge(), "ViewAssistNav")
 
             // Create picker (unchanged)
             if (host != null) {
@@ -381,7 +381,7 @@ class OverlayController private constructor(
                 )
             }
 
-            // Fire “system ready” once picker receivers exist
+            // Fire "system ready" once picker receivers exist
             oc.sendSystemReadyOnce()
 
             // Start the repeated JS injection (already present)
@@ -391,7 +391,7 @@ class OverlayController private constructor(
             oc.startBleRemote()
 
             // Seed overlay state from the current URL (optional but helpful)
-            log.i(“OverlayController.install: considering current URL=${webView.url}”)
+            log.i("OverlayController.install: considering current URL=${webView.url}")
             oc.considerCurrentUrl(webView.url)
 
             return oc
