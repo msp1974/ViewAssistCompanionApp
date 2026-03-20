@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "970420169237",
+    "project_id": "test-1d0b5",
+    "storage_bucket": "test-1d0b5.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:970420169237:android:204c99dca63426fa78fc1c",
+        "android_client_info": {
+          "package_name": "com.msp1974.vacompanion"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAW3ADbUvo7QEl1xOnW2oEy2X-NAZwuJI4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
