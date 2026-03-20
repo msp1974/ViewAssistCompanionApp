@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraAccessException
@@ -26,6 +27,11 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import timber.log.Timber
 
+data class InstalledAppInfo(
+    val packageName: String,
+    val label: String
+)
+
 
 data class DeviceCapabilitiesData(
     val deviceSignature: String,
@@ -39,6 +45,7 @@ data class DeviceCapabilitiesData(
     val proximitySensorType: String,
     val sensors: List<JsonObject>,
     val audioInfo: JsonObject,
+    val installedApps: List<InstalledAppInfo>
 )
 
 
@@ -60,7 +67,8 @@ class DeviceCapabilitiesManager(val context: Context) {
             hasDND = hasDND(),
             proximitySensorType = getProximitySensorType(),
             sensors = getAvailableSensors(),
-            audioInfo = getAudioInfo()
+            audioInfo = getAudioInfo(),
+            installedApps = getInstalledApps()
         )
     }
 
@@ -177,6 +185,25 @@ class DeviceCapabilitiesManager(val context: Context) {
         }
     }
 
+    fun getInstalledApps(): List<InstalledAppInfo> {
+        val pm = context.packageManager
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_LAUNCHER)
+        }
+        return pm.queryIntentActivities(launcherIntent, PackageManager.GET_META_DATA)
+            .mapNotNull { resolveInfo ->
+                try {
+                    val packageName = resolveInfo.activityInfo.packageName
+                    val label = resolveInfo.loadLabel(pm).toString()
+                    InstalledAppInfo(packageName = packageName, label = label)
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            .distinctBy { it.packageName }
+            .sortedBy { it.label.lowercase() }
+    }
+
 
     companion object {
         @OptIn(ExperimentalSerializationApi::class)
@@ -198,6 +225,14 @@ class DeviceCapabilitiesManager(val context: Context) {
                     }
                     putJsonArray("sensors") {
                         addAll(data.sensors)
+                    }
+                    putJsonArray("installed_apps") {
+                        data.installedApps.forEach { app ->
+                            add(buildJsonObject {
+                                put("package_name", app.packageName)
+                                put("label", app.label)
+                            })
+                        }
                     }
                 }
             }

@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import com.msp1974.vacompanion.broadcasts.AppInstallReceiver
 import android.os.Handler
 import android.os.Looper
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -68,6 +69,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     private var expectingTTSResponse: Boolean = false
     private var lastResponseIsQuestion: Boolean = false
 
+    private var appInstallReceiver: AppInstallReceiver? = null
     // Initiate wake word broadcast receiver
     var wakeWordBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -130,6 +132,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     fun stop() {
         log.d("Stopping client $client_id connection handler")
         stopIntervalPing()
+        unregisterAppInstallReceiver()
 
         if (satelliteStatus == SatelliteState.RUNNING) {
             stopSatellite()
@@ -250,6 +253,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 }
                 "capabilities" -> {
                     sendCapabilities()
+                    registerAppInstallReceiver()
                 }
                 "run-satellite" -> {
                     startSatellite()
@@ -406,6 +410,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
             "capabilities" -> {
                 sendCapabilities()
+                registerAppInstallReceiver()
             }
         }
     }
@@ -738,6 +743,33 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 put(key, data[key] as JsonElement)
             }
         })
+    }
+
+    fun registerAppInstallReceiver() {
+        if (appInstallReceiver != null) return
+        appInstallReceiver = AppInstallReceiver {
+            log.d("App list changed, resending capabilities")
+            server.deviceInfo = server.deviceCapabilitiesManager.getDeviceInfo()
+            sendCapabilities()
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        server.context.registerReceiver(appInstallReceiver, filter)
+    }
+
+    fun unregisterAppInstallReceiver() {
+        appInstallReceiver?.let {
+            try {
+                server.context.unregisterReceiver(it)
+            } catch (e: Exception) {
+                log.w("Failed to unregister app install receiver: $e")
+            }
+            appInstallReceiver = null
+        }
     }
 
     fun sendCustomEvent(type: String, data: JsonObject) {
