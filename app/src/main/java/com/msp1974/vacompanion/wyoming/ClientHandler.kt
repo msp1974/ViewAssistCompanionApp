@@ -749,7 +749,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
         if (appInstallReceiver != null) return
         appInstallReceiver = AppInstallReceiver {
             log.d("App list changed, resending capabilities")
-            server.deviceInfo = server.deviceCapabilitiesManager.getDeviceInfo()
+            server.deviceInfo = DeviceCapabilitiesManager(context).getDeviceInfo()
             sendCapabilities()
         }
         val filter = IntentFilter().apply {
