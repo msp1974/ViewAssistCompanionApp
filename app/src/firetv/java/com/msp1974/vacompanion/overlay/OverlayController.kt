@@ -421,8 +421,20 @@ class OverlayController private constructor(
     }
 
     // --- Navigation handling --------------------------------------------------------
+    private var lastHandledUrl: String? = null
+    private var lastHandledTime: Long = 0L
+
     private fun handlePossibleInAppNavigation(href: String, source: String) {
         log.i("handleNav($source): $href")
+
+        // Dedup: skip if the same URL was already handled recently (by the other detector)
+        val now = System.currentTimeMillis()
+        if (href == lastHandledUrl && (now - lastHandledTime) < 5000) {
+            log.i("handleNav($source): SKIPPED (already handled ${now - lastHandledTime}ms ago)")
+            return
+        }
+        lastHandledUrl = href
+        lastHandledTime = now
         if (href.endsWith("/view-assist") || href.endsWith("/viewassist")) {
             resetConnectSuppression()
         }
