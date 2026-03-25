@@ -24,6 +24,11 @@ on:
           - patch
           - minor
           - major
+      is_beta:
+        description: "Is this a beta release?"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -84,6 +89,14 @@ jobs:
           fi
 
           NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          if [ "${{ inputs.is_beta }}" == "true" ]; then
+            NEW_VERSION="$NEW_VERSION-beta"
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "New version: $NEW_VERSION"
@@ -148,6 +161,6 @@ jobs:
             ${{ env.main_project_module }}/build/outputs/apk/debug/vaca-*.apk
             ${{ env.main_project_module }}/build/outputs/apk/release/vaca-*.apk
           draft: true
-          prerelease: false
+          prerelease: ${{ steps.calc_version.outputs.is_prerelease == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
