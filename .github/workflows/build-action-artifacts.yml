@@ -15,6 +15,15 @@ on:
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "What type of release is this?"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 jobs:
   build:
@@ -51,9 +60,62 @@ jobs:
       - name: Run gradle tests
         run: ./gradlew test
 
-      # Set version name as env variable
-      - name: Set version name as env variable
-        run: echo "version_name=$(echo $(./gradlew -q printVersionName))" >> $GITHUB_ENV
+      # Calculate new version based on type of release from manual dispatch.
+      - name: Calculate new version
+        id: calc_version
+        run: |
+          CURRENT_VERSION=$(grep 'versionName' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          IFS='.' read -r -a version_parts <<< "$CURRENT_VERSION"
+          MAJOR="${version_parts[0]}"
+          MINOR="${version_parts[1]}"
+          PATCH="${version_parts[2]}"
+
+          if [ "${{ inputs.version_bump }}" == "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "${{ inputs.version_bump }}" == "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "New version: $NEW_VERSION"
+
+      # Ensure version code is incremented by 1.
+      - name: Increment version code
+        id: inc_version_code
+        run: |
+          CURRENT_VERSION_CODE=$(grep 'versionCode' app/build.gradle.kts | sed 's/.*versionCode = \([0-9]*\)/\1/')
+          NEW_VERSION_CODE=$((CURRENT_VERSION_CODE + 1))
+          echo "version_code=$NEW_VERSION_CODE" >> $GITHUB_OUTPUT
+          echo "Previous version code: $CURRENT_VERSION_CODE"
+          echo "New version code: $NEW_VERSION_CODE"
+
+      # Update build file with new version and version code prior to building.
+      - name: Update build.gradle.kts with new version
+        run: |
+          sed -i "s/versionCode = [0-9]*/versionCode = ${{ steps.inc_version_code.outputs.version_code }}/" app/build.gradle.kts
+          sed -i "s/versionName = \".*\"/versionName = \"${{ steps.calc_version.outputs.new_version }}\"/" app/build.gradle.kts
+          echo "Updated build.gradle.kts:"
+          cat app/build.gradle.kts | grep -A 2 "versionCode"
+
+      # Commit and tag with new version name/code for release.
+      - name: Commit version bump and create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/build.gradle.kts
+          git commit -m "chore: bump version to ${{ steps.calc_version.outputs.new_version }} (versionCode ${{ steps.inc_version_code.outputs.version_code }})"
+          git tag -a ${{ steps.calc_version.outputs.tag }} -m "Release ${{ steps.calc_version.outputs.tag }}"
+          git push origin main
+          git push origin ${{ steps.calc_version.outputs.tag }}
 
       # Run Build Project
       - name: Build gradle project
@@ -80,8 +142,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.version_name }}
-          name: v${{ env.version_name }}
+          tag_name: ${{ steps.calc_version.outputs.tag }}
+          name: v${{ steps.calc_version.outputs.tag }}
           files: |
             ${{ env.main_project_module }}/build/outputs/apk/debug/vaca-*.apk
             ${{ env.main_project_module }}/build/outputs/apk/release/vaca-*.apk
