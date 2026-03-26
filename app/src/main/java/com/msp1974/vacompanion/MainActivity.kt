@@ -824,11 +824,19 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             path.startsWith("/") -> path
             else -> "/$path"
         }
-        val targetUrl = if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
+        val haBaseUrl = AuthUtils.getHAUrl(config, withDashboardPath = false).removeSuffix("/")
+        val rawTargetUrl = if (normalizedPath.startsWith("http://") || normalizedPath.startsWith("https://")) {
             normalizedPath
         } else {
-            val baseUrl = AuthUtils.getHAUrl(config, withDashboardPath = false).removeSuffix("/")
-            "$baseUrl$normalizedPath"
+            "$haBaseUrl$normalizedPath"
+        }
+        val targetUrl = if (
+            rawTargetUrl.startsWith(haBaseUrl, ignoreCase = true) &&
+            !rawTargetUrl.contains("external_auth=")
+        ) {
+            AuthUtils.getURL(rawTargetUrl)
+        } else {
+            rawTargetUrl
         }
         log.d("Navigate action path=$normalizedPath url=$targetUrl")
         webView.loadUrl(targetUrl)
