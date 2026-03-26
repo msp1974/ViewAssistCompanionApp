@@ -278,6 +278,16 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                     }
                 )
             }
+            "uiIdle" -> {
+                val state = event.newValue as Boolean
+                server.sendStatus(
+                    buildJsonObject {
+                        putJsonObject("sensors", {
+                            put("ui_idle", state)
+                        })
+                    }
+                )
+            }
             "motionDetectionSensitivity" -> {
                 motionTask.setSensitivity(event.newValue as Int)
             }

@@ -64,6 +64,7 @@ class APPConfig(val context: Context) {
     var homeAssistantHTTPPort: Int = DEFAULT_HA_HTTP_PORT
     var homeAssistantURL: String = ""
     var homeAssistantDashboard: String = ""
+    var haScreensaverDashboard: String = "/dashboard-screensaver"
 
     var sampleRate: Int = 16000
     var audioChannels: Int = 1
@@ -197,6 +198,10 @@ class APPConfig(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var haNavigateScreensaver: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var motionDetectionSensitivity: Int by Delegates.observable(0) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -210,6 +215,10 @@ class APPConfig(val context: Context) {
     }
 
     var lastActivity: Long by Delegates.observable(0) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var uiIdle: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
 
@@ -273,6 +282,7 @@ class APPConfig(val context: Context) {
     fun processSettings(settingString: String) {
         initSettings = true
         val settings = JSONObject(settingString)
+        val hasHaNavigateScreensaver = settings.has("ha_navigate_screensaver")
         if (settings.has("ha_port")) {
             homeAssistantHTTPPort = settings["ha_port"] as Int
         }
@@ -281,6 +291,13 @@ class APPConfig(val context: Context) {
         }
         if (settings.has("ha_dashboard")) {
             homeAssistantDashboard = settings["ha_dashboard"] as String
+        }
+        if (settings.has("ha_screensaver_dashboard")) {
+            val path = settings.getString("ha_screensaver_dashboard").trim()
+            haScreensaverDashboard = if (path.startsWith("/")) path else "/$path"
+        } else if (settings.has("screensaver_dashboard")) {
+            val path = settings.getString("screensaver_dashboard").trim()
+            haScreensaverDashboard = if (path.startsWith("/")) path else "/$path"
         }
         if (settings.has("advanced_gain")) {
             useAdvancedGain = settings["advanced_gain"] as Boolean
@@ -369,6 +386,12 @@ class APPConfig(val context: Context) {
         if (settings.has("enable_motion_detection")) {
             enableMotionDetection = settings.getBoolean("enable_motion_detection")
         }
+        if (hasHaNavigateScreensaver) {
+            haNavigateScreensaver = settings.getBoolean("ha_navigate_screensaver")
+        } else if (settings.optString("ha_screensaver_dashboard").isNotBlank()) {
+            // Backward-compatible fallback for integrations that have not yet added the new setting key.
+            haNavigateScreensaver = true
+        }
         if (settings.has("motion_detection_sensitivity")) {
             motionDetectionSensitivity = settings.getInt("motion_detection_sensitivity")
         }
@@ -386,7 +409,7 @@ class APPConfig(val context: Context) {
         }
 
 
-        Firebase.crashlytics.log("Settings update")
+        safeCrashlyticsLog("Settings update")
     }
 
     @SuppressLint("HardwareIds")
@@ -410,15 +433,21 @@ class APPConfig(val context: Context) {
     fun onSharedPreferenceChangedListener(prefs: SharedPreferences, key: String?) {
         log.d("SharedPreference changed: $key")
         val event = Event(key.toString(), "", "")
-        Firebase.crashlytics.log("${key.toString()} changed")
+        safeCrashlyticsLog("${key.toString()} changed")
         eventBroadcaster.notifyEvent(event)
     }
 
     fun onValueChangedListener(property: KProperty<*>, oldValue: Any, newValue: Any) {
         if (oldValue != newValue) {
             val event = Event(property.name, oldValue, newValue)
-            Firebase.crashlytics.log("${property.name} changed from $oldValue to $newValue")
+            safeCrashlyticsLog("${property.name} changed from $oldValue to $newValue")
             eventBroadcaster.notifyEvent(event)
+        }
+    }
+
+    private fun safeCrashlyticsLog(message: String) {
+        runCatching {
+            Firebase.crashlytics.log(message)
         }
     }
 

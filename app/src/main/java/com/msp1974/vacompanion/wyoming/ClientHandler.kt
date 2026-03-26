@@ -465,6 +465,20 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "screen-sleep" -> {
                 config.eventBroadcaster.notifyEvent(Event("screenSleep", "", ""))
             }
+            "navigate" -> {
+                if (event.getProp("payload") != "") {
+                    try {
+                        val values = JSONObject(event.getProp("payload"))
+                        if (values.has("path")) {
+                            config.eventBroadcaster.notifyEvent(
+                                Event("navigate", "", values.getString("path"))
+                            )
+                        }
+                    } catch (ex: Exception) {
+                        log.e("Error handling navigate action: $ex")
+                    }
+                }
+            }
             "wake" -> {
                 config.eventBroadcaster.notifyEvent(Event("wakeWordTrigger", "", ""))
             }
