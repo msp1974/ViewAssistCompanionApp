@@ -325,15 +325,17 @@ class OverlayController private constructor(
     )
 
     private fun profileFor(key: String): Profile = when (key) {
-        "weather"    -> Profile(1.00f, 0.65f, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 10_000L)
-        "camera"     -> Profile(0.90f, 0.90f, Gravity.CENTER,                                30_000L)
-        "newmusic"   -> Profile(1.00f, 1.00f, Gravity.CENTER,                               0L) // Persistent, until replaced
-        "music"      -> Profile(1.00f, 1.00f, Gravity.CENTER,                               0L) // Persistent, until replaced
-        "thermostat" -> Profile(0.25f, 0.25f, Gravity.BOTTOM or Gravity.END,                10_000L)
-        "locate"     -> Profile(0.75f, 0.75f, Gravity.CENTER,                                15_000L)
-        "find"       -> Profile(0.75f, 0.75f, Gravity.CENTER,                                0L) // Persistent, until cancelled by select
-        "clock"      -> Profile(0.26f, 0.18f, Gravity.TOP or Gravity.END,                      100L)
-        else         -> Profile(0.50f, 0.50f, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,   10_000L)
+        "weather"       -> Profile(1.00f, 0.65f, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL, 10_000L)
+        "camera"        -> Profile(0.90f, 0.90f, Gravity.CENTER,                                30_000L)
+        "newmusic"      -> Profile(1.00f, 1.00f, Gravity.CENTER,                               0L) // Persistent, until replaced
+        "lyrics"        -> Profile(1.00f, 1.00f, Gravity.CENTER,                               0L) // Persistent, until replaced
+        "music"         -> Profile(1.00f, 1.00f, Gravity.CENTER,                               0L) // Persistent, until replaced
+        "thermostat"    -> Profile(0.25f, 0.25f, Gravity.BOTTOM or Gravity.END,                10_000L)
+        "locate"        -> Profile(0.75f, 0.75f, Gravity.CENTER,                                15_000L)
+        "google-search" -> Profile(0.75f, 0.95f, Gravity.CENTER,                                15_000L)
+        "find"          -> Profile(0.75f, 0.75f, Gravity.CENTER,                                0L) // Persistent, until cancelled by select
+        "clock"         -> Profile(0.26f, 0.18f, Gravity.TOP or Gravity.END,                      100L)
+        else            -> Profile(0.50f, 0.50f, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,   10_000L)
     }
 
     private fun preSizeForPath(path: String) {
@@ -479,16 +481,18 @@ class OverlayController private constructor(
     private fun parseViewType(url: String): String {
         val u = url.lowercase(Locale.ROOT)
         return when {
-            u.contains("/viewassist/weather")     || u.contains("/view-assist/weather")      -> "weather"
-            u.contains("/viewassist/clock")       || u.contains("/view-assist/clock")        -> "clock"
-            u.contains("/viewassist/camera")      || u.contains("/view-assist/camera")       -> "camera"
-            u.contains("/viewassist/thermostat")  || u.contains("/view-assist/thermostat")   -> "thermostat"
-            u.contains("/viewassist/newmusic")    || u.contains("/view-assist/newmusic")     -> "newmusic"
-            u.contains("/viewassist/music")       || u.contains("/view-assist/music")        -> "music"
-            u.contains("/viewassist/locate")      || u.contains("/view-assist/locate")       -> "locate"
-            u.contains("/viewassist/find")        || u.contains("/view-assist/find")         -> "find"
-            u.contains("/viewassist/placeholder") || u.contains("/view-assist/placeholder")  -> "placeholder"
-            u.contains("/viewassist/")            || u.contains("/view-assist/")             -> "default"
+            u.contains("/viewassist/weather")      || u.contains("/view-assist/weather")      -> "weather"
+            u.contains("/viewassist/clock")        || u.contains("/view-assist/clock")        -> "clock"
+            u.contains("/viewassist/camera")       || u.contains("/view-assist/camera")       -> "camera"
+            u.contains("/viewassist/thermostat")   || u.contains("/view-assist/thermostat")   -> "thermostat"
+            u.contains("/viewassist/newmusic")     || u.contains("/view-assist/newmusic")     -> "newmusic"
+            u.contains("/viewassist/lyrics")       || u.contains("/view-assist/lyrics")       -> "lyrics"
+            u.contains("/viewassist/google-search")|| u.contains("/view-assist/google-search")-> "google-search"
+            u.contains("/viewassist/music")        || u.contains("/view-assist/music")        -> "music"
+            u.contains("/viewassist/locate")       || u.contains("/view-assist/locate")       -> "locate"
+            u.contains("/viewassist/find")         || u.contains("/view-assist/find")         -> "find"
+            u.contains("/viewassist/placeholder")  || u.contains("/view-assist/placeholder")  -> "placeholder"
+            u.contains("/viewassist/")             || u.contains("/view-assist/")             -> "default"
             else -> "default"
         }
     }
