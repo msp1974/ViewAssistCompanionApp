@@ -46,6 +46,11 @@ class CameraBackgroundTask(val context: Context) {
 
     private var checkInterval: Long = 500
     private var lastCheck: Long = 0
+    
+    // Additional variables required at the top of the class:
+    private var detectionMode: String = "luma" // Defaults to original method
+    private val lumaDetector = AggregateLumaMotionDetection()
+    
     private val faceDetectorOptions = FaceDetectorOptions.Builder().setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST).build()
     private val faceDetector = FaceDetection.getClient(faceDetectorOptions)
     private var isFaceCurrentlyDetected = false
@@ -74,7 +79,15 @@ class CameraBackgroundTask(val context: Context) {
         const val MAX_LENIENCY = 50
     }
 
+    // Restoring the original sensitivity function:
     fun setSensitivity(sensitivity: Int) {
+        lumaDetector.setLeniency(min(MAX_LENIENCY, max(0, MAX_LENIENCY - (sensitivity))))
+    }
+
+    // Adding the mode switch function:
+    fun setDetectionMode(mode: String) {
+        detectionMode = mode
+        Timber.d("Camera motion detection mode set to: $detectionMode")
     }
 
     fun startCamera() {
@@ -126,32 +139,55 @@ class CameraBackgroundTask(val context: Context) {
     private val imageListener = ImageReader.OnImageAvailableListener { reader ->
         val image = reader?.acquireLatestImage()
         if (image != null) {
-            val inputImage = InputImage.fromMediaImage(image, 0)
-            faceDetector.process(inputImage)
-                .addOnSuccessListener { faces ->
-                    if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
-                        
-                        if (faces.isNotEmpty()) {
-                            // A face just entered the frame
-                            if (!isFaceCurrentlyDetected) {
-                                isFaceCurrentlyDetected = true
-                                log.d("Face detected as motion")
-                                config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", true))
-                            }
-                        } else {
-                            // The face just left the frame
-                            if (isFaceCurrentlyDetected) {
-                                isFaceCurrentlyDetected = false
-                                log.d("Face no longer detected")
-                                config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", false))
+            
+            if (detectionMode == "face") {
+                // --- NEW ML KIT FACE DETECTION LOGIC ---
+                val inputImage = InputImage.fromMediaImage(image, 0)
+                faceDetector.process(inputImage)
+                    .addOnSuccessListener { faces ->
+                        if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
+                            if (faces.isNotEmpty()) {
+                                val currentTime = System.currentTimeMillis()
+                                if (!isFaceCurrentlyDetected) {
+                                    isFaceCurrentlyDetected = true
+                                    lastDetection = currentTime
+                                    log.d("Face detected as motion")
+                                    config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", true))
+                                } else if (currentTime - lastDetection > MOTION_INTERVAL) {
+                                    lastDetection = currentTime
+                                    log.d("Face still detected, keeping HA sensor alive")
+                                    config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", true))
+                                }
+                            } else {
+                                if (isFaceCurrentlyDetected) {
+                                    isFaceCurrentlyDetected = false
+                                    log.d("Face no longer detected")
+                                    config.eventBroadcaster.notifyEvent(Event("faceStateChanged", "", false))
+                                }
                             }
                         }
-                        
+                    }
+                    .addOnCompleteListener {
+                        image.close()
+                    }
+            } else {
+                // --- ORIGINAL LUMA PIXEL DETECTION LOGIC ---
+                val buffer = image.planes[0].buffer
+                buffer.rewind()
+                val data = ByteArray(buffer.capacity())
+                buffer.get(data)
+                val img = ImageProcessing.decodeYUV420SPtoLuma(data, image.width, image.height)
+                if (settleDelayJob != null && !settleDelayJob?.isActive!!) {
+                    if (lumaDetector.detect(img, image.width, image.height)) {
+                        if (System.currentTimeMillis() - lastDetection > MOTION_INTERVAL) {
+                            log.d("Motion detected via luma")
+                            config.eventBroadcaster.notifyEvent(Event("motion", "", ""))
+                            lastDetection = System.currentTimeMillis()
+                        }
                     }
                 }
-                .addOnCompleteListener {
-                    image.close()
-                }
+                image.close()
+            }
         }
     }
 

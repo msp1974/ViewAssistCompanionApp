@@ -291,6 +291,9 @@ internal class BackgroundTaskController (private val context: Context): EventLis
             "motionDetectionSensitivity" -> {
                 motionTask.setSensitivity(event.newValue as Int)
             }
+            "motionDetectionMode" -> {
+                motionTask.setDetectionMode(event.newValue.toString())
+            }
             else -> consumed = false
         }
         if (consumed) {
