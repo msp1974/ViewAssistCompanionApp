@@ -305,6 +305,7 @@ data class PermissionsStatus(
 
 data class DiagnosticInfo(
     var show: Boolean = false,
+    var engine: String = "",
     var audioLevel: Float = 0f,
     var detectionThreshold: Float = 0f,
     var detectionLevel: Float = 0f,

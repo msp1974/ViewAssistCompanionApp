@@ -67,6 +67,8 @@ class CustomWebView @JvmOverloads constructor(
             useWideViewPort = false
             loadWithOverviewMode = true
             cacheMode = WebSettings.LOAD_DEFAULT
+
+            webChromeClient = CustomWebChromeClient(context)
         }
 
         // Add JS interfaces

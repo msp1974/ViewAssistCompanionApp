@@ -11,20 +11,21 @@ import androidx.media3.common.C.USAGE_NOTIFICATION
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import kotlin.math.min
 
 internal class AudioManager(context: Context) {
     private val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
 
-    private fun streamMaxVolume(stream: Int): Int {
+    fun getStreamMaxVolume(stream: Int): Int {
         return audioManager.getStreamMaxVolume(stream)
     }
 
-    fun setVolume(stream: Int, volume: Float) {
-        audioManager.setStreamVolume(stream, (streamMaxVolume(stream)*volume).toInt(), 0)
+    fun setVolume(stream: Int, volume: Int) {
+        audioManager.setStreamVolume(stream, min(getStreamMaxVolume(stream) ,volume).toInt(), 0)
     }
 
     fun getVolume(stream: Int): Float {
-        return audioManager.getStreamVolume(stream).toFloat() / streamMaxVolume(stream).toFloat()
+        return audioManager.getStreamVolume(stream).toFloat() / getStreamMaxVolume(stream).toFloat()
     }
 }
 

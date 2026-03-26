@@ -32,7 +32,8 @@ class AuthUtils(val config: APPConfig) {
                 loadUrl(view, getAuthUrl(getHAUrl(config, withDashboardPath = false)), clearCache = true)
                 setAuthStage(view, PageLoadingStage.AUTH_FAILED)
                 return
-            } else if (System.currentTimeMillis() > config.tokenExpiry && config.refreshToken != "") {
+            } else if (System.currentTimeMillis() > (config.tokenExpiry - 120) && config.refreshToken != "") {
+                // Token will expire in less than 2 mins, consider expired
                 // Need to get new access token as it has expired
                 log.d("Auth token has expired.  Requesting new token using refresh token")
                 val success: Boolean = reAuthWithRefreshToken()
@@ -100,7 +101,10 @@ class AuthUtils(val config: APPConfig) {
             if (auth.accessToken != "" && auth.expires > System.currentTimeMillis()) {
                 log.d("Received new auth token")
                 config.accessToken = auth.accessToken
-                config.tokenExpiry = auth.expires
+
+                // Manage any diff to device time
+                val diff = auth.expires - System.currentTimeMillis()
+                config.tokenExpiry = System.currentTimeMillis() + diff
                 return true
             } else {
                 return false

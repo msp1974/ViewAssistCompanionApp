@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
 }
@@ -15,7 +16,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.9.2"
+        versionName = "0.10.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         ndk {
@@ -47,14 +48,21 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+    kotlin {
+        compilerOptions {
+            jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
+            optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
+        }
     }
 }
 
 
 dependencies {
 
+    implementation(project(":microfeatures"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
@@ -84,6 +92,9 @@ dependencies {
     implementation(libs.accompanist.permissions)
     implementation(libs.ui)
     implementation(libs.androidx.compose.foundation)
+    implementation(libs.litert)
+    implementation(libs.protobuf.kotlin)
+    implementation(libs.androidx.lifecycle.service)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -97,5 +108,6 @@ dependencies {
     implementation(libs.androidx.media3.ui)
     implementation(libs.androidx.media3.ui.compose)
     implementation(libs.mlkit.face-detection)
+    implementation("com.github.wendykierp:JTransforms:3.2")
 
 }

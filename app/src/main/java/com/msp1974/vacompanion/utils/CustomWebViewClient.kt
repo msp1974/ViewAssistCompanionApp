@@ -9,20 +9,13 @@ import android.graphics.Bitmap
 import android.net.http.SslError
 import android.os.Handler
 import android.os.Looper
-import android.view.View
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
 import android.webkit.WebView
-import androidx.appcompat.app.AlertDialog
-import androidx.webkit.WebSettingsCompat
-import androidx.webkit.WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING
+import android.app.AlertDialog
 import androidx.webkit.WebViewClientCompat
-import androidx.webkit.WebViewFeature
 import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
-import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
-import com.msp1974.vacompanion.jsinterface.WebAppInterface
-import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.ui.VAViewModel
 import timber.log.Timber
@@ -207,4 +200,6 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
     ) {
         config.currentPath = URL(url).path
     }
+
+
 }

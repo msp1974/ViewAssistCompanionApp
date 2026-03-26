@@ -10,9 +10,11 @@ import android.hardware.SensorManager
 import android.hardware.camera2.CameraAccessException
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Build
 import android.webkit.WebView
+import androidx.core.content.ContextCompat.getSystemService
 import com.google.firebase.Firebase
 import com.google.firebase.crashlytics.crashlytics
 import com.msp1974.vacompanion.settings.APPConfig
@@ -36,6 +38,7 @@ data class DeviceCapabilitiesData(
     val hasDND: Boolean,
     val proximitySensorType: String,
     val sensors: List<JsonObject>,
+    val audioInfo: JsonObject,
 )
 
 
@@ -57,6 +60,7 @@ class DeviceCapabilitiesManager(val context: Context) {
             hasDND = hasDND(),
             proximitySensorType = getProximitySensorType(),
             sensors = getAvailableSensors(),
+            audioInfo = getAudioInfo()
         )
     }
 
@@ -99,8 +103,12 @@ class DeviceCapabilitiesManager(val context: Context) {
     }
 
     fun getWebViewVersion(): String {
-        val info = WebView.getCurrentWebViewPackage()
-        return info!!.versionName!!
+        try {
+            val info = WebView.getCurrentWebViewPackage()
+            return info!!.versionName!!
+        } catch (e: Exception) {
+            return "unknown"
+        }
     }
 
     fun hasBattery(): Boolean {
@@ -157,6 +165,19 @@ class DeviceCapabilitiesManager(val context: Context) {
         return notificationManager.isNotificationPolicyAccessGranted
     }
 
+    fun getAudioInfo(): JsonObject {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
+        return buildJsonObject {
+            put("maxMusicVolume", audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+            put(
+                "maxNotificationVolume",
+                audioManager.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION)
+            )
+        }
+    }
+
+
     companion object {
         @OptIn(ExperimentalSerializationApi::class)
         fun toJson(data: DeviceCapabilitiesData): JsonObject {
@@ -171,6 +192,10 @@ class DeviceCapabilitiesManager(val context: Context) {
                     put("has_front_camera", data.hasFrontCamera)
                     put("has_dnd", data.hasDND)
                     put("proximity_sensor_type", data.proximitySensorType)
+                    putJsonObject("audio") {
+                        put("max_music_volume", data.audioInfo.getValue("maxMusicVolume"))
+                        put("max_notification_volume", data.audioInfo.getValue("maxNotificationVolume"))
+                    }
                     putJsonArray("sensors") {
                         addAll(data.sensors)
                     }

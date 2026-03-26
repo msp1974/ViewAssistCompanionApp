@@ -1,22 +1,22 @@
 [versions]
-agp = "8.13.1"
-firebaseBom = "34.7.0"
-kotlin = "2.3.0"
-kotlinSerialization = "1.9.0"
+agp = "8.13.2"
+firebaseBom = "34.10.0"
+kotlin = "2.3.10"
+kotlinSerialization = "1.10.0"
 coreKtx = "1.17.0"
 junit = "4.13.2"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.10.0"
 lifecycleViewmodelCompose = "2.10.0"
-activityCompose = "1.12.2"
-composeBom = "2025.12.01"
+activityCompose = "1.12.4"
+composeBom = "2026.02.01"
 material3 = "1.4.0"
 materialIconsExtended = "1.7.8"
-media3Exoplayer = "1.9.0"
-media3ExoplayerDash = "1.9.0"
-media3Ui = "1.9.0"
-media3UiCompose = "1.9.0"
+media3Exoplayer = "1.9.2"
+media3ExoplayerDash = "1.9.2"
+media3Ui = "1.9.2"
+media3UiCompose = "1.9.2"
 okhttp = "5.3.2"
 onnxruntimeAndroid = "1.23.2"
 preferenceKtx = "1.2.1"
@@ -24,12 +24,18 @@ semver = "3.0.0"
 splash ="1.2.0"
 swiperefreshlayout = "1.2.0"
 timber = "5.0.1"
-ui = "1.10.0"
+ui = "1.10.4"
 webkit = "1.15.0"
-camerax = "1.6.0-alpha02"
+camerax = "1.6.0-rc01"
 accompanist = "0.37.3"
 foundation = "1.10.0"
 face-detection = "16.1.7"
+foundation = "1.10.4"
+litert = "1.4.0"
+protobufKotlin = "4.34.0"
+appcompat = "1.7.1"
+material = "1.13.0"
+lifecycleService = "2.10.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -72,10 +78,25 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+<<<<<<< HEAD
 mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "face-detection" }
+=======
+litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
+protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobufKotlin" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycleService" }
+>>>>>>> msp1974/main
 
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+<<<<<<< HEAD
+=======
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+
+>>>>>>> msp1974/main

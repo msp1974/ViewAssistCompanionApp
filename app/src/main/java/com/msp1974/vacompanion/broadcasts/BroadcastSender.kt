@@ -10,6 +10,7 @@ class BroadcastSender {
         private var log = Logger()
 
         internal const val WAKE_WORD_DETECTED = "WAKE_WORD_DETECTED"
+        internal const val STOP_WORD_DETECTED = "STOP_WORD_DETECTED"
         internal const val SATELLITE_STARTED = "SATELLITE_STARTED"
         internal const val SATELLITE_STOPPED = "SATELLITE_STOPPED"
         internal const val TOAST_MESSAGE = "TOAST_MESSAGE"

@@ -17,10 +17,11 @@ class Alarm(val context: Context) {
     private val log = Logger()
     private val config: APPConfig = APPConfig.getInstance(context)
 
-    private var currentVolume: Float = config.musicVolume
+    private var currentVolume: Int = config.musicVolume
     var isVolumeDucked: Boolean = false
     var isSounding: Boolean = false
     var mediaPlayer: MediaPlayer? = null
+    var maxVolume: Int = AudioManager(context).getStreamMaxVolume(android.media.AudioManager.STREAM_NOTIFICATION)
 
     fun startAlarm(url: String = "") {
         if (mediaPlayer == null) {
@@ -69,7 +70,7 @@ class Alarm(val context: Context) {
                 val vol = config.duckingVolume
                 if (vol < config.musicVolume) {
                     log.d("Ducking Alarm volume from $currentVolume to $vol")
-                    mediaPlayer!!.setVolume(vol, vol)
+                    mediaPlayer!!.setVolume((vol / maxVolume).toFloat(), (vol / maxVolume).toFloat())
                     isVolumeDucked = true
                 } else {
                     log.d("Not ducking Alarm volume as it is lower than ducking volume of ${config.duckingVolume} at ${config.musicVolume}")
@@ -86,7 +87,7 @@ class Alarm(val context: Context) {
                 val diffStepVolume = (currentVolume - config.duckingVolume) / steps
                 for (i in 1..steps) {
                     val vol = config.duckingVolume + (diffStepVolume * i)
-                    mediaPlayer!!.setVolume(vol, vol)
+                    mediaPlayer!!.setVolume((vol / maxVolume).toFloat(), (vol / maxVolume).toFloat())
                     if (i < steps) { Thread.sleep(250) }
                 }
             }

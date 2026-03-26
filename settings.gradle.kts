@@ -23,4 +23,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "ViewAssistCompanionApp"
 include(":app")
+include(":microfeatures")
  

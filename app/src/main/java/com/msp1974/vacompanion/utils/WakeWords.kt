@@ -1,15 +1,15 @@
 package com.msp1974.vacompanion.utils
 
 import android.content.Context
-import android.os.Build
 import android.os.Environment
 import com.msp1974.vacompanion.utils.AuthUtils.Companion.log
+import com.msp1974.vacompanion.wakeword.WakeWord
 import kotlin.io.path.Path
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.forEachDirectoryEntry
 import kotlin.io.path.isDirectory
 
-data class WakeWord(val name: String, val fileName: String, val builtIn: Boolean = true)
+
 
 class WakeWords(val context: Context) {
     var availableWakeWords = mapOf(

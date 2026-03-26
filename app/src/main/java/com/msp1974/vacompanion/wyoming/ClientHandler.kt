@@ -17,6 +17,7 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.ScreenUtils
 import com.msp1974.vacompanion.utils.WakeWords
+import com.msp1974.vacompanion.wakeword.microwakeword.providers.AssetWakeWordProvider
 import io.github.z4kn4fein.semver.toVersion
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonElement
@@ -83,9 +84,11 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                                 actionAlarm(false)
                             }
                             else -> {
-                                volumeDucking("all", true)
-                                sendWakeWordDetection()
-                                sendStartPipeline()
+                                if (intent.action == BroadcastSender.WAKE_WORD_DETECTED) {
+                                    volumeDucking("all", true)
+                                    sendWakeWordDetection()
+                                    sendStartPipeline()
+                                }
                             }
                         }
                     }
@@ -93,7 +96,10 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
         }
     }
-    val filter = IntentFilter().apply { addAction(BroadcastSender.WAKE_WORD_DETECTED) }
+    val filter = IntentFilter().apply {
+        addAction(BroadcastSender.WAKE_WORD_DETECTED)
+        addAction(BroadcastSender.STOP_WORD_DETECTED)
+    }
 
     fun run() {
         val connections = config.atomicConnectionCount.incrementAndGet()
@@ -333,7 +339,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                             "played",
                         )
 
-                        if (config.continueConversation && lastResponseIsQuestion) {
+                        if (config.continueConversation || lastResponseIsQuestion) {
                             sendStartPipeline()
                         } else {
                             setPipelineNextStageTimeout(2)
@@ -342,7 +348,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                     }
 
                     "error" -> {
-                        config.eventBroadcaster.notifyEvent(Event("recognitionError", "", ""))
+                        config.eventBroadcaster.notifyEvent(Event("recognitionError", "", event.getProp("code")))
                         resetPipeline()
                     }
 
@@ -410,7 +416,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                 if (event.getProp("payload") != "") {
                     val values = JSONObject(event.getProp("payload"))
                     musicPlayer.play(values.getString("url"))
-                    musicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
+                    musicPlayer.setVolume(values.getInt("volume"))
                 }
             }
 
@@ -429,7 +435,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "set-volume" -> {
                 if (event.getProp("payload") != "") {
                     val values = JSONObject(event.getProp("payload"))
-                    musicPlayer.setVolume(values.getInt("volume").toFloat() / 100)
+                    musicPlayer.setVolume(values.getInt("volume"))
                 }
             }
 
@@ -459,20 +465,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "screen-sleep" -> {
                 config.eventBroadcaster.notifyEvent(Event("screenSleep", "", ""))
             }
-
             "wake" -> {
-                thread{
-                    volumeDucking("all", true)
-                    sendWakeWordDetection()
-                    sendStartPipeline()
-                    // if screen is off, wake up
-                    if (config.screenOnWakeWord) {
-                        val screen = ScreenUtils(context)
-                        if (!screen.isScreenOn()) {
-                            config.eventBroadcaster.notifyEvent(Event("screenWake", "", ""))
-                        }
-                    }
-                }
+                config.eventBroadcaster.notifyEvent(Event("wakeWordTrigger", "", ""))
             }
             "alarm" -> {
                 if (event.getProp("payload") != "") {
@@ -562,7 +556,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
     @OptIn(ExperimentalSerializationApi::class)
     fun sendInfo() {
-        val wakeWords = WakeWords(context).getWakeWords()
+        val owwWakeWords = WakeWords(context).getWakeWords()
+        val mwwWakeWords = listOf("alexa","hey_home_assistant","hey_jarvis","hey_luna","hey_mycroft","okay_computer","okay_nabu")
         sendEvent(
             "info",
             buildJsonObject {
@@ -581,11 +576,11 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                             }
                             put("installed", true)
                             putJsonArray("models") {
-                                addAll(wakeWords.map {
+                                addAll(owwWakeWords.map {
                                     buildJsonObject {
                                         put("name", it.key)
                                         putJsonObject("attribution") {
-                                            put("name", "")
+                                            put("name", "openwakeword")
                                             put("url", "")
                                         }
                                         put("installed", true)
@@ -593,6 +588,20 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                                             addAll(listOf("en"))
                                         }
                                         put("phrase", it.value.name)
+                                    }
+                                })
+                                addAll(mwwWakeWords.map {
+                                    buildJsonObject {
+                                        put("name", it)
+                                        putJsonObject("attribution") {
+                                            put("name", "microwakeword")
+                                            put("url", "")
+                                        }
+                                        put("installed", true)
+                                        putJsonArray("languages") {
+                                            addAll(listOf("en"))
+                                        }
+                                        put("phrase", it.replace("_", " "))
                                     }
                                 })
                             }

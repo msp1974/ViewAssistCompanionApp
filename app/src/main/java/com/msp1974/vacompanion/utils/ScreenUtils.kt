@@ -36,21 +36,27 @@ class ScreenUtils(val context: Context) : ContextWrapper(context) {
 
     fun setScreenBrightness(window: Window, brightness: Float) {
         try {
-            if (canWriteScreenSetting()) {
-                Settings.System.putInt(
-                    contentResolver,
-                    Settings.System.SCREEN_BRIGHTNESS,
-                    (brightness * 255).toInt()
-                )
-            } else {
-                val layout: WindowManager.LayoutParams? =  window.attributes
-                layout?.screenBrightness = brightness
-                window.attributes = layout
+            if (!getScreenAutoBrightnessMode()) {
+                if (canWriteScreenSetting()) {
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS,
+                        (brightness * 255).toInt()
+                    )
+                } else {
+                    val layout: WindowManager.LayoutParams? = window.attributes
+                    layout?.screenBrightness = brightness
+                    window.attributes = layout
+                }
             }
         } catch (e: Exception) {
             log.e("Error setting screen brightness: $e")
             Firebase.crashlytics.recordException(e)
         }
+    }
+
+    fun getScreenAutoBrightnessMode(): Boolean {
+        return getDeviceBrightnessMode() == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
     }
 
     fun setScreenAutoBrightness(window: Window, state: Boolean) {
@@ -74,19 +80,23 @@ class ScreenUtils(val context: Context) : ContextWrapper(context) {
         }
     }
 
-    fun setDeviceBrightnessMode(automatic: Boolean = false) {
-        if (!canWriteScreenSetting()) {
-            return
-        }
-        var mode = -1
+    fun getDeviceBrightnessMode(): Int {
         try {
-            mode = Settings.System.getInt(
+            return Settings.System.getInt(
                 contentResolver,
                 Settings.System.SCREEN_BRIGHTNESS_MODE
             ) //this will return integer (0 or 1)
         } catch (e: Settings.SettingNotFoundException) {
             log.e("No screen brightness mode setting available")
+            return -1
         }
+    }
+
+    fun setDeviceBrightnessMode(automatic: Boolean = false) {
+        if (!canWriteScreenSetting()) {
+            return
+        }
+        val mode = getDeviceBrightnessMode()
         try {
             if (automatic) {
                 if (mode == Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL) {

@@ -12,10 +12,11 @@ import androidx.media3.exoplayer.ExoPlayer
 
 class VAMediaPlayer(val context: Context) {
     private val config: APPConfig = APPConfig.getInstance(context)
-    private var currentVolume: Float = config.musicVolume
+    private var currentVolume: Int = config.musicVolume
     private var mediaPlayer: ExoPlayer? = null
     var isVolumeDucked: Boolean = false
     var playRequested: Boolean = false
+    val maxVolume = AudioManager(context).getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
 
     companion object {
         @Volatile
@@ -91,10 +92,11 @@ class VAMediaPlayer(val context: Context) {
         })
     }
 
-    fun setVolume(volume: Float) {
+    fun setVolume(volume: Int) {
         Handler(context.mainLooper).post({
             if (!isVolumeDucked && mediaPlayer != null) {
-                mediaPlayer!!.volume = volume
+                val audioMgr = AudioManager(context)
+                mediaPlayer!!.volume = volume / audioMgr.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).toFloat()
             }
             currentVolume = volume
             Timber.i("Music volume set to $volume")
@@ -108,7 +110,7 @@ class VAMediaPlayer(val context: Context) {
                     val vol = config.duckingVolume
                     if (vol < config.musicVolume) {
                         Timber.d("Ducking music volume from $currentVolume to $vol")
-                        mediaPlayer!!.volume = vol
+                        mediaPlayer!!.volume = (vol / maxVolume).toFloat()
                         isVolumeDucked = true
                     } else {
                         Timber.d("Not ducking music volume as it is lower than ducking volume of ${config.duckingVolume} at ${config.musicVolume}")
@@ -127,7 +129,7 @@ class VAMediaPlayer(val context: Context) {
                 for (i in 1..steps) {
                     val vol = config.duckingVolume + (diffStepVolume * i)
                     Handler(context.mainLooper).post({
-                        mediaPlayer!!.volume = vol
+                        mediaPlayer!!.volume = (vol / maxVolume).toFloat()
                     })
                     if (i < steps) {
                         Thread.sleep(250)

@@ -26,6 +26,8 @@ import timber.log.Timber
 class AppExceptionHandler(private val activity: Activity) : Thread.UncaughtExceptionHandler {
     override fun uncaughtException(thread: Thread, ex: Throwable) {
         Timber.e("AppExceptionHandler: $ex")
+        ex.printStackTrace()
+
         val intent = Intent(activity, MainActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
                 or Intent.FLAG_ACTIVITY_CLEAR_TASK
