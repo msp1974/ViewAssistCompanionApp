@@ -2,6 +2,8 @@ name: Build
 
 on:
   push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -21,6 +23,6 @@ jobs:
     - name: Create Google Services JSON File
       env:
         GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
-      run: echo $GOOGLE_SERVICES_JSON | base64 -di > ./app/google-services.json
+      run: echo $GOOGLE_SERVICES_JSON > ./app/google-services.json
     - name: Build with Gradle 8.14.3
       run: ./gradlew build

@@ -9,10 +9,9 @@ import android.provider.Settings.Secure
 import androidx.preference.PreferenceManager
 import androidx.core.content.edit
 import com.google.android.gms.common.util.ClientLibraryUtils.getPackageInfo
-import com.google.firebase.Firebase
-import com.google.firebase.crashlytics.crashlytics
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventNotifier
+import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Logger
 import org.json.JSONObject
 import java.util.UUID
@@ -38,6 +37,7 @@ enum class PageLoadingStage {
 class APPConfig(val context: Context) {
     private val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
     private val log = Logger()
+    private val firebase = FirebaseManager.getInstance(context)
     var eventBroadcaster: EventNotifier
     private var prefListener: Unit
 
@@ -386,7 +386,7 @@ class APPConfig(val context: Context) {
         }
 
 
-        Firebase.crashlytics.log("Settings update")
+        firebase.addToCrashLog("Settings update")
     }
 
     @SuppressLint("HardwareIds")
@@ -410,14 +410,14 @@ class APPConfig(val context: Context) {
     fun onSharedPreferenceChangedListener(prefs: SharedPreferences, key: String?) {
         log.d("SharedPreference changed: $key")
         val event = Event(key.toString(), "", "")
-        Firebase.crashlytics.log("${key.toString()} changed")
+        firebase.addToCrashLog("${key.toString()} changed")
         eventBroadcaster.notifyEvent(event)
     }
 
     fun onValueChangedListener(property: KProperty<*>, oldValue: Any, newValue: Any) {
         if (oldValue != newValue) {
             val event = Event(property.name, oldValue, newValue)
-            Firebase.crashlytics.log("${property.name} changed from $oldValue to $newValue")
+            firebase.addToCrashLog("${property.name} changed from $oldValue to $newValue")
             eventBroadcaster.notifyEvent(event)
         }
     }

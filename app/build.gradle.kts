@@ -3,8 +3,17 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
-    id("com.google.gms.google-services")
+//    id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
+}
+
+tasks.register("printVersionName") {
+    group = "custom"
+    description = "Output version name for use in env vars"
+
+    doLast {
+        println(android.defaultConfig.versionName)
+    }
 }
 
 android {
