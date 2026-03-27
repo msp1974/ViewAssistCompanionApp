@@ -393,11 +393,12 @@ class APPConfig(val context: Context) {
         }
         if (hasHaNavigateScreensaver) {
             haNavigateScreensaver = settings.getBoolean("ha_navigate_screensaver")
-        } else {
+        } else if (settings.has("screen_saver") || configuredScreensaverPath != null) {
             // Backward-compatible fallback for integrations that have not yet added the new setting key.
+            // Do not overwrite the current value for partial settings updates that do not touch screensaver config.
             haNavigateScreensaver =
-                settings.optBoolean("screen_saver", false) &&
-                !configuredScreensaverPath.isNullOrBlank()
+                settings.optBoolean("screen_saver", screenSaver) &&
+                !(configuredScreensaverPath ?: haScreensaverDashboard).isBlank()
         }
         if (settings.has("motion_detection_sensitivity")) {
             motionDetectionSensitivity = settings.getInt("motion_detection_sensitivity")
