@@ -51,7 +51,7 @@ class ScreenUtils(val context: Context) : ContextWrapper(context) {
             }
         } catch (e: Exception) {
             log.e("Error setting screen brightness: $e")
-            Firebase.crashlytics.recordException(e)
+            runCatching { Firebase.crashlytics.recordException(e) }
         }
     }
 
@@ -119,7 +119,7 @@ class ScreenUtils(val context: Context) : ContextWrapper(context) {
             }
         } catch (e: SecurityException) {
             log.e("Error setting screen brightness mode: $e")
-            Firebase.crashlytics.recordException(e)
+            runCatching { Firebase.crashlytics.recordException(e) }
         }
     }
 

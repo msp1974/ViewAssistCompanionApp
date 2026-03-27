@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion
 
 import android.app.Application
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import com.msp1974.vacompanion.utils.ActivityManager
@@ -8,6 +9,12 @@ import timber.log.Timber
 import timber.log.Timber.DebugTree
 
 class VACAApplication: Application() {
+    companion object {
+        const val FOREGROUND_CHANNEL_ID = "VACAForegroundServiceChannelId"
+        const val RECOVERY_CHANNEL_ID = "VACAForegroundRecoveryChannelId"
+        lateinit var activityManager: ActivityManager
+    }
+
     override fun onCreate() {
         super.onCreate()
 
@@ -15,19 +22,25 @@ class VACAApplication: Application() {
 
         Timber.plant(DebugTree())
 
-        // Create the notification channel (required for Android 8.0 and above)
-        val channel = NotificationChannel(
-            "VACAForegroundServiceChannelId",
+        val serviceChannel = NotificationChannel(
+            FOREGROUND_CHANNEL_ID,
             "VACA Foreground Service Channel",
             NotificationManager.IMPORTANCE_LOW
         )
-        // service provided by Android Operating system to show notification outside of our app
+        val recoveryChannel = NotificationChannel(
+            RECOVERY_CHANNEL_ID,
+            "VACA Foreground Recovery Channel",
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            description = "Brings View Assist Companion back to the foreground after an OS restart"
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setSound(null, null)
+            enableVibration(false)
+        }
+
         val notificationManager =
             getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
-    }
-
-    companion object {
-        lateinit var activityManager: ActivityManager
+        notificationManager.createNotificationChannel(serviceChannel)
+        notificationManager.createNotificationChannel(recoveryChannel)
     }
 }

@@ -151,7 +151,7 @@ class DeviceCapabilitiesManager(val context: Context) {
         } catch (e: IllegalArgumentException) {
             // This is crucial. Catches issues like "Illegal argument to HAL module"
             // if the cameraId or characteristics query is somehow malformed on a specific device.
-            Firebase.crashlytics.recordException(e)
+            runCatching { Firebase.crashlytics.recordException(e) }
             return false
         } catch (e: Exception) {
             // Catch other unexpected exceptions

@@ -283,6 +283,11 @@ class APPConfig(val context: Context) {
         initSettings = true
         val settings = JSONObject(settingString)
         val hasHaNavigateScreensaver = settings.has("ha_navigate_screensaver")
+        val configuredScreensaverPath = when {
+            settings.has("ha_screensaver_dashboard") -> settings.getString("ha_screensaver_dashboard").trim()
+            settings.has("screensaver_dashboard") -> settings.getString("screensaver_dashboard").trim()
+            else -> null
+        }
         if (settings.has("ha_port")) {
             homeAssistantHTTPPort = settings["ha_port"] as Int
         }
@@ -292,12 +297,12 @@ class APPConfig(val context: Context) {
         if (settings.has("ha_dashboard")) {
             homeAssistantDashboard = settings["ha_dashboard"] as String
         }
-        if (settings.has("ha_screensaver_dashboard")) {
-            val path = settings.getString("ha_screensaver_dashboard").trim()
-            haScreensaverDashboard = if (path.startsWith("/")) path else "/$path"
-        } else if (settings.has("screensaver_dashboard")) {
-            val path = settings.getString("screensaver_dashboard").trim()
-            haScreensaverDashboard = if (path.startsWith("/")) path else "/$path"
+        if (configuredScreensaverPath != null) {
+            haScreensaverDashboard = when {
+                configuredScreensaverPath.isBlank() -> ""
+                configuredScreensaverPath.startsWith("/") -> configuredScreensaverPath
+                else -> "/$configuredScreensaverPath"
+            }
         }
         if (settings.has("advanced_gain")) {
             useAdvancedGain = settings["advanced_gain"] as Boolean
@@ -388,9 +393,11 @@ class APPConfig(val context: Context) {
         }
         if (hasHaNavigateScreensaver) {
             haNavigateScreensaver = settings.getBoolean("ha_navigate_screensaver")
-        } else if (settings.optString("ha_screensaver_dashboard").isNotBlank()) {
+        } else {
             // Backward-compatible fallback for integrations that have not yet added the new setting key.
-            haNavigateScreensaver = true
+            haNavigateScreensaver =
+                settings.optBoolean("screen_saver", false) &&
+                !configuredScreensaverPath.isNullOrBlank()
         }
         if (settings.has("motion_detection_sensitivity")) {
             motionDetectionSensitivity = settings.getInt("motion_detection_sensitivity")

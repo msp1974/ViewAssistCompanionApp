@@ -31,12 +31,17 @@ class ActivityManager(myApplication: VACAApplication) : ActivityLifecycleCallbac
     }
 
     override fun onActivityStopped(activity: Activity) {
+        if (this.activity === activity) {
+            this.activity = null
+        }
     }
 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        this.activity = null
+        if (this.activity === activity) {
+            this.activity = null
+        }
     }
 }

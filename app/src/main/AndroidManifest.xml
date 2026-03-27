@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <!--Mic audio recording and ?-->
@@ -62,7 +63,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.App.Starting"
         android:hardwareAccelerated="true"
-        android:clearTaskOnLaunch="true"
         android:enableOnBackInvokedCallback="true"
         tools:targetApi="33">
         <activity
@@ -75,9 +75,9 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
                 <category android:name="android.intent.category.LAUNCHER" />
                 <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.HOME" />
             </intent-filter>
         </activity>
 

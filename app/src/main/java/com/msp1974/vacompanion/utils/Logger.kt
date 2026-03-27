@@ -26,14 +26,11 @@ class Logger {
 }
 
 class FirebaseManager {
-    private val firebaseAnalytics = Firebase.analytics
-    private val firebaseCrashlytics = Firebase.crashlytics
-
     companion object {
         @Volatile
         private var instance: FirebaseManager? = null
 
-        fun getInstance() =
+        fun getInstance(@Suppress("UNUSED_PARAMETER") context: Any? = null) =
             instance ?: synchronized(this) {
                 instance ?: FirebaseManager().also { instance = it }
             }
@@ -53,24 +50,35 @@ class FirebaseManager {
     fun Map<String, Any?>.toBundle(): Bundle = bundleOf(*this.toList().toTypedArray())
 
     fun setCustomKeys(keys: Map<String, Any>) {
-        keys.map {
-            firebaseCrashlytics.setCustomKey(it.key, it.value.toString())
+        runCatching {
+            val firebaseCrashlytics = Firebase.crashlytics
+            keys.forEach {
+                firebaseCrashlytics.setCustomKey(it.key, it.value.toString())
+            }
         }
     }
 
     fun logEvent(event: String, params: Map<String, String>) {
-        firebaseAnalytics.logEvent(event, params.toBundle())
+        runCatching {
+            Firebase.analytics.logEvent(event, params.toBundle())
+        }
     }
 
     fun setUserProperty(key: String, value: String) {
-        firebaseAnalytics.setUserProperty(key, value)
+        runCatching {
+            Firebase.analytics.setUserProperty(key, value)
+        }
     }
 
     fun addToCrashLog(message: String) {
-        firebaseCrashlytics.log(message)
+        runCatching {
+            Firebase.crashlytics.log(message)
+        }
     }
 
     fun logException(exception: Exception) {
-        firebaseCrashlytics.recordException(exception)
+        runCatching {
+            Firebase.crashlytics.recordException(exception)
+        }
     }
 }

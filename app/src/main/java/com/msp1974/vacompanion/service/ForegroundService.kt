@@ -1,7 +1,10 @@
 package com.msp1974.vacompanion.service
 
 import android.Manifest
+import android.app.AlarmManager
 import android.app.KeyguardManager
+import android.app.Notification
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -10,14 +13,14 @@ import android.content.pm.ServiceInfo
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import com.google.firebase.Firebase
-import com.google.firebase.crashlytics.crashlytics
 import com.msp1974.vacompanion.MainActivity
 import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.VACAApplication
@@ -25,17 +28,40 @@ import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.BackgroundTaskStatus
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.util.Timer
-import java.util.TimerTask
 
 
 class VAForegroundService : LifecycleService() {
+    companion object {
+        const val SERVICE_NOTIFICATION_ID = 1
+        const val RECOVERY_NOTIFICATION_ID = 2
+        private const val RECOVERY_WATCHDOG_INTERVAL_MS = 5000L
+        private const val RECOVERY_REQUEST_COOLDOWN_MS = 15000L
+    }
+
     private lateinit var config: APPConfig
     private var wifiLock: WifiManager.WifiLock? = null
     private var keyguardLock: KeyguardManager.KeyguardLock? = null
-    private var watchdogTimer: Timer = Timer()
+    private lateinit var notificationManager: NotificationManager
 
     private var backgroundTask:  BackgroundTaskController? = null
+    private val recoveryHandler = Handler(Looper.getMainLooper())
+    private var lastRecoveryRequestMs = 0L
+    private val recoveryWatchdog = object : Runnable {
+        override fun run() {
+            try {
+                val activity = VACAApplication.activityManager.activity
+                if (config.backgroundTaskRunning && activity == null) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastRecoveryRequestMs >= RECOVERY_REQUEST_COOLDOWN_MS) {
+                        Timber.w("Foreground activity missing while service is active. Requesting recovery.")
+                        requestActivityRecovery()
+                    }
+                }
+            } finally {
+                recoveryHandler.postDelayed(this, RECOVERY_WATCHDOG_INTERVAL_MS)
+            }
+        }
+    }
 
     enum class Actions {
         START, STOP
@@ -49,6 +75,7 @@ class VAForegroundService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         config = APPConfig.getInstance(this)
+        notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         // wifi lock
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
@@ -70,10 +97,10 @@ class VAForegroundService : LifecycleService() {
         super.onStartCommand(intent, flags, startId)
 
         var action = intent?.action ?: Actions.START.toString()
+        val restartedByOs = intent == null
         Timber.v("onStartCommand action: $action")
         if (intent == null) {
             Timber.v("VACA restarted by OS after crash")
-            startActivity(this)
             action = Actions.START.toString()
         }
         // Do the work that the service needs to do here
@@ -81,77 +108,66 @@ class VAForegroundService : LifecycleService() {
             Actions.START.toString() -> {
                 if (!checkIfPermissionIsGranted()) return START_STICKY
                 val notification =
-                    NotificationCompat.Builder(this, "VACAForegroundServiceChannelId")
-                        .setSmallIcon(R.mipmap.ic_launcher)
-                        .setContentTitle("View Assist Companion App")
-                        .setContentText("Service is running")
-                        .addAction(
-                            R.drawable.outline_stop_circle_24, getString(R.string.stop_service),
-                            stopServiceIntent(Actions.STOP.toString())
-                        )
-                        .build()
+                    buildServiceNotification(launchActivity = false)
 
                 lifecycleScope.launch {
-                    Firebase.crashlytics.log("Background service starting")
-
-                    //need core 1.12 and higher and SDK 30 and higher
-                    var requires: Int = 0
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-                    }
-
-                    Timber.d("Running in foreground ServiceCompat mode")
-                    ServiceCompat.startForeground(
-                        this@VAForegroundService,
-                        1,
-                        notification,
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            requires
-                        } else {
-                            0
-                        },
-                    )
-
-                    if (!wifiLock!!.isHeld) {
-                        wifiLock!!.acquire()
-                    }
                     try {
-                        keyguardLock?.disableKeyguard()
+                        //need core 1.12 and higher and SDK 30 and higher
+                        var requires: Int = 0
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        }
+
+                        Timber.d("Running in foreground ServiceCompat mode")
+                        ServiceCompat.startForeground(
+                            this@VAForegroundService,
+                            SERVICE_NOTIFICATION_ID,
+                            notification,
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                                requires
+                            } else {
+                                0
+                            },
+                        )
+
+                        if (!wifiLock!!.isHeld) {
+                            wifiLock!!.acquire()
+                        }
+                        try {
+                            keyguardLock?.disableKeyguard()
+                        } catch (ex: Exception) {
+                            Timber.i("Disabling keyguard didn't work")
+                            ex.printStackTrace()
+                        }
+
+                        backgroundTask = BackgroundTaskController(this@VAForegroundService)
+                        backgroundTask?.start()
+                        Timber.i("Background Service Started")
+                        config.backgroundTaskRunning = true
+                        config.backgroundTaskStatus = BackgroundTaskStatus.STARTED
+                        startRecoveryWatchdog()
+                        if (restartedByOs && VACAApplication.activityManager.activity == null) {
+                            requestActivityRecovery()
+                        } else {
+                            notificationManager.cancel(RECOVERY_NOTIFICATION_ID)
+                            notificationManager.notify(
+                                SERVICE_NOTIFICATION_ID,
+                                buildServiceNotification(launchActivity = false)
+                            )
+                        }
                     } catch (ex: Exception) {
-                        Timber.i("Disabling keyguard didn't work")
-                        ex.printStackTrace()
-                        Firebase.crashlytics.recordException(ex)
+                        Timber.e(ex, "Foreground service startup failed")
+                        config.backgroundTaskRunning = false
+                        config.backgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
                     }
-
-                    backgroundTask = BackgroundTaskController(this@VAForegroundService)
-                    backgroundTask?.start()
-                    Timber.i("Background Service Started")
-                    config.backgroundTaskRunning = true
-                    config.backgroundTaskStatus = BackgroundTaskStatus.STARTED
-
-                    // Launch Activity if not running on service start
-                    // Can be caused by crash and service restarted by OS
-                    //if (config.currentActivity == "") {
-                    //    Timber.i("Launching MainActivity from foreground service")
-                    //    Firebase.crashlytics.log("Launching MainActivity from foreground service")
-                    //    val intent = Intent(this, MainActivity::class.java)
-                    //    intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    //    try {
-                    //        startActivity(intent)
-                    //    } catch (ex: Exception) {
-                    //        Timber.e("Foreground service failed to launch activity - ${ex.message}")
-                    //    }
-                    //}
-                    restartActivityWatchdog()
                 }
             }
 
             Actions.STOP.toString() -> {
-                Firebase.crashlytics.log("Background service stopping")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -161,23 +177,112 @@ class VAForegroundService : LifecycleService() {
 
     private fun startActivity(context: Context) {
         try {
-            val myIntent = Intent(context, MainActivity::class.java)
-            myIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val myIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                )
+            }
             context.startActivity(myIntent)
         } catch (ex: Exception) {
             Timber.e("Watchdog failed to restart activity - ${ex.message}")
         }
     }
 
-    private fun restartActivityWatchdog() {
-        watchdogTimer.schedule(object: TimerTask() {
-            override fun run() {
-                if (VACAApplication.activityManager.activity == null) {
-                    Timber.d("Watchdog detected activity not running.  Restarting...")
-                    startActivity(this@VAForegroundService)
-                }
+    private fun activityPendingIntent(homeIntent: Boolean = false): PendingIntent {
+        val intent = if (homeIntent) {
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addCategory(Intent.CATEGORY_DEFAULT)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                )
             }
-        },0,5000)
+        } else {
+            Intent(this, MainActivity::class.java).apply {
+                action = Intent.ACTION_MAIN
+                addCategory(Intent.CATEGORY_LAUNCHER)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+        }
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        return PendingIntent.getActivity(this, 1, intent, flags)
+    }
+
+    private fun buildServiceNotification(launchActivity: Boolean): Notification {
+        val channelId =
+            if (launchActivity) VACAApplication.RECOVERY_CHANNEL_ID
+            else VACAApplication.FOREGROUND_CHANNEL_ID
+        val builder =
+            NotificationCompat.Builder(this, channelId)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("View Assist Companion App")
+                .setContentText(
+                    if (launchActivity) {
+                        "Recovering app display"
+                    } else {
+                        "Service is running"
+                    }
+                )
+                .setContentIntent(activityPendingIntent(homeIntent = launchActivity))
+                .setPriority(
+                    if (launchActivity) NotificationCompat.PRIORITY_MAX
+                    else NotificationCompat.PRIORITY_LOW
+                )
+                .setCategory(
+                    if (launchActivity) NotificationCompat.CATEGORY_CALL
+                    else NotificationCompat.CATEGORY_SERVICE
+                )
+                .setOngoing(true)
+                .addAction(
+                    R.drawable.outline_stop_circle_24, getString(R.string.stop_service),
+                    stopServiceIntent(Actions.STOP.toString())
+                )
+
+        if (launchActivity) {
+            builder.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            builder.setFullScreenIntent(activityPendingIntent(homeIntent = true), true)
+            builder.setAutoCancel(false)
+        }
+        return builder.build()
+    }
+
+    private fun requestActivityRecovery() {
+        try {
+            lastRecoveryRequestMs = System.currentTimeMillis()
+            Timber.i("Requesting activity recovery via full-screen notification")
+            notificationManager.notify(
+                RECOVERY_NOTIFICATION_ID,
+                buildServiceNotification(launchActivity = true)
+            )
+            val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+            val triggerAt = System.currentTimeMillis() + 1000
+            val activityIntent = activityPendingIntent(homeIntent = true)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt,
+                    activityIntent
+                )
+            } else {
+                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, activityIntent)
+            }
+            startActivity(this)
+        } catch (ex: Exception) {
+            Timber.e("Failed to request activity recovery - ${ex.message}")
+        }
+    }
+
+    private fun startRecoveryWatchdog() {
+        recoveryHandler.removeCallbacks(recoveryWatchdog)
+        recoveryHandler.postDelayed(recoveryWatchdog, RECOVERY_WATCHDOG_INTERVAL_MS)
     }
 
     private fun stopServiceIntent(name: String): PendingIntent {
@@ -195,10 +300,11 @@ class VAForegroundService : LifecycleService() {
     override fun onDestroy() {
         super.onDestroy()
         Timber.i("Stopping Background Service")
-        watchdogTimer.cancel()
         backgroundTask?.shutdown()
         config.backgroundTaskRunning = false
         config.backgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
+        recoveryHandler.removeCallbacks(recoveryWatchdog)
+        notificationManager.cancel(RECOVERY_NOTIFICATION_ID)
 
         // Release any lock from this app
         if (wifiLock != null && wifiLock!!.isHeld) {
@@ -209,7 +315,6 @@ class VAForegroundService : LifecycleService() {
         } catch (ex: Exception) {
             Timber.i("Enabling keyguard didn't work")
             ex.printStackTrace()
-            Firebase.crashlytics.recordException(ex)
         }
     }
 
