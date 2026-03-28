@@ -78,15 +78,12 @@ androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycl
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
-<<<<<<< HEAD
 mlkit-face-detection = { module = "com.google.mlkit:face-detection", version.ref = "face-detection" }
-=======
 litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
 protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobufKotlin" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycleService" }
->>>>>>> msp1974/main
 
 
 [plugins]
@@ -94,9 +91,6 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-<<<<<<< HEAD
-=======
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 
 
->>>>>>> msp1974/main
