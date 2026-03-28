@@ -610,7 +610,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "darkMode" -> setDarkMode(event.newValue as Boolean)
                 "refresh" -> webView.reload()
                 "screenWake" -> screenWake()
-                "screenSleep" -> screenSleep()
+                "screenSleep" -> screenSleep(forcePhysicalOff = true)
                 "screenOrientationMode" -> setScreenOrientation(event.newValue as String)
                 "navigate" -> {
                     val path = event.newValue as String
@@ -716,24 +716,29 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
-    fun screenSleep() {
+    fun screenSleep(forcePhysicalOff: Boolean = false) {
         Timber.d("Sleeping screen")
-        if (config.haNavigateScreensaver) {
+        if (config.haNavigateScreensaver && !forcePhysicalOff) {
             setUiIdle(true, "screen-sleep")
             return
         }
         clearTurnScreenOnFlag()
+        cancelIdleSignal("screen-sleep")
+        if (config.uiIdle && !forcePhysicalOff) {
+            setUiIdle(false, "screen-sleep-force-off")
+        } else if (config.uiIdle && forcePhysicalOff) {
+            log.d("Preserving uiIdle during forced screen off")
+        }
         if (permissions.isDeviceAdmin()) {
             screen.setPartialWakeLock()
             lockScreen()
-            setScreenSaver(false)
             return
         }
 
         if (!screenOffInProgress) {
             Timber.d("Sleeping screen via timeout")
             screenOffInProgress = true
-            setScreenSaver(true)
+            screenSaver(true)
             screen.setPartialWakeLock()
             if (screen.setScreenTimeout(1000)) {
                 screenSleepWaitJob = lifecycleScope.launch {
