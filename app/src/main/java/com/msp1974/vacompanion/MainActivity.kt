@@ -16,12 +16,14 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
+import android.os.BatteryManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
 import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -47,6 +49,7 @@ import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import com.msp1974.vacompanion.broadcasts.BootUpReceiver
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.service.VAForegroundService
@@ -80,6 +83,7 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.net.URL
 import kotlin.getValue
+import kotlin.math.max
 
 
 class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
@@ -101,6 +105,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private var hasNetwork: Boolean = false
     private var screenOffStartUp: Boolean = false
     private var screenOffInProgress: Boolean = false
+    private var bootRecoveryStartUp: Boolean = false
     private var screenSleepWaitJob: Job? = null
     private var idleSignalJob: Job? = null
 
@@ -144,8 +149,19 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         setStatus(getString(R.string.status_initialising))
         keepSplashScreen = false
 
+        bootRecoveryStartUp =
+            intent.getBooleanExtra(BootUpReceiver.EXTRA_BOOT_RECOVERY, false) ||
+                SystemClock.elapsedRealtime() < 5 * 60 * 1000L
+        if (bootRecoveryStartUp) {
+            persistBootRecoveryMarker()
+        }
+
         // Wake screen on boot if off - keep black.
-        if (!screen.isScreenOn()  && screen.isScreenOff()) {
+        if (bootRecoveryStartUp) {
+            Timber.i("Performing boot recovery startup....")
+            screenOffStartUp = false
+            prepareBootRecoveryDisplay()
+        } else if (!screen.isScreenOn()  && screen.isScreenOff()) {
             Timber.i("Performing screen off startup....")
             screenOffStartUp = true
         } else {
@@ -229,7 +245,12 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             // Set screen for loading
             screen.setScreenAlwaysOn(window, true)
 
-            if (screenOffStartUp) {
+            if (bootRecoveryStartUp) {
+                if (config.screenBrightness <= 0.3) config.screenBrightness = 0.6f
+                screen.setScreenBrightness(window, config.screenBrightness)
+                screen.setScreenTimeout(max(config.screenTimeout, 120000))
+                setScreenSaver(false)
+            } else if (screenOffStartUp) {
                 config.screenBrightness = screen.getScreenBrightness()
                 setScreenSaver(true)
                 screenWake()
@@ -456,6 +477,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     override fun onResume() {
         super.onResume()
         log.d("Main Activity resumed")
+        if (bootRecoveryStartUp) {
+            clearTurnScreenOnFlag()
+        }
         val notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.cancel(VAForegroundService.RECOVERY_NOTIFICATION_ID)
         config.screenOn = !screen.isScreenOff()
@@ -797,6 +821,34 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
         }
+    }
+
+    private fun prepareBootRecoveryDisplay() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setTurnScreenOn(true)
+        } else {
+            window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
+        screen.wakeScreen(120000)
+    }
+
+    private fun persistBootRecoveryMarker() {
+        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val marker =
+            "ts=${Instant.now()} " +
+                "bootRecovery=$bootRecoveryStartUp " +
+                "uptimeMs=${SystemClock.elapsedRealtime()} " +
+                "screenOn=${screen.isScreenOn()} " +
+                "screenTimeout=${screen.getScreenTimeout()} " +
+                "batteryLevel=$level " +
+                "batteryStatus=$status " +
+                "ac=${plugged and BatteryManager.BATTERY_PLUGGED_AC != 0} " +
+                "usb=${plugged and BatteryManager.BATTERY_PLUGGED_USB != 0}"
+        BootUpReceiver.persistBootRecoveryMarker(this, marker)
+        log.i("Boot recovery marker: $marker")
     }
 
     private fun shouldRunIdleWatchdog(): Boolean {
