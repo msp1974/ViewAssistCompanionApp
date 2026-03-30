@@ -46,7 +46,7 @@ enum class AudioRouteOption { NONE, DETECT, PROCESS_NO_DETECT, STREAM}
 
 internal class BackgroundTaskController (private val context: Context): EventListener {
 
-    private val firebase = FirebaseManager.getInstance()
+    private val firebase = FirebaseManager.getInstance(context)
     private var config: APPConfig = APPConfig.getInstance(context)
 
     private val job = SupervisorJob()

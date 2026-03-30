@@ -62,10 +62,12 @@ class CustomWebView @JvmOverloads constructor(
             mediaPlaybackRequiresUserGesture = false
             safeBrowsingEnabled = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-            setSupportZoom(true)
-            builtInZoomControls = false
-            useWideViewPort = false
+            textZoom = 100
+            useWideViewPort = true
             loadWithOverviewMode = true
+            setSupportZoom(false)
+            builtInZoomControls = false
+            displayZoomControls = false
             cacheMode = WebSettings.LOAD_DEFAULT
 
             webChromeClient = CustomWebChromeClient(context)
@@ -124,9 +126,10 @@ class CustomWebView @JvmOverloads constructor(
     fun setZoomLevel(level: Int) {
         if (level == 0) {
             settings.useWideViewPort = true
+            settings.textZoom = 100
         } else {
             settings.useWideViewPort = false
-            setInitialScale(level)
+            settings.textZoom = level
         }
 
     }

@@ -37,7 +37,7 @@ enum class PageLoadingStage {
 class APPConfig(val context: Context) {
     private val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
     private val log = Logger()
-    private val firebase = FirebaseManager.getInstance()
+    private val firebase = FirebaseManager.getInstance(context)
     var eventBroadcaster: EventNotifier
     private var prefListener: Unit
 

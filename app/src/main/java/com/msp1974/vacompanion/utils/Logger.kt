@@ -1,10 +1,14 @@
 package com.msp1974.vacompanion.utils
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import androidx.core.os.bundleOf
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
+import com.google.firebase.analytics.FirebaseAnalytics
 import com.google.firebase.analytics.analytics
+import com.google.firebase.crashlytics.FirebaseCrashlytics
 import com.google.firebase.crashlytics.crashlytics
 
 class Logger {
@@ -25,15 +29,64 @@ class Logger {
     }
 }
 
-class FirebaseManager {
+class FirebaseManager private constructor(context: Context? = null) {
+    private var firebaseAnalytics: FirebaseAnalytics? = null
+    private var firebaseCrashlytics: FirebaseCrashlytics? = null
+
+    init {
+        initialiseFirebase(context)
+    }
+
+    private fun initialiseFirebase(context: Context?) {
+        if (context == null) {
+            Log.w(Logger.TAG, "Firebase context unavailable. Firebase features disabled.")
+            return
+        }
+
+        try {
+            val appContext = context.applicationContext
+            if (FirebaseApp.getApps(appContext).isEmpty()) {
+                Log.w(Logger.TAG, "FirebaseApp not initialized. Skipping Firebase setup.")
+                return
+            }
+
+            firebaseAnalytics = Firebase.analytics
+            firebaseCrashlytics = Firebase.crashlytics
+        } catch (e: Exception) {
+            Log.w(Logger.TAG, "Failed to initialize Firebase. Firebase features disabled.", e)
+            firebaseAnalytics = null
+            firebaseCrashlytics = null
+        }
+    }
+
     companion object {
         @Volatile
         private var instance: FirebaseManager? = null
 
-        fun getInstance(@Suppress("UNUSED_PARAMETER") context: Any? = null) =
-            instance ?: synchronized(this) {
-                instance ?: FirebaseManager().also { instance = it }
+        fun getInstance(context: Context? = null): FirebaseManager {
+            instance?.let {
+                if ((it.firebaseAnalytics != null || it.firebaseCrashlytics != null) || context == null) {
+                    return it
+                }
             }
+            return synchronized(this) {
+                val existing = instance
+                if (existing != null) {
+                    if ((existing.firebaseAnalytics != null || existing.firebaseCrashlytics != null) || context == null) {
+                        existing
+                    } else {
+                        FirebaseManager(context).also { instance = it }
+                    }
+                } else {
+                    try {
+                        FirebaseManager(context).also { instance = it }
+                    } catch (e: Exception) {
+                        Log.w(Logger.TAG, "FirebaseManager fallback initialization used.", e)
+                        FirebaseManager().also { instance = it }
+                    }
+                }
+            }
+        }
 
         const val DIAGNOSTIC_POPUP_SHOWN = "diagnostic_popup_shown"
         const val WAKE_WORD_DETECTED = "wake_word_detected"
@@ -50,35 +103,24 @@ class FirebaseManager {
     fun Map<String, Any?>.toBundle(): Bundle = bundleOf(*this.toList().toTypedArray())
 
     fun setCustomKeys(keys: Map<String, Any>) {
-        runCatching {
-            val firebaseCrashlytics = Firebase.crashlytics
-            keys.forEach {
-                firebaseCrashlytics.setCustomKey(it.key, it.value.toString())
-            }
+        keys.forEach {
+            firebaseCrashlytics?.setCustomKey(it.key, it.value.toString())
         }
     }
 
     fun logEvent(event: String, params: Map<String, String>) {
-        runCatching {
-            Firebase.analytics.logEvent(event, params.toBundle())
-        }
+        firebaseAnalytics?.logEvent(event, params.toBundle())
     }
 
     fun setUserProperty(key: String, value: String) {
-        runCatching {
-            Firebase.analytics.setUserProperty(key, value)
-        }
+        firebaseAnalytics?.setUserProperty(key, value)
     }
 
     fun addToCrashLog(message: String) {
-        runCatching {
-            Firebase.crashlytics.log(message)
-        }
+        firebaseCrashlytics?.log(message)
     }
 
     fun logException(exception: Exception) {
-        runCatching {
-            Firebase.crashlytics.recordException(exception)
-        }
+        firebaseCrashlytics?.recordException(exception)
     }
 }

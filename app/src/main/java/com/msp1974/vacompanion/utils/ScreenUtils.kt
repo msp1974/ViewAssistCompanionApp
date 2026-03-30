@@ -18,6 +18,7 @@ import com.msp1974.vacompanion.settings.APPConfig
 
 class ScreenUtils(val context: Context) : ContextWrapper(context) {
     var log = Logger()
+    private val firebase = FirebaseManager.getInstance(context)
     var config = APPConfig.getInstance(context)
     private val firebase = FirebaseManager.getInstance()
     private var wakeLock: PowerManager.WakeLock? = null

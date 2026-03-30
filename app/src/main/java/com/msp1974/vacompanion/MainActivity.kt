@@ -89,7 +89,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     val viewModel: VAViewModel by viewModels()
 
     private val log = Logger()
-    private val firebase = FirebaseManager.getInstance()
+    private var firebaseManager: FirebaseManager? = null
 
     private lateinit var config: APPConfig
     private lateinit var webView: CustomWebView
@@ -125,6 +125,12 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         var keepSplashScreen = true
 
         super.onCreate(savedInstanceState)
+        firebaseManager = try {
+            FirebaseManager.getInstance(this)
+        } catch (e: Exception) {
+            log.w("Firebase unavailable: ${e.message}")
+            null
+        }
         enableEdgeToEdge()
 
         splashscreen.setKeepOnScreenCondition { keepSplashScreen }
@@ -283,10 +289,10 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     fun setFirebaseUserProperties() {
         val webViewVersion = DeviceCapabilitiesManager(this).getWebViewVersion()
-        firebase.setUserProperty("webview_version", webViewVersion)
-        firebase.setUserProperty("device_signature", Helpers.getDeviceName().toString())
+        firebaseManager?.setUserProperty("webview_version", webViewVersion)
+        firebaseManager?.setUserProperty("device_signature", Helpers.getDeviceName().toString())
 
-        firebase.setCustomKeys(mapOf(
+        firebaseManager?.setCustomKeys(mapOf(
             "Webview" to webViewVersion,
             "Device" to Helpers.getDeviceName().toString(),
             "UUID" to config.uuid
@@ -507,7 +513,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private suspend fun runBackgroundTasks() {
         if ( config.backgroundTaskStatus != BackgroundTaskStatus.NOT_STARTED ) {
             log.w("Background task already running.  Not starting from MainActivity")
-            firebase.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
+            firebaseManager?.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
             if (config.isRunning) {
                 restoreStartupSurface(markSatelliteRunning = true)
             } else {
@@ -1351,7 +1357,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         // Try and prevent the app being killed by memory manager
         if (level >= TRIM_MEMORY_UI_HIDDEN) {
             // Release memory related to UI elements, such as bitmap caches.
-            firebase.logEvent(FirebaseManager.TRIM_MEMORY_UI_HIDDEN, mapOf())
+            firebaseManager?.logEvent(FirebaseManager.TRIM_MEMORY_UI_HIDDEN, mapOf())
             Runtime.getRuntime().gc()
 
         }
@@ -1359,7 +1365,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         if (level >= TRIM_MEMORY_BACKGROUND) {
             // Release memory related to background processing, such as by
             // closing a database connection.
-            firebase.logEvent(FirebaseManager.TRIM_MEMORY_BACKGROUND, mapOf())
+            firebaseManager?.logEvent(FirebaseManager.TRIM_MEMORY_BACKGROUND, mapOf())
             Runtime.getRuntime().gc()
         }
 

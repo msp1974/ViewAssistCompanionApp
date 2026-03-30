@@ -26,6 +26,7 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.VACAApplication
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.BackgroundTaskStatus
+import com.msp1974.vacompanion.utils.FirebaseManager
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -39,6 +40,7 @@ class VAForegroundService : LifecycleService() {
     }
 
     private lateinit var config: APPConfig
+    private lateinit var firebase: FirebaseManager
     private var wifiLock: WifiManager.WifiLock? = null
     private var keyguardLock: KeyguardManager.KeyguardLock? = null
     private lateinit var notificationManager: NotificationManager
@@ -76,6 +78,8 @@ class VAForegroundService : LifecycleService() {
         super.onCreate()
         config = APPConfig.getInstance(this)
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        firebase = FirebaseManager.getInstance(this)
+        notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
 
         // wifi lock
         val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
@@ -111,6 +115,7 @@ class VAForegroundService : LifecycleService() {
                     buildServiceNotification(launchActivity = false)
 
                 lifecycleScope.launch {
+                    firebase.addToCrashLog("Background service starting")
                     try {
                         //need core 1.12 and higher and SDK 30 and higher
                         var requires: Int = 0
@@ -163,11 +168,13 @@ class VAForegroundService : LifecycleService() {
                         Timber.e(ex, "Foreground service startup failed")
                         config.backgroundTaskRunning = false
                         config.backgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
+                        firebase.logException(ex)
                     }
                 }
             }
 
             Actions.STOP.toString() -> {
+                firebase.addToCrashLog("Background service stopping")
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -315,6 +322,7 @@ class VAForegroundService : LifecycleService() {
         } catch (ex: Exception) {
             Timber.i("Enabling keyguard didn't work")
             ex.printStackTrace()
+            firebase.logException(ex)
         }
     }
 
