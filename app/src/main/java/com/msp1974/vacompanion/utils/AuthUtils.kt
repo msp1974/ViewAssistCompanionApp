@@ -35,10 +35,9 @@ class AuthUtils(val config: APPConfig) {
             val remainingMs = effectiveExpiry - System.currentTimeMillis()
             if (config.refreshToken == "") {
                 log.d("No refresh token.  Proceeding to login screen")
-                loadUrl(view, getAuthUrl(getHAUrl(config, withDashboardPath = false)), clearCache = true)
-                setAuthStage(view, PageLoadingStage.AUTH_FAILED)
+                loadLoginScreen(view)
                 return
-            } else if (remainingMs <= MIN_TOKEN_LIFETIME_FOR_PAGE_MS && config.refreshToken != "") {
+            } else if (remainingMs <= MIN_TOKEN_LIFETIME_FOR_PAGE_MS) {
                 log.d("Access token remaining lifetime ${remainingMs}ms is too short for page use. Refreshing first")
                 val success: Boolean = reAuthWithRefreshToken()
                 if (success) {
@@ -47,10 +46,9 @@ class AuthUtils(val config: APPConfig) {
                     setAuthStage(view, PageLoadingStage.AUTHORISED)
                 } else {
                     log.d("Failed to refresh short-lived auth token. Proceeding to login screen")
-                    setAuthStage(view, PageLoadingStage.AUTH_FAILED)
-                    loadUrl(view, getAuthUrl(getHAUrl(config, withDashboardPath = false)), clearCache = true)
+                    loadLoginScreen(view)
                 }
-            } else if (System.currentTimeMillis() > (effectiveExpiry - AUTH_REFRESH_BUFFER_MS) && config.refreshToken != "") {
+            } else if (System.currentTimeMillis() > (effectiveExpiry - AUTH_REFRESH_BUFFER_MS)) {
                 // Token will expire soon, proactively refresh before HA cards start failing.
                 // Need to get new access token as it has expired
                 log.d("Auth token has expired.  Requesting new token using refresh token")
@@ -61,8 +59,7 @@ class AuthUtils(val config: APPConfig) {
                     setAuthStage(view, PageLoadingStage.AUTHORISED)
                 } else {
                     log.d("Failed to refresh auth token.  Proceeding to login screen")
-                    setAuthStage(view, PageLoadingStage.AUTH_FAILED)
-                    loadUrl(view, getAuthUrl(getHAUrl(config, withDashboardPath = false)), clearCache = true)
+                    loadLoginScreen(view)
                 }
             } else if (config.accessToken != "") {
                 log.d("Auth token is still valid - authorising")
@@ -96,6 +93,11 @@ class AuthUtils(val config: APPConfig) {
                 }
                 view.loadUrl(url)
             })
+        }
+
+        private fun loadLoginScreen(view: WebView) {
+            setAuthStage(view, PageLoadingStage.AUTH_FAILED)
+            loadUrl(view, getAuthUrl(getHAUrl(config, withDashboardPath = false)), clearCache = true)
         }
 
         private fun callAuthJS(view: WebView) {

@@ -4,8 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.SystemClock
-import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import com.msp1974.vacompanion.MainActivity
 import timber.log.Timber
@@ -14,20 +12,6 @@ class BootUpReceiver : BroadcastReceiver() {
 
     companion object {
         const val EXTRA_BOOT_RECOVERY = "com.msp1974.vacompanion.extra.BOOT_RECOVERY"
-        private const val PREF_LAST_BOOT_RECEIVER_MARKER = "last_boot_receiver_marker"
-        private const val PREF_LAST_BOOT_RECOVERY_MARKER = "last_boot_recovery_marker"
-
-        fun persistBootReceiverMarker(context: Context, action: String?) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
-            val marker =
-                "ts=${System.currentTimeMillis()} action=${action ?: "unknown"} uptimeMs=${SystemClock.elapsedRealtime()}"
-            prefs.edit { putString(PREF_LAST_BOOT_RECEIVER_MARKER, marker) }
-        }
-
-        fun persistBootRecoveryMarker(context: Context, marker: String) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
-            prefs.edit { putString(PREF_LAST_BOOT_RECOVERY_MARKER, marker) }
-        }
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -39,7 +23,6 @@ class BootUpReceiver : BroadcastReceiver() {
             ) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
         ) {
             Timber.d("Received boot intent: ${intent.action}")
-            persistBootReceiverMarker(context, intent.action)
             val sharedPreferences =
                 PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
             val startOnBoot = sharedPreferences.getBoolean("startOnBoot", false)

@@ -16,7 +16,6 @@ import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.content.res.Configuration
-import android.os.BatteryManager
 import android.media.AudioManager
 import android.net.ConnectivityManager
 import android.net.Network
@@ -152,9 +151,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         bootRecoveryStartUp =
             intent.getBooleanExtra(BootUpReceiver.EXTRA_BOOT_RECOVERY, false) ||
                 SystemClock.elapsedRealtime() < 5 * 60 * 1000L
-        if (bootRecoveryStartUp) {
-            persistBootRecoveryMarker()
-        }
 
         // Wake screen on boot if off - keep black.
         if (bootRecoveryStartUp) {
@@ -366,13 +362,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.d("Broadcast received: ${intent.action}")
             when (intent.action) {
                 BroadcastSender.SATELLITE_STARTED -> {
-                    viewModel.setSatelliteRunning(true)
-                    webView.setZoomLevel(config.zoomLevel)
-                    config.screenOn = !screen.isScreenOff()
-                    loadStartupUrl()
-                    if (shouldRunIdleWatchdog()) {
-                        scheduleIdleSignal()
-                    }
+                    restoreStartupSurface(
+                        markSatelliteRunning = true,
+                        syncScreenState = true,
+                        restartIdleWatchdog = true,
+                    )
                 }
                 BroadcastSender.SATELLITE_STOPPED -> {
                     viewModel.setSatelliteRunning(false)
@@ -388,7 +382,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 }
                 BroadcastSender.WEBVIEW_CRASH -> {
                     initWebView()
-                    loadStartupUrl()
+                    restoreStartupSurface()
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     if (initialised) {
@@ -515,9 +509,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             log.w("Background task already running.  Not starting from MainActivity")
             firebase.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
             if (config.isRunning) {
-                viewModel.setSatelliteRunning(true)
-                webView.setZoomLevel(config.zoomLevel)
-                loadStartupUrl()
+                restoreStartupSurface(markSatelliteRunning = true)
             } else {
                 setStatus(getString(R.string.status_waiting_for_connection))
             }
@@ -573,8 +565,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                                 log.d("Ignoring screenAlwaysOn=false while haNavigateScreensaver=true")
                             }
                             screen.setScreenAlwaysOn(window, true)
-                        } else if (config.haNavigateScreensaver && config.uiIdle && !enabled) {
-                            log.d("Ignoring screenAlwaysOn=false while uiIdle=true")
                         } else {
                             screen.setScreenAlwaysOn(window, enabled)
                         }
@@ -832,27 +822,26 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         screen.wakeScreen(120000)
     }
 
-    private fun persistBootRecoveryMarker() {
-        val batteryIntent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val level = batteryIntent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
-        val status = batteryIntent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
-        val plugged = batteryIntent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
-        val marker =
-            "ts=${Instant.now()} " +
-                "bootRecovery=$bootRecoveryStartUp " +
-                "uptimeMs=${SystemClock.elapsedRealtime()} " +
-                "screenOn=${screen.isScreenOn()} " +
-                "screenTimeout=${screen.getScreenTimeout()} " +
-                "batteryLevel=$level " +
-                "batteryStatus=$status " +
-                "ac=${plugged and BatteryManager.BATTERY_PLUGGED_AC != 0} " +
-                "usb=${plugged and BatteryManager.BATTERY_PLUGGED_USB != 0}"
-        BootUpReceiver.persistBootRecoveryMarker(this, marker)
-        log.i("Boot recovery marker: $marker")
-    }
-
     private fun shouldRunIdleWatchdog(): Boolean {
         return initialised && (config.haNavigateScreensaver || config.screenSaver)
+    }
+
+    private fun restoreStartupSurface(
+        markSatelliteRunning: Boolean = false,
+        syncScreenState: Boolean = false,
+        restartIdleWatchdog: Boolean = false,
+    ) {
+        if (markSatelliteRunning) {
+            viewModel.setSatelliteRunning(true)
+        }
+        webView.setZoomLevel(config.zoomLevel)
+        if (syncScreenState) {
+            config.screenOn = !screen.isScreenOff()
+        }
+        loadStartupUrl()
+        if (restartIdleWatchdog && shouldRunIdleWatchdog()) {
+            scheduleIdleSignal()
+        }
     }
 
     private fun handleScreensaverSettingChanged(enabled: Boolean) {

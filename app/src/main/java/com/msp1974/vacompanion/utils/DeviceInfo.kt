@@ -15,8 +15,6 @@ import android.os.BatteryManager
 import android.os.Build
 import android.webkit.WebView
 import androidx.core.content.ContextCompat.getSystemService
-import com.google.firebase.Firebase
-import com.google.firebase.crashlytics.crashlytics
 import com.msp1974.vacompanion.settings.APPConfig
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
@@ -46,6 +44,7 @@ class DeviceCapabilitiesManager(val context: Context) {
 
     val log = Logger()
     val config = APPConfig.getInstance(context)
+    private val firebase = FirebaseManager.getInstance()
 
 
     fun getDeviceInfo(): DeviceCapabilitiesData {
@@ -151,7 +150,7 @@ class DeviceCapabilitiesManager(val context: Context) {
         } catch (e: IllegalArgumentException) {
             // This is crucial. Catches issues like "Illegal argument to HAL module"
             // if the cameraId or characteristics query is somehow malformed on a specific device.
-            runCatching { Firebase.crashlytics.recordException(e) }
+            firebase.logException(e)
             return false
         } catch (e: Exception) {
             // Catch other unexpected exceptions
