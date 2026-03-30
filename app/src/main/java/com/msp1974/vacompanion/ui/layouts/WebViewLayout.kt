@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.msp1974.vacompanion.settings.PageLoadingStage
@@ -89,6 +91,8 @@ fun WebView(
             .fillMaxSize(),
         factory = { context ->
             SwipeRefreshLayout(context).apply {
+                fitsSystemWindows = false
+                setPadding(0, 0, 0, 0)
                 setOnRefreshListener {
                     refreshScope.launch {
                         refreshing = true
@@ -99,6 +103,14 @@ fun WebView(
                 }
                 if (webView.parent != null) {
                     (webView.parent as ViewGroup).removeView(webView)
+                }
+                webView.fitsSystemWindows = false
+                webView.setPadding(0, 0, 0, 0)
+                ViewCompat.setOnApplyWindowInsetsListener(this) { _, _ ->
+                    WindowInsetsCompat.CONSUMED
+                }
+                ViewCompat.setOnApplyWindowInsetsListener(webView) { _, _ ->
+                    WindowInsetsCompat.CONSUMED
                 }
                 addView(webView).apply {
                     tag = "vaWebView"

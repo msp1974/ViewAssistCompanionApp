@@ -991,6 +991,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         val currentUrl = webView.url.orEmpty()
         val targetIsHomeAssistant = rawTargetUrl.startsWith(haBaseUrl, ignoreCase = true)
         val currentIsHomeAssistant = currentUrl.startsWith(haBaseUrl, ignoreCase = true)
+        val shouldReloadOnSpaSame = targetIsHomeAssistant &&
+            !isScreensaverPath(normalizedPath)
 
         if (targetIsHomeAssistant && currentIsHomeAssistant && config.accessToken.isNotBlank()) {
             val spaTargetPath = try {
@@ -1028,7 +1030,10 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             log.d("Navigate action path=$normalizedPath url=$rawTargetUrl mode=spa")
             webView.evaluateJavascript(spaScript) { result ->
                 log.d("Navigate SPA result: $result")
-                if (result != "\"spa\"" && result != "\"same\"") {
+                if (result == "\"same\"" && shouldReloadOnSpaSame) {
+                    log.d("Navigate SPA same-route fallback path=$normalizedPath url=$rawTargetUrl")
+                    webView.loadUrl(rawTargetUrl)
+                } else if (result != "\"spa\"" && result != "\"same\"") {
                     log.d("Navigate SPA fallback path=$normalizedPath url=$rawTargetUrl")
                     webView.loadUrl(rawTargetUrl)
                 }

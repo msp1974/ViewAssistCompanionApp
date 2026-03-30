@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.utils
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.graphics.Color
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -184,8 +185,12 @@ class ScreenUtils(val context: Context) : ContextWrapper(context) {
     }
 
     fun hideSystemUI(window: Window) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
             WindowInsetsControllerCompat(window, window.decorView).let { controller ->
                 controller.hide(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
