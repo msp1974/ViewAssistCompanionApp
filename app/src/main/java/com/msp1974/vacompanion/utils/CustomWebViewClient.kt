@@ -28,6 +28,7 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
     private val firebase = FirebaseManager.getInstance(config.context)
     private val resources = viewModel.resources!!
     val authUtils = AuthUtils(config)
+    private var lastBrowserIdRepairUrl: String? = null
 
     companion object {
 
@@ -139,6 +140,7 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
         ) {
             log.d("Proactively injecting external auth after page load: $url")
             authUtils.externalAuthCallback.onRequestExternalAuth(view)
+            repairViewAssistBrowserId(view, url)
         }
         if (viewModel.vacaState.value.webViewPageLoadingStage == PageLoadingStage.AUTHORISED) {
             Handler(Looper.getMainLooper()).postDelayed({
@@ -147,6 +149,51 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
             Timber.d("Page finished loading: $url")
         }
         super.onPageFinished(view, url)
+    }
+
+    private fun repairViewAssistBrowserId(view: WebView, url: String) {
+        val nativeBrowserId = "va-${config.uuid}"
+        val escapedBrowserId = nativeBrowserId.replace("\\", "\\\\").replace("'", "\\'")
+        val repairScript = """
+            (function() {
+                try {
+                    var nativeId = '$escapedBrowserId';
+                    var storedId = localStorage.getItem('view_assist_browser_id');
+                    if (storedId !== nativeId) {
+                        localStorage.setItem('view_assist_browser_id', nativeId);
+                        localStorage.removeItem('view_assist_status');
+                        localStorage.removeItem('view_assist_sensor');
+                        localStorage.removeItem('view_assist_mimic_device');
+                        return 'reset:' + (storedId || '');
+                    }
+                    return 'ok';
+                } catch (e) {
+                    return 'error:' + e.message;
+                }
+            })();
+        """.trimIndent()
+
+        view.evaluateJavascript(repairScript) { result ->
+            when {
+                result.startsWith("\"reset:") -> {
+                    if (lastBrowserIdRepairUrl == url) {
+                        log.d("Browser id repair already applied for $url")
+                        return@evaluateJavascript
+                    }
+                    lastBrowserIdRepairUrl = url
+                    log.w("Repaired stale view_assist browser id for $url result=$result")
+                    view.postDelayed({
+                        view.reload()
+                    }, 250)
+                }
+                result == "\"ok\"" -> {
+                    lastBrowserIdRepairUrl = null
+                }
+                result.startsWith("\"error:") -> {
+                    log.w("Browser id repair failed for $url result=$result")
+                }
+            }
+        }
     }
 
     fun setPageLoadingState(stage: PageLoadingStage) {

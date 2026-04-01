@@ -46,6 +46,15 @@ import kotlin.concurrent.atomics.plusAssign
 import kotlin.concurrent.thread
 
 class ClientHandler(private val context: Context, private val server: WyomingTCPServer, private val client: Socket) {
+    companion object {
+        private const val UNHEALTHY_SOCKET_WINDOW_MS = 60_000L
+        private const val UNHEALTHY_SOCKET_THRESHOLD = 3
+        private const val UNHEALTHY_BROADCAST_COOLDOWN_MS = 120_000L
+
+        private val recentSocketFailuresMs = ArrayDeque<Long>()
+        private var lastUnhealthyBroadcastMs = 0L
+    }
+
     private val log = Logger()
     private val config: APPConfig = APPConfig.getInstance(context)
     private val client_id = client.port
@@ -872,11 +881,59 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             writer.flush()
         } catch (ex: SocketException) {
             log.e("Error sending event: $ex. Likely just a closed socket and not an error!")
+            noteSocketFailure("write:${p.type}")
             runClient = false
         } catch (ex: Exception) {
             log.e("Unknown error sending event: $ex")
         }
 
+    }
+
+    private fun noteSocketFailure(reason: String) {
+        if (server.pipelineClient != this || satelliteStatus != SatelliteState.RUNNING) {
+            return
+        }
+
+        val screensaverPath = config.haScreensaverDashboard.trim()
+        val currentPath = config.currentPath.trim()
+        if (
+            !config.haNavigateScreensaver ||
+            screensaverPath.isBlank() ||
+            !currentPath.startsWith(screensaverPath)
+        ) {
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        var shouldBroadcast = false
+        synchronized(ClientHandler::class.java) {
+            while (
+                recentSocketFailuresMs.isNotEmpty() &&
+                now - recentSocketFailuresMs.first() > UNHEALTHY_SOCKET_WINDOW_MS
+            ) {
+                recentSocketFailuresMs.removeFirst()
+            }
+            recentSocketFailuresMs.addLast(now)
+            if (
+                recentSocketFailuresMs.size >= UNHEALTHY_SOCKET_THRESHOLD &&
+                now - lastUnhealthyBroadcastMs > UNHEALTHY_BROADCAST_COOLDOWN_MS
+            ) {
+                lastUnhealthyBroadcastMs = now
+                recentSocketFailuresMs.clear()
+                shouldBroadcast = true
+            }
+        }
+
+        if (shouldBroadcast) {
+            log.w(
+                "Detected repeated socket failures on screensaver path=$currentPath; requesting webview session recovery"
+            )
+            BroadcastSender.sendBroadcast(
+                context,
+                BroadcastSender.WEBVIEW_SESSION_UNHEALTHY,
+                "$reason path=$currentPath"
+            )
+        }
     }
 
 

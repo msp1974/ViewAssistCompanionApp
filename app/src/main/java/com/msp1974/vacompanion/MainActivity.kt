@@ -107,6 +107,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private var bootRecoveryStartUp: Boolean = false
     private var screenSleepWaitJob: Job? = null
     private var idleSignalJob: Job? = null
+    private var webViewRecoveryJob: Job? = null
+    private var lastWebViewRecoveryMs: Long = 0L
 
 
 
@@ -341,6 +343,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             addAction(BroadcastSender.SATELLITE_STOPPED)
             addAction(BroadcastSender.VERSION_MISMATCH)
             addAction(BroadcastSender.WEBVIEW_CRASH)
+            addAction(BroadcastSender.WEBVIEW_SESSION_UNHEALTHY)
         }
         LocalBroadcastManager.getInstance(this)
             .registerReceiver(satelliteBroadcastReceiver, filter)
@@ -389,6 +392,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 BroadcastSender.WEBVIEW_CRASH -> {
                     initWebView()
                     restoreStartupSurface()
+                }
+                BroadcastSender.WEBVIEW_SESSION_UNHEALTHY -> {
+                    recoverWebViewSession(intent.getStringExtra("extra").orEmpty())
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     if (initialised) {
@@ -830,6 +836,53 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     private fun shouldRunIdleWatchdog(): Boolean {
         return initialised && (config.haNavigateScreensaver || config.screenSaver)
+    }
+
+    private fun forceLoadPath(path: String) {
+        val normalizedPath = when {
+            path.startsWith("http://") || path.startsWith("https://") -> path
+            path.startsWith("/") -> path
+            else -> "/$path"
+        }
+        val targetUrl = if (
+            normalizedPath.startsWith("http://") ||
+            normalizedPath.startsWith("https://")
+        ) {
+            normalizedPath
+        } else {
+            AuthUtils.getURL(
+                AuthUtils.getHAUrl(config, withDashboardPath = false).removeSuffix("/") + normalizedPath
+            )
+        }
+        log.d("Force loading path=$normalizedPath url=$targetUrl")
+        webView.loadUrl(targetUrl)
+    }
+
+    private fun recoverWebViewSession(reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastWebViewRecoveryMs < 60_000L) {
+            log.d("Skipping webview recovery due to cooldown reason=$reason")
+            return
+        }
+        val path = config.currentPath.ifBlank {
+            if (config.homeAssistantDashboard.isNotBlank()) {
+                "/${config.homeAssistantDashboard.removePrefix("/")}"
+            } else {
+                "/view-assist/clock"
+            }
+        }
+        lastWebViewRecoveryMs = now
+        log.w("Recovering webview session reason=$reason path=$path")
+        webViewRecoveryJob?.cancel()
+        webViewRecoveryJob = lifecycleScope.launch {
+            webView.stopLoading()
+            if (isScreensaverPath(path)) {
+                forceLoadPath("/view-assist/clock")
+                delay(1500)
+            }
+            forceLoadPath(path)
+            webViewRecoveryJob = null
+        }
     }
 
     private fun restoreStartupSurface(
