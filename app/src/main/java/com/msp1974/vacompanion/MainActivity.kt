@@ -2,8 +2,10 @@ package com.msp1974.vacompanion
 
 import android.Manifest.permission
 import android.annotation.SuppressLint
+import android.app.AlarmManager
 import android.app.AlertDialog
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.UiModeManager
 import android.app.admin.DevicePolicyManager
 import android.content.BroadcastReceiver
@@ -83,6 +85,7 @@ import java.time.format.DateTimeFormatter
 import java.net.URL
 import kotlin.getValue
 import kotlin.math.max
+import kotlin.system.exitProcess
 
 
 class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
@@ -109,6 +112,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private var idleSignalJob: Job? = null
     private var webViewRecoveryJob: Job? = null
     private var lastWebViewRecoveryMs: Long = 0L
+    private var lastUiRestartMs: Long = 0L
 
 
 
@@ -637,6 +641,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "refresh" -> webView.reload()
                 "screenWake" -> screenWake()
                 "screenSleep" -> screenSleep(forcePhysicalOff = true)
+                "restartUi" -> restartUi("custom-action")
                 "screenOrientationMode" -> setScreenOrientation(event.newValue as String)
                 "navigate" -> {
                     val path = event.newValue as String
@@ -858,31 +863,87 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         webView.loadUrl(targetUrl)
     }
 
+    private fun getHomePath(): String {
+        val configuredPath = config.homeAssistantDashboard.trim()
+        return when {
+            configuredPath.isBlank() -> "/view-assist/clock"
+            configuredPath.startsWith("/") -> configuredPath
+            else -> "/$configuredPath"
+        }
+    }
+
     private fun recoverWebViewSession(reason: String) {
         val now = System.currentTimeMillis()
         if (now - lastWebViewRecoveryMs < 60_000L) {
             log.d("Skipping webview recovery due to cooldown reason=$reason")
             return
         }
-        val path = config.currentPath.ifBlank {
-            if (config.homeAssistantDashboard.isNotBlank()) {
-                "/${config.homeAssistantDashboard.removePrefix("/")}"
-            } else {
-                "/view-assist/clock"
-            }
-        }
+        val homePath = getHomePath()
+        val path = config.currentPath.ifBlank { homePath }
         lastWebViewRecoveryMs = now
         log.w("Recovering webview session reason=$reason path=$path")
         webViewRecoveryJob?.cancel()
         webViewRecoveryJob = lifecycleScope.launch {
             webView.stopLoading()
             if (isScreensaverPath(path)) {
-                forceLoadPath("/view-assist/clock")
+                forceLoadPath(homePath)
                 delay(1500)
             }
             forceLoadPath(path)
             webViewRecoveryJob = null
         }
+    }
+
+    private fun restartUi(reason: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastUiRestartMs < 60_000L) {
+            log.d("Skipping UI restart due to cooldown reason=$reason")
+            return
+        }
+
+        val launchIntent = Intent(this, MainActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+            putExtra(BootUpReceiver.EXTRA_BOOT_RECOVERY, true)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            applicationContext,
+            2,
+            launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val alarmManager = getSystemService(ALARM_SERVICE) as AlarmManager
+
+        lastUiRestartMs = now
+        log.w("Restarting UI reason=$reason currentPath=${config.currentPath}")
+        try {
+            screenWake()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 750L,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + 750L,
+                    pendingIntent
+                )
+            }
+        } catch (ex: Exception) {
+            log.e("Failed to schedule UI restart reason=$reason error=$ex")
+            return
+        }
+
+        webView.stopLoading()
+        finishAffinity()
+        finishAndRemoveTask()
+        android.os.Process.killProcess(android.os.Process.myPid())
+        exitProcess(0)
     }
 
     private fun restoreStartupSurface(
@@ -1102,11 +1163,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     private fun loadStartupUrl() {
-        val startupPath = if (config.homeAssistantDashboard.isNotBlank()) {
-            "/${config.homeAssistantDashboard.removePrefix("/")}"
-        } else {
-            "/view-assist/clock"
-        }
+        val startupPath = getHomePath()
         val startupUrl = AuthUtils.getURL(
             AuthUtils.getHAUrl(config, withDashboardPath = false).removeSuffix("/") + startupPath
         )

@@ -474,6 +474,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             "screen-sleep" -> {
                 config.eventBroadcaster.notifyEvent(Event("screenSleep", "", ""))
             }
+            "restart-ui" -> {
+                config.eventBroadcaster.notifyEvent(Event("restartUi", "", ""))
+            }
             "navigate" -> {
                 if (event.getProp("payload") != "") {
                     try {
