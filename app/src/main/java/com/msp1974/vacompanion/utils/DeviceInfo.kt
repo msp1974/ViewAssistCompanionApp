@@ -45,7 +45,6 @@ class DeviceCapabilitiesManager(val context: Context) {
     val log = Logger()
     private val firebase = FirebaseManager.getInstance(context)
     val config = APPConfig.getInstance(context)
-    private val firebase = FirebaseManager.getInstance()
 
 
     fun getDeviceInfo(): DeviceCapabilitiesData {

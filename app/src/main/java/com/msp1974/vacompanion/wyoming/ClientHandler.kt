@@ -76,6 +76,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
     private var expectingTTSResponse: Boolean = false
     private var lastResponseIsQuestion: Boolean = false
+    private var pipelineStartPending: Boolean = false
 
     // Initiate wake word broadcast receiver
     var wakeWordBroadcastReceiver: BroadcastReceiver = object : BroadcastReceiver() {
@@ -94,6 +95,12 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                             }
                             else -> {
                                 if (intent.action == BroadcastSender.WAKE_WORD_DETECTED) {
+                                    if (pipelineStartPending || pipelineStatus != PipelineStatus.INACTIVE || expectingTTSResponse) {
+                                        log.d(
+                                            "Ignoring wake word while pipeline active status=$pipelineStatus pending=$pipelineStartPending expectingTTS=$expectingTTSResponse"
+                                        )
+                                        return
+                                    }
                                     volumeDucking("all", true)
                                     sendWakeWordDetection()
                                     sendStartPipeline()
@@ -175,6 +182,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             // Reset status vars
             expectingTTSResponse = false
             lastResponseIsQuestion = false
+            notifyVoiceIndicatorPhase("NONE")
 
             if (server.pipelineClient != null) {
                 log.d("Satellite taken over by $client_id from ${server.pipelineClient?.client_id}")
@@ -201,6 +209,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     private fun stopSatellite() {
         log.d("Stopping satellite for $client_id")
         LocalBroadcastManager.getInstance(context).unregisterReceiver(wakeWordBroadcastReceiver)
+        notifyVoiceIndicatorPhase("NONE")
         if (server.pipelineClient == this) {
             if (pipelineStatus == PipelineStatus.LISTENING) {
                 releaseInputAudioStream()
@@ -277,6 +286,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
                     "transcribe" -> {
                         // Sent when requesting voice command
+                        pipelineStartPending = false
+                        notifyVoiceIndicatorPhase("LISTENING")
                         volumeDucking("all", true)
                         requestInputAudioStream()
                         setPipelineNextStageTimeout(10)
@@ -284,16 +295,20 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
                     "voice-started" -> {
                         // Sent when detected voice command started
+                        pipelineStartPending = false
+                        notifyVoiceIndicatorPhase("LISTENING")
                         setPipelineNextStageTimeout(30)
                     }
 
                     "voice-stopped" -> {
                         // Sent when detected voice command stopped
+                        notifyVoiceIndicatorPhase("THINKING")
                         setPipelineNextStageTimeout(15)
                     }
 
                     "transcript" -> {
                         // Sent when STT converted voice command to text
+                        notifyVoiceIndicatorPhase("THINKING")
                         releaseInputAudioStream()
                         if (event.getProp("text").lowercase().contains("never mind")) {
                             volumeDucking("all", false)
@@ -308,12 +323,15 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                         lastResponseIsQuestion =
                             (event.getProp("text").replace("\n", "").endsWith("?"))
                         expectingTTSResponse = true
+                        notifyVoiceIndicatorPhase("THINKING")
                         setPipelineNextStageTimeout(10)
                     }
 
                     "pipeline-ended" -> {
                         // Sent when pipeline has finished
+                        pipelineStartPending = false
                         if (!expectingTTSResponse) {
+                            notifyVoiceIndicatorPhase("NONE")
                             cancelPipelineNextStageTimeout()
                             volumeDucking("all", false)
                         }
@@ -324,7 +342,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
 
                     "audio-start" -> {
                         // Sent when audio stream about to start
+                        pipelineStartPending = false
                         expectingTTSResponse = false  // This is it so reset expecting
+                        notifyVoiceIndicatorPhase("SPEAKING")
                         cancelPipelineNextStageTimeout() // Playing audio, cancel any timeout
                         pipelineStatus = PipelineStatus.STREAMING
                         volumeDucking("all", true)  // Duck here if announcement
@@ -344,6 +364,7 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                             pcmMediaPlayer.stop()
                         }
                         pipelineStatus = PipelineStatus.INACTIVE
+                        notifyVoiceIndicatorPhase("NONE")
                         sendEvent(
                             "played",
                         )
@@ -357,6 +378,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
                     }
 
                     "error" -> {
+                        pipelineStartPending = false
+                        notifyVoiceIndicatorPhase("NONE")
                         config.eventBroadcaster.notifyEvent(Event("recognitionError", "", event.getProp("code")))
                         resetPipeline()
                     }
@@ -395,7 +418,9 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
 
     private fun resetPipeline() {
+        pipelineStartPending = false
         expectingTTSResponse = false
+        notifyVoiceIndicatorPhase("NONE")
 
         volumeDucking("all", false)
 
@@ -674,6 +699,8 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
     }
 
     fun sendStartPipeline() {
+        pipelineStartPending = true
+        notifyVoiceIndicatorPhase("LISTENING")
         sendEvent(
             "run-pipeline",
             buildJsonObject {
@@ -689,6 +716,10 @@ class ClientHandler(private val context: Context, private val server: WyomingTCP
             }
         )
         lastResponseIsQuestion = false
+    }
+
+    private fun notifyVoiceIndicatorPhase(phase: String) {
+        config.eventBroadcaster.notifyEvent(Event("voiceIndicatorPhase", "", phase))
     }
 
     fun sendAudioStop() {

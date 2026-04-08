@@ -31,6 +31,7 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.components.DiagnosticBar
+import com.msp1974.vacompanion.ui.components.VoiceEdgeIndicator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -49,6 +50,13 @@ fun WebViewScreen (webView: WebView, vaViewModel: VAViewModel = viewModel()) {
 
         Box(modifier = modifier) {
             WebView(webView, swipeRefreshEnabled = vaViewModel.config!!.swipeRefresh)
+        }
+
+        if (!vaUiState.isDND) {
+            VoiceEdgeIndicator(
+                state = vaUiState.voiceIndicator,
+                modifier = Modifier.align(Alignment.Center)
+            )
         }
 
         if (vaUiState.webViewPageLoadingStage != PageLoadingStage.LOADED && false) {

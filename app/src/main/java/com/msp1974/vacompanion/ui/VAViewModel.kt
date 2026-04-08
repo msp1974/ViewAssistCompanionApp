@@ -32,6 +32,7 @@ data class State(
 
     var appInfo: Map<String, String> = mapOf(),
     var diagnosticInfo: DiagnosticInfo = DiagnosticInfo(),
+    var voiceIndicator: VoiceIndicatorState = VoiceIndicatorState(),
 
     var showAlertDialog: Boolean = false,
     var alertDialog: VADialog? = null,
@@ -128,6 +129,36 @@ class VAViewModel: ViewModel(), EventListener {
                     currentState.copy(
                         diagnosticInfo = data
                     )
+                }
+            }
+            "voiceIndicatorPhase" -> {
+                val phase = when (event.newValue as String) {
+                    "LISTENING" -> VoiceIndicatorPhase.LISTENING
+                    "THINKING" -> VoiceIndicatorPhase.THINKING
+                    "SPEAKING" -> VoiceIndicatorPhase.SPEAKING
+                    else -> VoiceIndicatorPhase.NONE
+                }
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        voiceIndicator = currentState.voiceIndicator.copy(
+                            show = phase != VoiceIndicatorPhase.NONE,
+                            phase = phase,
+                            audioLevel = if (phase == VoiceIndicatorPhase.NONE) 0f else currentState.voiceIndicator.audioLevel
+                        )
+                    )
+                }
+            }
+            "voiceIndicatorLevel" -> {
+                val level = (event.newValue as Float).coerceIn(0f, 1f)
+                consumed = false
+                _vacaState.update { currentState ->
+                    if (!currentState.voiceIndicator.show) {
+                        currentState
+                    } else {
+                        currentState.copy(
+                            voiceIndicator = currentState.voiceIndicator.copy(audioLevel = level)
+                        )
+                    }
                 }
             }
             else -> consumed = false
@@ -312,4 +343,12 @@ data class DiagnosticInfo(
     var mode: AudioRouteOption = AudioRouteOption.NONE,
     var wakeWord: String = "",
     var vadDetection: Boolean = false
+)
+
+enum class VoiceIndicatorPhase { NONE, LISTENING, THINKING, SPEAKING }
+
+data class VoiceIndicatorState(
+    var show: Boolean = false,
+    var phase: VoiceIndicatorPhase = VoiceIndicatorPhase.NONE,
+    var audioLevel: Float = 0f
 )

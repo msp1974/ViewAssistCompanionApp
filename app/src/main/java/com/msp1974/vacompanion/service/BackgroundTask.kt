@@ -374,6 +374,7 @@ internal class BackgroundTaskController (private val context: Context): EventLis
                     }
 
                     is WakeWordEngineProvider.AudioResult.AudioLevel -> {
+                        sendVoiceIndicatorLevel(it.level)
                         if (config.diagnosticsEnabled) {
                             sendDiagnostics(it.level, lastWakeWordDetectionScore)
                         }
@@ -396,6 +397,7 @@ internal class BackgroundTaskController (private val context: Context): EventLis
         engine = null
         engineStarted = false
         sendDiagnostics(0f, 0f)
+        sendVoiceIndicatorLevel(0f)
         Timber.d("Wake word detection terminated")
     }
 
@@ -501,6 +503,12 @@ internal class BackgroundTaskController (private val context: Context): EventLis
             val event = Event("diagnosticStats", "", data)
             config.eventBroadcaster.notifyEvent(event)
         }
+    }
+
+    fun sendVoiceIndicatorLevel(audioLevel: Float) {
+        config.eventBroadcaster.notifyEvent(
+            Event("voiceIndicatorLevel", "", audioLevel.coerceIn(0f, 1f))
+        )
     }
 
 
