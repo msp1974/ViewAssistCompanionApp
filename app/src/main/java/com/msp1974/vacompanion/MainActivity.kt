@@ -1464,6 +1464,30 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     override fun onTrimMemory(level: Int) {
+        val levelLabel = trimMemoryLevelLabel(level)
+        log.w("onTrimMemory level=$level label=$levelLabel currentPath=${config.currentPath}")
+
+        if (level == TRIM_MEMORY_COMPLETE) {
+            firebaseManager?.logEvent(
+                FirebaseManager.TRIM_MEMORY_BACKGROUND,
+                mapOf("level" to level.toString(), "label" to levelLabel)
+            )
+            restartUi("trim-memory-$levelLabel")
+            super.onTrimMemory(level)
+            return
+        }
+
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) {
+            firebaseManager?.logEvent(
+                FirebaseManager.TRIM_MEMORY_BACKGROUND,
+                mapOf("level" to level.toString(), "label" to levelLabel, "action" to "soft-recovery")
+            )
+            Runtime.getRuntime().gc()
+            recoverWebViewSession("trim-memory-$levelLabel")
+            super.onTrimMemory(level)
+            return
+        }
+
         // Try and prevent the app being killed by memory manager
         if (level >= TRIM_MEMORY_UI_HIDDEN) {
             // Release memory related to UI elements, such as bitmap caches.
@@ -1481,5 +1505,23 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         super.onTrimMemory(level)
     }
+
+    override fun onLowMemory() {
+        log.w("onLowMemory currentPath=${config.currentPath}")
+        restartUi("low-memory")
+        super.onLowMemory()
+    }
+
+    private fun trimMemoryLevelLabel(level: Int): String =
+        when (level) {
+            TRIM_MEMORY_RUNNING_MODERATE -> "running-moderate"
+            TRIM_MEMORY_RUNNING_LOW -> "running-low"
+            TRIM_MEMORY_RUNNING_CRITICAL -> "running-critical"
+            TRIM_MEMORY_UI_HIDDEN -> "ui-hidden"
+            TRIM_MEMORY_BACKGROUND -> "background"
+            TRIM_MEMORY_MODERATE -> "moderate"
+            TRIM_MEMORY_COMPLETE -> "complete"
+            else -> "unknown-$level"
+        }
 }
 
