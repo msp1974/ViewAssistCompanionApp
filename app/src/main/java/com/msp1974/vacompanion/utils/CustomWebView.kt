@@ -83,7 +83,7 @@ class CustomWebView @JvmOverloads constructor(
             addJavascriptInterface(WebAppInterface(webViewClientA.config, ViewAssistEventHandler), "ViewAssistApp")
 
             removeJavascriptInterface("externalApp")
-            addJavascriptInterface(WebViewJavascriptInterface(this, AuthUtils(config).externalAuthCallback), "externalApp")
+            addJavascriptInterface(WebViewJavascriptInterface(this, webViewClientA.authUtils.externalAuthCallback), "externalApp")
         }
     }
 
