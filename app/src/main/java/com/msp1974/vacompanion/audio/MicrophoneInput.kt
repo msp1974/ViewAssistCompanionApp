@@ -5,6 +5,7 @@ import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import androidx.annotation.RequiresPermission
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
@@ -27,6 +28,10 @@ class MicrophoneInput (
 
     private var audioDSP = AudioDSP()
 
+    private val disableAndroidAudioEffects: Boolean by lazy {
+        config.disableAndroidAudioEffects || isKnownProblematicAndroidAudioEffectsDevice()
+    }
+
     private val bufferSize =
         AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
 
@@ -41,7 +46,11 @@ class MicrophoneInput (
         }
 
         if (!isRecording) {
-            Timber.d("Starting microphone with AGC=${agc != null}, AEC=${aec != null}, NS=${ns != null}")
+            val useSpeex = disableAndroidAudioEffects || !AutomaticGainControl.isAvailable()
+            Timber.d(
+                "Starting microphone with AndroidAudioEffectsDisabled=$disableAndroidAudioEffects, " +
+                    "AGC=${agc != null}, AEC=${aec != null}, NS=${ns != null}, Speex=$useSpeex"
+            )
             audioRecord?.startRecording()
         } else {
             Timber.w("Microphone already started")
@@ -62,7 +71,7 @@ class MicrophoneInput (
         val audioRecord = this.audioRecord ?: error("Microphone not started")
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
-            if (useSpeex && !AutomaticGainControl.isAvailable()) {
+            if (useSpeex && (disableAndroidAudioEffects || !AutomaticGainControl.isAvailable())) {
                 speex.echoSuppressionEnabled = false
                 speex.denoiseEnabled = false
                 speex.setMaxAGCGain(10f + (config.micGain * 1.95f))
@@ -98,22 +107,75 @@ class MicrophoneInput (
     }
 
     private fun setupAudioEffects() {
+        if (disableAndroidAudioEffects) {
+            agc = null
+            aec = null
+            ns = null
+            Timber.w(
+                "Android audio effects disabled for stability. " +
+                    "manufacturer=${Build.MANUFACTURER}, brand=${Build.BRAND}, model=${Build.MODEL}, " +
+                    "device=${Build.DEVICE}, product=${Build.PRODUCT}"
+            )
+            return
+        }
+
         val sessionId = audioRecord?.audioSessionId ?: return
+
         try {
             if (AutomaticGainControl.isAvailable()) {
                 agc = AutomaticGainControl.create(sessionId)
                 agc?.enabled = true
             }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to enable Android AutomaticGainControl")
+            agc = null
+        }
+
+        try {
             if (AcousticEchoCanceler.isAvailable()) {
                 aec = AcousticEchoCanceler.create(sessionId)
                 aec?.enabled = true
             }
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to enable Android AcousticEchoCanceler")
+            aec = null
+        }
 
+        try {
             if (NoiseSuppressor.isAvailable()) {
                 ns = NoiseSuppressor.create(sessionId)
                 ns?.enabled = true
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            Timber.w(e, "Failed to enable Android NoiseSuppressor")
+            ns = null
+        }
+    }
+
+    private fun isKnownProblematicAndroidAudioEffectsDevice(): Boolean {
+        return isLenovoTb8505fs()
+    }
+
+    private fun isLenovoTb8505fs(): Boolean {
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val brand = Build.BRAND.orEmpty().lowercase()
+        val model = Build.MODEL.orEmpty().lowercase()
+        val device = Build.DEVICE.orEmpty().lowercase()
+        val product = Build.PRODUCT.orEmpty().lowercase()
+        val fingerprint = Build.FINGERPRINT.orEmpty().lowercase()
+
+        val isLenovo =
+            manufacturer.contains("lenovo") ||
+                brand.contains("lenovo") ||
+                fingerprint.contains("lenovo")
+        val isTb8505fs =
+            model.contains("tb-8505fs") ||
+                device.contains("8505") ||
+                product.contains("8505") ||
+                fingerprint.contains("lenovotb-8505fs") ||
+                fingerprint.contains("8505fs")
+
+        return isLenovo && isTb8505fs
     }
 
     override fun close() {

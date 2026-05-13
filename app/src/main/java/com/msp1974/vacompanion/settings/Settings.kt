@@ -88,6 +88,10 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var disableAndroidAudioEffects: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var wakeWordEngine: String by Delegates.observable("openwakeword") { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -290,6 +294,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["ha_url"]?.jsonPrimitive?.contentOrNull?.let { homeAssistantURL = it }
         settings["ha_dashboard"]?.jsonPrimitive?.contentOrNull?.let { homeAssistantDashboard = it }
         settings["advanced_gain"]?.jsonPrimitive?.booleanOrNull?.let { useAdvancedGain = it }
+        settings["disable_android_audio_effects"]?.jsonPrimitive?.booleanOrNull?.let { disableAndroidAudioEffects = it }
         settings["wake_word_engine"]?.jsonPrimitive?.contentOrNull?.let { wakeWordEngine = it }
         settings["wake_word"]?.jsonPrimitive?.contentOrNull?.let { wakeWord = it }
         settings["wake_word_sound"]?.jsonPrimitive?.contentOrNull?.let { wakeWordSound = it }
