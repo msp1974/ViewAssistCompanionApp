@@ -36,6 +36,23 @@ enum class PageLoadingStage {
     ERROR
 }
 
+enum class WifiLockMode(val settingValue: String) {
+    OFF("off"),
+    RECONNECT_ONLY("reconnect_only"),
+    ALWAYS("always");
+
+    companion object {
+        fun fromSettingValue(value: String?): WifiLockMode {
+            return when (value?.lowercase()) {
+                OFF.settingValue -> OFF
+                ALWAYS.settingValue -> ALWAYS
+                RECONNECT_ONLY.settingValue -> RECONNECT_ONLY
+                else -> RECONNECT_ONLY
+            }
+        }
+    }
+}
+
 class APPConfig @Inject constructor(val context: Context) {
     private val sharedPrefs = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
     private val log = Logger()
@@ -202,6 +219,13 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var wifiLockMode: WifiLockMode by Delegates.observable(
+        WifiLockMode.fromSettingValue(sharedPrefs.getString("wifi_lock_mode", WifiLockMode.RECONNECT_ONLY.settingValue))
+    ) { property, oldValue, newValue ->
+        sharedPrefs.edit { putString("wifi_lock_mode", newValue.settingValue) }
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var enableMotionDetection: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -318,6 +342,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_on_motion"]?.jsonPrimitive?.booleanOrNull?.let { screenOnMotion = it }
         settings["screen_on"]?.jsonPrimitive?.booleanOrNull?.let { screenOn = it }
         settings["enable_network_recovery"]?.jsonPrimitive?.booleanOrNull?.let { enableNetworkRecovery = it }
+        settings["wifi_lock_mode"]?.jsonPrimitive?.contentOrNull?.let { wifiLockMode = WifiLockMode.fromSettingValue(it) }
         settings["enable_motion_detection"]?.jsonPrimitive?.booleanOrNull?.let { enableMotionDetection = it }
         settings["motion_detection_sensitivity"]?.jsonPrimitive?.intOrNull?.let { motionDetectionSensitivity = it }
         settings["screen_timeout"]?.jsonPrimitive?.intOrNull?.let { screenTimeout = it * 1000 }

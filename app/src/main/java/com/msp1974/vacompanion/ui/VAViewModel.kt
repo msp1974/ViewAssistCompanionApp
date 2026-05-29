@@ -13,6 +13,7 @@ import com.msp1974.vacompanion.data.NetworkStatus
 import com.msp1974.vacompanion.data.NetworkStatusManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.PageLoadingStage
+import com.msp1974.vacompanion.settings.WifiLockMode
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Helpers
@@ -109,6 +110,7 @@ class VAViewModel @Inject constructor(
     var resources: Resources = application.resources
     var permissions: Permissions = Permissions(application.applicationContext, config)
     val network = Network(application.applicationContext)
+    private var currentNetworkStatus = NetworkStatus.Available
 
     val changedNetworkStatus = networkStatusManager.networkStatus
         .dropWhile { it.status == NetworkStatus.Available }
@@ -117,10 +119,9 @@ class VAViewModel @Inject constructor(
     init {
         _vacaState.value = State()
 
-        network.setWifiLock()
-
         config.eventBroadcaster.addListener(this)
         initValues()
+        applyWifiLockMode(currentNetworkStatus, "initial")
         buildAppInfo()
         startNetworkMonitor()
     }
@@ -141,7 +142,17 @@ class VAViewModel @Inject constructor(
     }
 
     override fun close() {
-        network.releaseWifiLock()
+        releaseResources("view_model_close")
+    }
+
+    override fun onCleared() {
+        releaseResources("view_model_cleared")
+        super.onCleared()
+    }
+
+    private fun releaseResources(reason: String) {
+        network.releaseWifiLock(reason)
+        config.eventBroadcaster.removeListener(this)
     }
 
     fun startNetworkMonitor() {
@@ -229,6 +240,7 @@ class VAViewModel @Inject constructor(
                     )
                 }
             }
+            "wifiLockMode", "wifi_lock_mode" -> applyWifiLockMode(currentNetworkStatus, "setting_changed")
             "diagnosticStats" -> {
                 val data = event.newValue as DiagnosticInfo
                 consumed = false  //Do not log event as very numerous
@@ -312,16 +324,35 @@ class VAViewModel @Inject constructor(
 
     fun onNetworkStateChange(status: NetworkStatus) {
         Timber.d("Network status: $status")
+        currentNetworkStatus = status
         _vacaState.update { currentState ->
             currentState.copy(
                 isNetworkConnected = status == NetworkStatus.Available
             )
         }
+        applyWifiLockMode(status, "network_status_$status")
         when (status) {
             NetworkStatus.Unavailable  -> setStatusMessage(application.getString(R.string.status_waiting_for_network))
             NetworkStatus.Available -> setStatusMessage(getString(application.applicationContext, R.string.status_waiting_for_connection))
         }
         buildAppInfo()
+    }
+
+    private fun applyWifiLockMode(status: NetworkStatus, reason: String) {
+        Timber.i("WiFi lock mode: ${config.wifiLockMode} reason=$reason networkStatus=$status")
+        when (config.wifiLockMode) {
+            WifiLockMode.OFF -> {
+                Timber.i("WiFi lock acquire skipped: mode=OFF reason=$reason")
+                network.releaseWifiLock("mode_off_$reason")
+            }
+            WifiLockMode.RECONNECT_ONLY -> {
+                when (status) {
+                    NetworkStatus.Unavailable -> network.acquireWifiLockBounded("network_unavailable_$reason")
+                    NetworkStatus.Available -> network.releaseWifiLock("network_available_$reason")
+                }
+            }
+            WifiLockMode.ALWAYS -> network.acquireWifiLockUnboundedForAlwaysMode("always_mode_$reason")
+        }
     }
 
     private fun buildAppInfo() {
