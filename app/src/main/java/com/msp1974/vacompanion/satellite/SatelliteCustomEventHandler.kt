@@ -123,6 +123,9 @@ class SatelliteCustomEventHandler(
             "screenOn" -> {
                 satellite.sendSetting("screen_on", event.newValue as Boolean)
             }
+            "screenState" -> {
+                satellite.sendScreenStatus(event.newValue as Boolean)
+            }
             "enableMotionDetection" -> {
                 val state = event.newValue as Boolean
                 if (state) {

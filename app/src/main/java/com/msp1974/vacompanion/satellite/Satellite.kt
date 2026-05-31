@@ -156,11 +156,11 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
     }
 
     fun sendDeviceStates() {
-        // TODO: Do not put screen state in here as conflicts with update in MainActivity on satellite start
         sendStatus(
             buildJsonObject {
                 putJsonObject("sensors", {
                     put("do_not_disturb", DeviceCapabilitiesManager.isDoNotDisturbEnabled(context))
+                    put("screen_on", ScreenUtils(context, config).isScreenOn())
                 })
                 putJsonObject("media_player", {
                     put("playing", false)
@@ -549,6 +549,17 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
     // *************************************************************************
     fun sendStatus(data: JsonObject) {
         sendCustomEvent("status", data)
+    }
+
+    fun sendScreenStatus(active: Boolean) {
+        sendStatus(
+            buildJsonObject {
+                put("timestamp", isoNow())
+                putJsonObject("sensors") {
+                    put("screen_on", active)
+                }
+            }
+        )
     }
 
     fun sendSetting(name: String, value: Any) {

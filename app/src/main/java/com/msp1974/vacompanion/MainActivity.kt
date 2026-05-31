@@ -622,6 +622,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     fun setScreenOn(active: Boolean) {
         config.screenOn = active
+        config.eventBroadcaster.notifyEvent(Event("screenState", "", active))
     }
 
     fun screenWake(reason: String = "explicit_wake") {
