@@ -516,10 +516,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 when (event.eventName) {
                     "screenAlwaysOn" -> {
                         val enabled = event.newValue as Boolean
-                        //if (enabled) {
-                            //screenWake()
-                        //}
-                        screen.setScreenAlwaysOn(window, enabled)
+                        if (enabled) {
+                            screen.setScreenAlwaysOn(window, true, "setting_screenAlwaysOn")
+                        } else {
+                            screen.allowPhysicalSleep(this, window, "setting_screenAlwaysOn_false")
+                        }
                     }
                     "screenAutoBrightness" -> {
                         if (screen.isScreenOn() and !viewModel.vacaState.value.screenBlank) {
@@ -549,13 +550,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "textSize" -> webView.setTextSize(event.newValue as Int)
                 "darkMode" -> setDarkMode(event.newValue as Boolean)
                 "refresh" -> webView.refresh()
-                "screenWake" -> screenWake()
-                "screenSleep" -> screenSleep()
+                "screenWake" -> screenWake("event_screenWake")
+                "screenSleep" -> screenSleep("event_screenSleep")
                 "screenOn" -> screenOn(event.newValue as Boolean)
                 "screenSaver" -> screenSaver(event.newValue as Boolean)
                 "screenOrientationMode" -> setScreenOrientation(event.newValue as String)
-                "deviceBump" -> if (config.screenOnBump) screenWake()
-                "proximity" -> if (config.screenOnProximity && event.newValue as Float == 0f) screenWake()
+                "deviceBump" -> if (config.screenOnBump) screenWake("device_bump")
+                "proximity" -> if (config.screenOnProximity && event.newValue as Float == 0f) screenWake("proximity")
                 "motion" -> onMotion()
                 "showToastMessage" -> Toast.makeText(
                     this,
@@ -577,7 +578,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     fun onMotion() {
         config.lastMotion = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
-        if (config.screenOnMotion) screenWake()
+        if (config.screenOnMotion) screenWake("motion")
     }
 
     fun setScreenOrientation(mode: String) {
@@ -594,13 +595,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         if (active) {
             Timber.d("Enabling screen saver")
             viewModel.setScreenBlank(true)
-            screen.setScreenAlwaysOn(window, true)
+            screen.setScreenAlwaysOn(window, true, "screen_saver_enabled")
             screen.setScreenAutoBrightness(window, false)
             screen.setScreenBrightness(window, 0.01f)
         } else {
             Timber.d("Disabling screen saver")
             viewModel.setScreenBlank(false)
-            screen.setScreenAlwaysOn(window, config.screenAlwaysOn)
+            screen.setScreenAlwaysOn(window, config.screenAlwaysOn, "screen_saver_disabled")
             screen.setScreenAutoBrightness(window, config.screenAutoBrightness)
             screen.setScreenBrightness(window, config.screenBrightness)
         }
@@ -613,9 +614,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     fun screenOn(active: Boolean) {
         Timber.d("Screen status: isOff: ${screen.isScreenOff()}, isOn: ${screen.isScreenOn()}")
         if (active) {
-            screenWake()
+            screenWake("screen_on_setting")
         } else {
-            screenSleep()
+            screenSleep("screen_on_setting_false")
         }
     }
 
@@ -623,37 +624,38 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         config.screenOn = active
     }
 
-    fun screenWake() {
-        Timber.d("Wake screen")
+    fun screenWake(reason: String = "explicit_wake") {
+        Timber.i("Wake screen reason=$reason")
         // Cancel any screen sleep timer
         if (screenSleepWaitJob != null && screenSleepWaitJob!!.isActive) {
             screenSleepWaitJob!!.cancel()
             screenOffInProgress = false
         }
 
-        // Experimental fix for screen not turning on on A15+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-            this.setTurnScreenOn(true);
-        } else {
-            window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        }
+        screen.enableWakeScreenFlags(this, window, reason)
 
         // Ensure on every wake that screen timeout is correct
         if (screen.getScreenTimeout() != config.screenTimeout) {
             screen.setScreenTimeout(config.screenTimeout)
         }
-        screen.wakeScreen()
+        screen.wakeScreen(reason = reason)
+        lifecycleScope.launch {
+            delay(5000)
+            screen.clearWakeScreenFlags(this@MainActivity, window, "wake_timeout_$reason")
+        }
     }
 
-    fun screenSleep() {
+    fun screenSleep(reason: String = "explicit_sleep") {
         if (screen.isScreenOff()) {
-            Timber.d("Screen already off, ignoring sleep request")
+            Timber.d("Screen already off, clearing wake flags reason=$reason")
+            screen.allowPhysicalSleep(this, window, "${reason}_already_off")
             return
         }
-        Timber.d("Sleeping screen")
+        Timber.i("Sleeping screen reason=$reason")
         val hasDeviceAdmin = permissions.isDeviceAdmin()
         if (hasDeviceAdmin) {
-            screen.setPartialWakeLock()
+            screen.allowPhysicalSleep(this, window, reason)
+            screen.setPartialWakeLock(reason = reason)
             screen.lockScreen()
             return
         }
@@ -662,13 +664,15 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.d("Sleeping screen via timeout")
             screenOffInProgress = true
             setScreenSaver(true)
-            screen.setPartialWakeLock()
+            screen.allowPhysicalSleep(this, window, reason)
+            screen.setPartialWakeLock(reason = reason)
             if (screen.setScreenTimeout(1000)) {
                 screenSleepWaitJob = lifecycleScope.launch {
                     waitForScreenOff()
                 }
             } else {
                 screenOffInProgress = false
+                screen.releaseWakeLock("screen_timeout_set_failed")
             }
         }
     }
@@ -684,9 +688,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         } catch (ex: Exception) {
             log.w("Timed out waiting for screen off")
             screenOffInProgress = false
+            screen.releaseWakeLock("screen_off_wait_timeout")
             return
         }
         screenOffInProgress = false
+        screen.releaseWakeLock("screen_off_confirmed")
         log.d("Screen off")
     }
 

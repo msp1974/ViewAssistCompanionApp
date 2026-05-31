@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.device
 
+import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.ContextWrapper
@@ -69,10 +70,8 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         }
     }
 
-    fun setScreenAlwaysOn(window: Window, state: Boolean) {
-        // wake lock
-        window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
-        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+    fun setScreenAlwaysOn(window: Window, state: Boolean, reason: String = "screen_always_on") {
+        log.i("SET_KEEP_SCREEN_ON enabled=$state reason=$reason")
         window.decorView.keepScreenOn = state
         if (state) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -124,8 +123,40 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         }
     }
 
-    fun wakeScreen(lockDuration: Long = 5000) {
-        log.d("Acquiring screen on wake lock")
+    fun enableWakeScreenFlags(activity: Activity, window: Window, reason: String) {
+        log.i("ENABLE_WAKE_SCREEN_FLAGS reason=$reason")
+        window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setShowWhenLocked(true)
+            activity.setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        }
+    }
+
+    fun clearWakeScreenFlags(activity: Activity, window: Window, reason: String) {
+        log.i("CLEAR_WAKE_FLAGS reason=$reason")
+        window.clearFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
+        @Suppress("DEPRECATION")
+        window.clearFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            activity.setShowWhenLocked(false)
+            activity.setTurnScreenOn(false)
+        }
+    }
+
+    fun allowPhysicalSleep(activity: Activity, window: Window, reason: String) {
+        log.i("ALLOW_PHYSICAL_SLEEP reason=$reason")
+        releaseWakeLock(reason)
+        setScreenAlwaysOn(window, false, reason)
+        clearWakeScreenFlags(activity, window, reason)
+    }
+
+    fun wakeScreen(lockDuration: Long = 5000, reason: String = "explicit_wake") {
+        log.i("WAKE_SCREEN_EXPLICIT reason=$reason durationMs=$lockDuration")
         if (wakeLock != null && wakeLock!!.isHeld) {
             wakeLock!!.release()
         }
@@ -137,7 +168,8 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         wakeLock?.acquire(lockDuration)
     }
 
-    fun setPartialWakeLock() {
+    fun setPartialWakeLock(lockDuration: Long = 15000, reason: String = "screen_sleep") {
+        log.i("Acquiring partial wake lock reason=$reason durationMs=$lockDuration")
         if (wakeLock != null && wakeLock!!.isHeld) {
             wakeLock!!.release()
         }
@@ -146,7 +178,14 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
             PowerManager.PARTIAL_WAKE_LOCK,
             "vacompanion.ScreenUtils:partialWakeLock"
         )
-        wakeLock?.acquire()
+        wakeLock?.acquire(lockDuration)
+    }
+
+    fun releaseWakeLock(reason: String) {
+        if (wakeLock != null && wakeLock!!.isHeld) {
+            log.i("Releasing wake lock reason=$reason")
+            wakeLock!!.release()
+        }
     }
 
     fun lockScreen() {
