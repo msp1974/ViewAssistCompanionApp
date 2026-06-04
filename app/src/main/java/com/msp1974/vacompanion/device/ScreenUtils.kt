@@ -65,6 +65,8 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
             setDeviceBrightnessMode(false)
             setScreenBrightness(window, config.screenBrightness)
         } else {
+            setDeviceBrightnessMode(false)
+            setScreenBrightness(window, config.screenBrightness)
             setDeviceBrightnessMode(true)
         }
     }

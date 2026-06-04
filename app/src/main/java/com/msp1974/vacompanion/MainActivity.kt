@@ -621,8 +621,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.d("Disabling screen saver")
             viewModel.setScreenBlank(false)
             screen.setScreenAlwaysOn(window, config.screenAlwaysOn)
-            screen.setScreenAutoBrightness(window, config.screenAutoBrightness)
             screen.setScreenBrightness(window, config.screenBrightness)
+            screen.setScreenAutoBrightness(window, config.screenAutoBrightness)
         }
     }
 
