@@ -19,6 +19,10 @@ object WyomingEvent {
     const val PIPELINE_ENDED = "pipeline-ended"
     const val ERROR = "error"
     const val CUSTOM_EVENT = "custom-event"
+    const val TIMER_STARTED = "timer-started"
+    const val TIMER_UPDATED = "timer-updated"
+    const val TIMER_CANCELLED = "timer-cancelled"
+    const val TIMER_FINISHED = "timer-finished"
 }
 
 /**

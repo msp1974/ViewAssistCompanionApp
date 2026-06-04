@@ -14,6 +14,7 @@ import com.msp1974.vacompanion.data.NetworkStatusManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.settings.WifiLockMode
+import com.msp1974.vacompanion.satellite.VacaTimerUiState
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Helpers
@@ -94,7 +95,8 @@ data class State(
     var updates: UpdateStatus = UpdateStatus(),
     var webViewPageLoadingStage: PageLoadingStage = PageLoadingStage.NOT_STARTED,
     var showUUIDChangeDialog: Boolean = false,
-    var isNetworkConnected: Boolean = true
+    var isNetworkConnected: Boolean = true,
+    var timer: VacaTimerUiState? = null
     )
 
 @HiltViewModel
@@ -251,6 +253,24 @@ class VAViewModel @Inject constructor(
                     )
                 }
             }
+            "timerStarted", "timerUpdated", "timerFinished" -> {
+                val data = event.newValue as VacaTimerUiState
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        timer = data
+                    )
+                }
+            }
+            "timerCancelled", "timerDismissed" -> {
+                val timerId = event.newValue as String
+                _vacaState.update { currentState ->
+                    if (timerId.isBlank() || currentState.timer?.id == timerId) {
+                        currentState.copy(timer = null)
+                    } else {
+                        currentState
+                    }
+                }
+            }
             else -> consumed = false
         }
         if (consumed) {
@@ -319,6 +339,17 @@ class VAViewModel @Inject constructor(
             currentState.copy(
                 webViewPageLoadingStage = stage
             )
+        }
+    }
+
+    fun dismissTimerAlert(timerId: String) {
+        config.eventBroadcaster.notifyEvent(Event("timerDismissRequested", "", timerId))
+        _vacaState.update { currentState ->
+            if (currentState.timer?.id == timerId) {
+                currentState.copy(timer = null)
+            } else {
+                currentState
+            }
         }
     }
 

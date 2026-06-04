@@ -38,7 +38,14 @@ interface IWakeWordHandler {
     fun onDiagnostics(level: Float, lastDetectionLevel: Float)
 }
 
-abstract class SatelliteWakeWorkHandler(val context: Context, val config: APPConfig, val scope: CoroutineScope): IWakeWordHandler {
+abstract class SatelliteWakeWorkHandler(
+    val context: Context,
+    val config: APPConfig,
+    val scope: CoroutineScope,
+    private val engineOverride: WakeWordEngineModel? = null,
+    private val activeWakeWordsOverride: List<String>? = null,
+    private val activeStopWordsOverride: List<String> = listOf("stop")
+): IWakeWordHandler {
 
     val firebase = FirebaseManager.getInstance(context)
 
@@ -77,17 +84,20 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val config: APPCon
 
     suspend fun start() {
         try {
-            if (config.wakeWordEngine != "none") {
+            val engineModel = engineOverride ?: when (config.wakeWordEngine) {
+                "openwakeword" -> WakeWordEngineModel.OPENWAKEWORD
+                "openwakeword-rt" -> WakeWordEngineModel.OPENWAKEWORD_RT
+                "microwakeword" -> WakeWordEngineModel.MICROWAKEWORD
+                else -> null
+            }
+
+            if (engineModel != null) {
                 state = WakeWordHandlerState.STARTING
-                engine = WakeWordEngine(context, config,
-                    when (config.wakeWordEngine) {
-                        "openwakeword" -> WakeWordEngineModel.OPENWAKEWORD
-                        "openwakeword-rt" -> WakeWordEngineModel.OPENWAKEWORD_RT
-                        else -> WakeWordEngineModel.MICROWAKEWORD
-                    }
+                engine = WakeWordEngine(context, config, engineModel)
+                engine?.setActiveWakeWords(
+                    activeWakeWordsOverride ?: listOf(config.wakeWord).filter { it != "none" }
                 )
-                engine?.setActiveWakeWords(listOf(config.wakeWord))
-                engine?.setActiveStopWords(listOf("stop"))
+                engine?.setActiveStopWords(activeStopWordsOverride)
                 runWakeWordDetection()
             }
             state = WakeWordHandlerState.RUNNING

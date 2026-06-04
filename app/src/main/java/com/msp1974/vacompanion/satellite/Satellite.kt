@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.satellite
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.SystemClock
 import androidx.media3.common.Player
 import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
@@ -15,10 +16,13 @@ import com.msp1974.vacompanion.device.DeviceCapabilitiesData
 import com.msp1974.vacompanion.device.DeviceCapabilitiesManager
 import com.msp1974.vacompanion.device.ScreenUtils
 import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.Helpers
 import com.msp1974.vacompanion.wakeword.WakeWordDownloader
+import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
 import com.msp1974.vacompanion.wyoming.SatelliteState
+import com.msp1974.vacompanion.wyoming.WyomingEvent
 import com.msp1974.vacompanion.wyoming.WyomingPacket
 import io.github.z4kn4fein.semver.toVersion
 import kotlinx.coroutines.CoroutineScope
@@ -34,6 +38,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -53,7 +58,7 @@ interface ISatelliteEvent {
 enum class AudioRouteOption { NONE, DETECT, STREAM}
 
 
-abstract class Satellite(var context: Context, val config: APPConfig, val scope: CoroutineScope, clientIdString: String, val deviceInfo: DeviceCapabilitiesData): ISatelliteEvent {
+abstract class Satellite(var context: Context, val config: APPConfig, val scope: CoroutineScope, clientIdString: String, val deviceInfo: DeviceCapabilitiesData): ISatelliteEvent, EventListener {
 
     var clientId = clientIdString
     val mediaManager: SatelliteMediaManager = SatelliteMediaManager(context, config)
@@ -66,10 +71,13 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
     private val eventHandler = SatelliteCustomEventHandler(context, config, scope, this)
 
     private var wakeWordHandler: SatelliteWakeWorkHandler? = null
+    private var timerStopWordHandler: SatelliteWakeWorkHandler? = null
     private var wakeWordDownloader = WakeWordDownloader(context, config)
     private var audioPipeline: SatelliteAudioPipeline? = null
     private var audioPipelineId = AtomicInteger(0)
     private var audioPipelineLastStateChange = System.currentTimeMillis()
+    private val activeTimers = mutableMapOf<String, VacaTimer>()
+    private var soundingTimerId: String? = null
 
     private var soundEffectFinishTime: Long = 0
 
@@ -85,6 +93,7 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
     suspend fun start() {
         // Add config change listeners
         Timber.d("Satellite starting...")
+        config.eventBroadcaster.addListener(this)
         state = SatelliteState.STARTING
 
         val loadedSettings = waitForSettings()
@@ -210,6 +219,7 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
         motionTask.stopCamera()
         stopSensors()
         state = SatelliteState.STOPPED
+        config.eventBroadcaster.removeListener(this)
         BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STOPPED)
     }
 
@@ -224,17 +234,177 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
 
     suspend fun processMessage(packet: WyomingPacket) {
         when (packet.type) {
-            "custom-event" -> customEventHandler(clientId, packet)
+            WyomingEvent.CUSTOM_EVENT -> customEventHandler(clientId, packet)
+            WyomingEvent.TIMER_STARTED,
+            WyomingEvent.TIMER_UPDATED,
+            WyomingEvent.TIMER_CANCELLED,
+            WyomingEvent.TIMER_FINISHED -> handleTimerEvent(packet)
             else -> {
-                if (audioPipeline != null && audioPipeline?.pipelineStage != PipelineStage.ENDED) {
+                if (audioPipeline != null && audioPipeline?.isAcceptingMessages == true) {
                     audioPipeline?.processAudioPipelineMessage(packet)
-                } else if (packet.type == "audio-start") {
+                } else if (packet.type == WyomingEvent.AUDIO_START) {
                     handleAudioStart(packet)
-                } else if (packet.type == "transcribe") {
+                } else if (packet.type == WyomingEvent.TRANSCRIBE) {
                     handleTranscribe(packet)
+                } else {
+                    Timber.d("Ignoring unhandled Wyoming packet: ${packet.type} ${packet.data}")
                 }
             }
         }
+    }
+
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "timerDismissRequested") {
+            val timerId = event.newValue as? String
+            scope.launch {
+                dismissTimerAlert(timerId)
+            }
+        }
+    }
+
+    private suspend fun handleTimerEvent(packet: WyomingPacket) {
+        Timber.i("VACA timer event handled: ${packet.type} ${packet.data}")
+        when (packet.type) {
+            WyomingEvent.TIMER_STARTED -> handleTimerStarted(packet)
+            WyomingEvent.TIMER_UPDATED -> handleTimerUpdated(packet)
+            WyomingEvent.TIMER_CANCELLED -> handleTimerCancelled(packet)
+            WyomingEvent.TIMER_FINISHED -> handleTimerFinished(packet)
+        }
+    }
+
+    private suspend fun handleTimerStarted(packet: WyomingPacket) {
+        val timer = parseTimer(packet) ?: return
+        activeTimers[timer.id] = timer
+        config.eventBroadcaster.notifyEvent(Event("timerStarted", "", timer.toUiState()))
+    }
+
+    private suspend fun handleTimerUpdated(packet: WyomingPacket) {
+        val existing = packet.timerId()?.let { activeTimers[it] }
+        val timer = parseTimer(packet, existing) ?: return
+        activeTimers[timer.id] = timer
+        config.eventBroadcaster.notifyEvent(Event("timerUpdated", "", timer.toUiState()))
+    }
+
+    private fun handleTimerCancelled(packet: WyomingPacket) {
+        val timerId = packet.timerId()
+        if (timerId == null) {
+            Timber.w("Timer cancelled packet missing id: ${packet.data}")
+            return
+        }
+        activeTimers.remove(timerId)
+        config.eventBroadcaster.notifyEvent(Event("timerCancelled", "", timerId))
+    }
+
+    private suspend fun handleTimerFinished(packet: WyomingPacket) {
+        val timerId = packet.timerId()
+        if (timerId == null) {
+            Timber.w("Timer finished packet missing id: ${packet.data}")
+            return
+        }
+
+        val timer = activeTimers.remove(timerId)
+        val uiState = timer?.toUiState(isFinished = true) ?: VacaTimerUiState(
+            id = timerId,
+            isFinished = true
+        )
+
+        soundingTimerId = timerId
+        config.eventBroadcaster.notifyEvent(Event("timerFinished", "", uiState))
+        startTimerStopWordDetection()
+        handleAlarmAction(true)
+    }
+
+    private suspend fun dismissTimerAlert(timerId: String?) {
+        val currentTimerId = soundingTimerId
+        if (timerId.isNullOrBlank() || currentTimerId == null || timerId == currentTimerId) {
+            soundingTimerId = null
+            stopTimerStopWordDetection()
+            handleAlarmAction(false)
+            config.eventBroadcaster.notifyEvent(Event("timerDismissed", "", timerId ?: currentTimerId.orEmpty()))
+        }
+    }
+
+    private suspend fun startTimerStopWordDetection() {
+        if (timerStopWordHandler != null) {
+            return
+        }
+
+        Timber.i("Starting timer stop-word detection")
+        stopWakeWordDetection()
+        withContext(Dispatchers.Default) {
+            timerStopWordHandler = object : SatelliteWakeWorkHandler(
+                context = context,
+                config = config,
+                scope = scope,
+                engineOverride = WakeWordEngineModel.MICROWAKEWORD,
+                activeWakeWordsOverride = emptyList(),
+                activeStopWordsOverride = listOf("stop")
+            ) {
+                override fun onStateChange(state: WakeWordHandlerState) {
+                    Timber.d("Timer stop-word handler state: $state")
+                }
+
+                override suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio) {}
+
+                override suspend fun onWakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {}
+
+                override suspend fun onStopWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
+                    Timber.i("Timer stop word detected: $detection")
+                    scope.launch {
+                        dismissTimerAlert(soundingTimerId)
+                    }
+                }
+
+                override fun onDiagnostics(level: Float, lastDetectionLevel: Float) {
+                    sendDiagnostics(level, lastDetectionLevel)
+                }
+            }.also {
+                it.run()
+            }
+        }
+    }
+
+    private suspend fun stopTimerStopWordDetection() {
+        val handler = timerStopWordHandler ?: return
+        Timber.i("Stopping timer stop-word detection")
+        timerStopWordHandler = null
+        handler.stop()
+        restartWakeWordDetection()
+    }
+
+    private fun parseTimer(packet: WyomingPacket, existing: VacaTimer? = null): VacaTimer? {
+        val timerId = packet.timerId()
+        if (timerId == null) {
+            Timber.w("Timer packet missing id: ${packet.type} ${packet.data}")
+            return null
+        }
+
+        val remainingSeconds = packet.intProp("total_seconds")
+            ?: packet.intProp("seconds")
+            ?: existing?.remainingSeconds
+            ?: packet.intProp("start_seconds")
+            ?: 0
+        val durationSeconds = packet.intProp("start_seconds")
+            ?: existing?.durationSeconds
+            ?: remainingSeconds
+        val name = packet.data["name"]?.jsonPrimitive?.contentOrNull ?: existing?.name
+
+        return VacaTimer(
+            id = timerId,
+            name = name,
+            durationSeconds = durationSeconds.coerceAtLeast(0),
+            remainingSeconds = remainingSeconds.coerceAtLeast(0),
+            updatedAtElapsedRealtime = SystemClock.elapsedRealtime(),
+            isActive = packet.type != WyomingEvent.TIMER_CANCELLED && packet.type != WyomingEvent.TIMER_FINISHED
+        )
+    }
+
+    private fun WyomingPacket.timerId(): String? {
+        return data["id"]?.jsonPrimitive?.contentOrNull
+    }
+
+    private fun WyomingPacket.intProp(name: String): Int? {
+        return data[name]?.jsonPrimitive?.intOrNull
     }
 
     @OptIn(ExperimentalAtomicApi::class)
@@ -278,7 +448,11 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
                     }
 
                     if (mediaManager.alarmPlayer.isSounding()) {
-                        handleAlarmAction(false, "")
+                        if (soundingTimerId != null) {
+                            dismissTimerAlert(soundingTimerId)
+                        } else {
+                            handleAlarmAction(false, "")
+                        }
                     }
 
                     Timber.d("Stop word detected: $detection")
@@ -434,18 +608,29 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
             }
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
+                val isCurrentPipeline = audioPipeline === this
+                Timber.d(
+                    "Closed audio pipeline. pipelineId=${this.pipelineId} " +
+                        "startMode=${this.pipelineStartMode} reason=$reason"
+                )
+
                 if (reason == PipelineEndReason.END_OF_PIPELINE) {
                     Timber.i("Pipeline ended.  Restarting: $continueConversation")
                     if (continueConversation) {
+                        if (isCurrentPipeline) {
+                            audioPipeline = null
+                        }
                         scope.launch {
                             while (mediaManager.voicePlayer.isRunning()) {
                                 delay(10)
                             }
                             startAudioPipeline(PipelineStartMode.CONTINUE_CONVERSATION)
                         }
-                    } else {
+                    } else if (isCurrentPipeline) {
                         audioPipeline = null
                     }
+                } else if (isCurrentPipeline) {
+                    audioPipeline = null
                 }
                 if (reason == PipelineEndReason.ERRORED && config.wakeWordSound != "none") {
                     playErrorSound()
@@ -498,6 +683,9 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
                 "wake" -> scope.launch {handleWakeWordDetection()}
                 "alarm" -> if (payloadStr.isNotEmpty()) {
                     val payload = Json.parseToJsonElement(payloadStr).jsonObject
+                    if (payload["activate"]?.jsonPrimitive?.booleanOrNull == true) {
+                        soundingTimerId = null
+                    }
                     handleAlarmAction(payload["activate"]?.jsonPrimitive?.booleanOrNull ?: false, payload["url"]?.jsonPrimitive?.contentOrNull ?: "")
                 }
             }

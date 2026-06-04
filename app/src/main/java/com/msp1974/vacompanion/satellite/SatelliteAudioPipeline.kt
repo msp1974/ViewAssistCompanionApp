@@ -96,6 +96,9 @@ abstract class SatelliteAudioPipeline(
 
     var silenceAudioBefore: Long = 0L
 
+    val isAcceptingMessages: Boolean
+        get() = !pipelineRunning.isCompleted && pipelineStage != PipelineStage.ENDED
+
     private val isContinuation
         get() = pipelineStartMode == PipelineStartMode.CONTINUE_CONVERSATION
 
@@ -199,6 +202,14 @@ abstract class SatelliteAudioPipeline(
     }
 
     suspend fun processAudioPipelineMessage(packet: WyomingPacket) {
+        if (pipelineRunning.isCompleted) {
+            Timber.w(
+                "Ignoring ${packet.type} for completed pipeline. " +
+                    "pipelineId=$pipelineId startMode=$pipelineStartMode stage=$pipelineStage"
+            )
+            return
+        }
+
         when (packet.type) {
             "transcribe" -> handleTranscribe()
             "voice-started" -> handleVoiceStarted()
