@@ -30,6 +30,7 @@ import com.msp1974.vacompanion.utils.CustomFileDownloader
 import com.msp1974.vacompanion.utils.WakeWordType
 import com.msp1974.vacompanion.utils.Network
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -118,6 +119,7 @@ data class State(
     var darkMode: Boolean = false,
     var isDND: Boolean = false,
     var screenBlank: Boolean = true,
+    var showWakeAnimation: Boolean = false,
 
     var appInfo: Map<String, String> = mapOf(),
     var diagnosticInfo: DiagnosticInfo = DiagnosticInfo(),
@@ -410,6 +412,20 @@ class VAViewModel @Inject constructor(
             )
         }
     }
+
+    fun setWakeAnimationVisible(visible: Boolean) {
+        _vacaState.update { currentState ->
+            currentState.copy(showWakeAnimation = visible)
+        }
+    }
+
+    fun showWakeAnimation(durationMs: Long = 3000L) {
+        viewModelScope.launch {
+            setWakeAnimationVisible(true)
+            delay(durationMs)
+            setWakeAnimationVisible(false)
+    }
+}
 
     fun setWebViewPageLoadingState(stage: PageLoadingStage) {
         Timber.d("WebView page loading state: $stage")
