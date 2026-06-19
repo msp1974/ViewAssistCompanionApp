@@ -6,37 +6,36 @@ enum class FunctionClasses {
     AUDIO_ENHANCEMENTS
 }
 
-class IssueDevice(
+class Device(
     var make: String,
     var model: String,
-    var issues: List<FunctionClasses>,
-
+    var quirks: List<FunctionClasses>,
 )
 
-class UnsupportedFunctionsDevice {
+class DeviceFunctionQuirks {
 
     companion object {
-        private val issueDevices = listOf(
-            IssueDevice(
+        private val quirks = listOf(
+            Device(
                 make = "lenovo",
                 model = "tb-8505fs",
-                issues = listOf(FunctionClasses.AUDIO_ENHANCEMENTS)
+                quirks = listOf(FunctionClasses.AUDIO_ENHANCEMENTS)
             )
         )
 
 
-        fun isIssueDevice(functionClass: FunctionClasses): Boolean {
+        fun isUnsupported(functionClass: FunctionClasses): Boolean {
             val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
             val model = Build.MODEL.orEmpty().lowercase()
 
-            for (device in issueDevices) {
-                if (functionClass in device.issues) {
+            for (device in quirks) {
+                if (functionClass in device.quirks) {
                     if (manufacturer == device.make && model == device.model) {
-                        return false
+                        return true
                     }
                 }
             }
-            return true
+            return false
         }
     }
 }
