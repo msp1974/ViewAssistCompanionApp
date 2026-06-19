@@ -35,6 +35,7 @@ data class DeviceHardwareData(
     val hasMicrophone: Boolean,
     val hasProximitySensor: Boolean,
     val proximitySensorType: String,
+    val presenceSourceType: String,
     val sensors: List<DeviceSensor>,
 )
 
@@ -51,6 +52,7 @@ class DeviceHardware(
         hasMicrophone = hasMicrophone(),
         hasProximitySensor = hasProximitySensor(),
         proximitySensorType = getProximitySensorType(),
+        presenceSourceType = getPresenceSourceType(),
         sensors = getAvailableSensors()
     )
 
@@ -139,6 +141,23 @@ class DeviceHardware(
         }
 
         return sensors
+    }
+
+    // Detects a device-native presence source independent of VACA's own camera.
+    // Returns "portal_aloha" on Facebook Portal devices where Meta's aiservice
+    // runs face-presence detection on a second camera and logs heartbeats
+    // PortalPresenceMonitor can tail. "none" elsewhere.
+    private fun getPresenceSourceType(): String {
+        val isPortal = Build.MANUFACTURER.orEmpty().equals("facebook", ignoreCase = true)
+        if (!isPortal) return "none"
+
+        val aiServiceInstalled = try {
+            context.packageManager.getPackageInfo("com.facebook.portal.aiservice", 0)
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
+        return if (aiServiceInstalled) "portal_aloha" else "none"
     }
 
     fun getProximitySensorType(): String {
