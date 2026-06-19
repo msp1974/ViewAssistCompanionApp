@@ -13,6 +13,7 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.NetworkStatus
 import com.msp1974.vacompanion.data.NetworkStatusManager
+import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.utils.Event
@@ -94,7 +95,7 @@ data class DiagnosticInfo(
     var hasCamera: Boolean = false,
     var lastMotionTimestamp: Long = 0,
     var motionInterval: Int = 10000,
-    var motionDetectionMode: String = "motion"
+    var motionDetectionMode: MotionDetectionMode = MotionDetectionMode.MOTION
 )
 
 
@@ -137,7 +138,7 @@ data class State(
     var customFiles: CustomFilesState = CustomFilesState(),
     var cameraStreamActive: Boolean = false,
     var motionDetectionSensitivity: Int = 0,
-    var motionDetectionMode: String = "motion"
+    var motionDetectionMode: MotionDetectionMode = MotionDetectionMode.MOTION
     )
 
 @HiltViewModel
@@ -295,7 +296,7 @@ class VAViewModel @Inject constructor(
                 }
             }
             "motionDetectionMode" -> {
-                val mode = event.newValue as String
+                val mode = event.newValue as MotionDetectionMode
                 _vacaState.update { currentState ->
                     currentState.copy(
                         motionDetectionMode = mode,

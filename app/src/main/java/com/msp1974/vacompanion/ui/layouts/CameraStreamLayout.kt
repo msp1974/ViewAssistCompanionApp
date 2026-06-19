@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.msp1974.vacompanion.device.DetectorMode
 import com.msp1974.vacompanion.device.MotionDetectionEngine
 import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.device.MotionResult
@@ -72,7 +73,7 @@ fun CameraStreamLayout(
     }
 
     LaunchedEffect(vaUiState.motionDetectionMode) {
-        motionEngine.detectorMode = if (vaUiState.motionDetectionMode == "face") MotionDetectionMode.FACE_DETECTION else MotionDetectionMode.PIXEL_DIFF
+        motionEngine.detectorMode = if (vaUiState.motionDetectionMode == MotionDetectionMode.FACE) DetectorMode.FACE_DETECTION else DetectorMode.PIXEL_DIFF
     }
 
     // Camera Provider state to handle safe unbinding on exit
@@ -153,7 +154,7 @@ fun CameraStreamLayout(
                                 .build()
                                 .also { analysis ->
                                     analysis.setAnalyzer(executor) { image ->
-                                        if (vaUiState.motionDetectionMode == "face") {
+                                        if (vaUiState.motionDetectionMode == MotionDetectionMode.FACE) {
                                             scope.launch {
                                                 try {
                                                     motionEngine.processImageProxy(image)
@@ -258,7 +259,7 @@ fun CameraStreamLayout(
                         shape = MaterialTheme.shapes.medium
                     ) {
                         Text(
-                            text = vaUiState.motionDetectionMode.uppercase(),
+                            text = vaUiState.motionDetectionMode.key.uppercase(),
                             color = Color.White,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,

@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.ui.DiagnosticInfo
 import com.msp1974.vacompanion.ui.theme.CustomColours
 import com.msp1974.vacompanion.satellite.AudioRouteOption
@@ -75,7 +76,7 @@ fun DiagnosticBar(
                         disabledText = "Off",
                         disabled = diagnosticInfo.wakeWord == "none"
                     )
-                    if (diagnosticInfo.hasCamera && diagnosticInfo.motionDetectionMode != "none") {
+                    if (diagnosticInfo.hasCamera && diagnosticInfo.motionDetectionMode.usesCamera) {
                         MotionIndicator(diagnosticInfo)
                     }
                 }
@@ -89,7 +90,7 @@ fun DiagnosticBar(
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (diagnosticInfo.hasCamera && diagnosticInfo.motionDetectionMode != "none") {
+                if (diagnosticInfo.hasCamera && diagnosticInfo.motionDetectionMode.usesCamera) {
                     Column(
                         modifier = Modifier.padding(end = 10.dp)
                     ) {
@@ -130,7 +131,7 @@ fun DiagnosticBar(
 @Composable
 private fun MotionIndicator(diagnosticInfo: DiagnosticInfo) {
     val motionDetected = diagnosticInfo.motionDetected
-    val isFaceMode = diagnosticInfo.motionDetectionMode == "face"
+    val isFaceMode = diagnosticInfo.motionDetectionMode == MotionDetectionMode.FACE
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -229,7 +230,7 @@ fun DiagnosticBarPreview() {
             hasCamera = true,
             lastMotionTimestamp = System.currentTimeMillis(),
             motionInterval = 10000,
-            motionDetectionMode = "face"
+            motionDetectionMode = MotionDetectionMode.FACE
         )
     )
 }
@@ -247,7 +248,7 @@ fun DiagnosticBarPortraitPreview() {
             hasCamera = true,
             lastMotionTimestamp = System.currentTimeMillis(),
             motionInterval = 10000,
-            motionDetectionMode = "motion"
+            motionDetectionMode = MotionDetectionMode.MOTION
         )
     )
 }

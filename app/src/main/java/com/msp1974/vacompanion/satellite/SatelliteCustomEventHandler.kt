@@ -2,8 +2,9 @@ package com.msp1974.vacompanion.satellite
 
 import android.content.Context
 import android.media.AudioManager
-import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.device.VolumeManager
+import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.SoundControl
@@ -130,8 +131,8 @@ class SatelliteCustomEventHandler(
                 }
             }
             "motionDetectionMode" -> {
-                val mode = event.newValue as String
-                if (mode != "none") {
+                val mode = event.newValue as MotionDetectionMode
+                if (mode.usesCamera) {
                     if (!config.cameraStreamActive) {
                         satellite.motionTask.startCamera()
                     }

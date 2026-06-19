@@ -57,7 +57,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
         // Setup motion detection flow subscriber
         scope.launch {
             motionFlow.collect { result ->
-                if (config.motionDetectionMode == "face") {
+                if (config.motionDetectionMode == MotionDetectionMode.FACE) {
                     handleFaceDetection(result.hasMotion)
                 } else {
                     handleStandardMotion(result.hasMotion)
@@ -94,7 +94,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 
                 // Settle motion detection to reduce false detections at start
                 // Face detection can settle faster than pixel diff
-                val delayMs = if (config.motionDetectionMode == "face") 1500L else settleDelay
+                val delayMs = if (config.motionDetectionMode == MotionDetectionMode.FACE) 1500L else settleDelay
                 settleDelayJob?.cancel()
                 settleDelayJob = scope.launch {
                     delay(delayMs.milliseconds)
@@ -140,7 +140,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
             cameraProvider.unbindAll()
             
             // Check if we should actually be running
-            if (config.motionDetectionMode == "none" || config.cameraStreamActive) {
+            if (!config.motionDetectionMode.usesCamera || config.cameraStreamActive) {
                 Timber.w("Camera about to bind but motion detection disabled or stream active, skipping")
                 isRunning = false
                 isStarting = false
@@ -159,7 +159,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
             val camera2CameraInfo = Camera2CameraInfo.from(cameraInfo)
             
             // Use a more balanced exposure boost if in low light and NOT in face mode
-            if (config.motionDetectionMode != "face") {
+            if (config.motionDetectionMode != MotionDetectionMode.FACE) {
                 val range = camera2CameraInfo.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
                 if (range != null && range.upper > 0) {
                     // Just a small boost for pixel motion if it's dark, not full max
@@ -188,8 +188,8 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 return
             }
 
-            if (config.motionDetectionMode == "face") {
-                motionEngine.detectorMode = MotionDetectionMode.FACE_DETECTION
+            if (config.motionDetectionMode == MotionDetectionMode.FACE) {
+                motionEngine.detectorMode = DetectorMode.FACE_DETECTION
                 shouldCloseInFinally = false
                 scope.launch {
                     try {
@@ -199,8 +199,8 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                     }
                 }
                 return
-            } else if (config.motionDetectionMode == "motion") {
-                motionEngine.detectorMode = MotionDetectionMode.PIXEL_DIFF
+            } else if (config.motionDetectionMode == MotionDetectionMode.MOTION) {
+                motionEngine.detectorMode = DetectorMode.PIXEL_DIFF
             }
 
             val plane = image.planes[0]

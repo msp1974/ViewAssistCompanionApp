@@ -12,7 +12,7 @@ import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 import kotlin.math.abs
 
-enum class MotionDetectionMode {
+enum class DetectorMode {
     PIXEL_DIFF,
     FACE_DETECTION
 }
@@ -57,7 +57,7 @@ class MotionDetectionEngine(
     private var motionThreshold = 25 // Luma difference threshold
     private var minBlobSize = 64 // Minimum pixels in a block to consider as motion
 
-    var detectorMode = MotionDetectionMode.PIXEL_DIFF
+    var detectorMode = DetectorMode.PIXEL_DIFF
 
     private var faceDetector: com.google.mlkit.vision.face.FaceDetector? = null
 
@@ -118,7 +118,7 @@ class MotionDetectionEngine(
 
     @SuppressLint("UnsafeOptInUsageError")
     suspend fun processImageProxy(imageProxy: ImageProxy) {
-        if (detectorMode == MotionDetectionMode.FACE_DETECTION) {
+        if (detectorMode == DetectorMode.FACE_DETECTION) {
             val mediaImage = imageProxy.image ?: return
             val rotation = imageProxy.imageInfo.rotationDegrees
             val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
