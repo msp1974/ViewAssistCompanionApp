@@ -47,13 +47,11 @@ object DeviceFunctionQuirks {
         // virtual camera (id=0) via raw Camera2, skipping the validator.
         // Verified on-device: cipher (Portal+).
         // Inferred from shared Aloha architecture (untested): ranger
-        // (Portal Go), shrek (Portal), anteater (Portal Mini), rosie
-        // (Portal TV — no usable camera anyway).
+        // (Portal Go), shrek (Portal), anteater (Portal Mini)
         Entry("facebook", "cipher",   setOf(CameraDirectAPI)),
         Entry("facebook", "ranger",   setOf(CameraDirectAPI)),
         Entry("facebook", "shrek",    setOf(CameraDirectAPI)),
         Entry("facebook", "anteater", setOf(CameraDirectAPI)),
-        Entry("facebook", "rosie",    setOf(CameraDirectAPI)),
     )
 
     /**
