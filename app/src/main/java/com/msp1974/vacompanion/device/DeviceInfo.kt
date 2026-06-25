@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.device
 import android.content.Context
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -30,7 +31,6 @@ class DeviceInfo @Inject constructor(val context: Context) {
             put("has_front_camera", hardware.hasFrontCamera)
             put("has_dnd", features.supportsDND)
             put("proximity_sensor_type", hardware.proximitySensorType)
-            put("presence_source_type", hardware.presenceSourceType)
             putJsonObject("audio") {
                 put("max_music_volume", features.audio.maxMusicVolume)
                 put("max_notification_volume", features.audio.maxNotificationVolume)
@@ -47,6 +47,9 @@ class DeviceInfo @Inject constructor(val context: Context) {
                         put("stringType", it.stringType)
                     }
                 }
+            }
+            putJsonArray("unsupported_functions") {
+                DeviceFunctionQuirks.userFacingWireNames().forEach { add(it) }
             }
         }
     }

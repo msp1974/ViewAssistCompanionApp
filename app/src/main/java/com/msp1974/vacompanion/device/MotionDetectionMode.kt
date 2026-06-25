@@ -5,8 +5,7 @@ import timber.log.Timber
 enum class MotionDetectionMode(val key: String) {
     NONE("none"),
     MOTION("motion"),
-    FACE("face"),
-    PORTAL_PRESENCE("portal_presence");
+    FACE("face");
 
     val usesCamera: Boolean get() = this == MOTION || this == FACE
     val isActive: Boolean get() = this != NONE

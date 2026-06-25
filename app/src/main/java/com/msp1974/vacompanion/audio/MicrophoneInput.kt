@@ -6,8 +6,8 @@ import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import androidx.annotation.RequiresPermission
+import com.msp1974.vacompanion.device.AudioEnhancementsBroken
 import com.msp1974.vacompanion.device.DeviceFunctionQuirks
-import com.msp1974.vacompanion.device.FunctionClasses
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
 import java.nio.ByteBuffer
@@ -103,7 +103,7 @@ class MicrophoneInput (
         val sessionId = audioRecord?.audioSessionId ?: return
 
         // Skip audio enhancements on devices known to have issues with them
-        if (DeviceFunctionQuirks.isUnsupported(FunctionClasses.AUDIO_ENHANCEMENTS)) return
+        if (AudioEnhancementsBroken in DeviceFunctionQuirks.quirks) return
 
         try {
             if (AutomaticGainControl.isAvailable()) {

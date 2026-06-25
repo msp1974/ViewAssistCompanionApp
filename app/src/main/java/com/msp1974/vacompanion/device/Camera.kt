@@ -40,6 +40,14 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     private val motionEngine = MotionDetectionEngine()
     val motionFlow: SharedFlow<MotionResult> = motionEngine.motionFlow
 
+    // Devices with non-standard camera metadata (e.g. Portal+ reports
+    // LENS_FACING=BACK on its only camera, which CameraX 1.6's validator
+    // rejects) route through DirectCameraSource. Everyone else uses CameraX.
+    private val directSource: DirectCameraSource? =
+        if (CameraDirectAPI in DeviceFunctionQuirks.quirks)
+            DirectCameraSource(context, config, motionEngine)
+        else null
+
     private var isRunning: Boolean = false
     private var isStarting: Boolean = false
     
@@ -67,6 +75,11 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     }
 
     fun startCamera() {
+        if (directSource != null) {
+            directSource.start()
+            return
+        }
+
         if (isRunning || isStarting) return
 
         val lifecycleOwner = context as? LifecycleOwner
@@ -330,6 +343,15 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     }
 
     suspend fun stopCamera() {
+        if (directSource != null) {
+            directSource.stop()
+            motionDetected = false
+            faceDetected = false
+            lastDetection = 0
+            config.eventBroadcaster.notifyEvent(Event("motion", oldValue = false, newValue = false))
+            return
+        }
+
         Timber.i("Stopping CameraX motion detection")
         isRunning = false
         isStarting = false
@@ -350,11 +372,12 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
         faceDetected = false
         lastDetection = 0
         motionEngine.reset()
-        
+
         config.eventBroadcaster.notifyEvent(Event("motion", oldValue = false, newValue = false))
     }
 
     fun release() {
+        directSource?.release()
         config.eventBroadcaster.removeListener(this)
         motionEngine.close()
         job.cancel()
