@@ -40,6 +40,14 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     private val motionEngine = MotionDetectionEngine()
     val motionFlow: SharedFlow<MotionResult> = motionEngine.motionFlow
 
+    // Devices with non-standard camera metadata (e.g. Portal+ reports
+    // LENS_FACING=BACK on its only camera, which CameraX 1.6's validator
+    // rejects) route through DirectCameraSource. Everyone else uses CameraX.
+    private val directSource: DirectCameraSource? =
+        if (CameraDirectAPI in DeviceFunctionQuirks.quirks)
+            DirectCameraSource(context, config, motionEngine)
+        else null
+
     private var isRunning: Boolean = false
     private var isStarting: Boolean = false
     
@@ -57,7 +65,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
         // Setup motion detection flow subscriber
         scope.launch {
             motionFlow.collect { result ->
-                if (config.motionDetectionMode == "face") {
+                if (config.motionDetectionMode == MotionDetectionMode.FACE) {
                     handleFaceDetection(result.hasMotion)
                 } else {
                     handleStandardMotion(result.hasMotion)
@@ -67,6 +75,11 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     }
 
     fun startCamera() {
+        if (directSource != null) {
+            directSource.start()
+            return
+        }
+
         if (isRunning || isStarting) return
 
         val lifecycleOwner = context as? LifecycleOwner
@@ -94,7 +107,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 
                 // Settle motion detection to reduce false detections at start
                 // Face detection can settle faster than pixel diff
-                val delayMs = if (config.motionDetectionMode == "face") 1500L else settleDelay
+                val delayMs = if (config.motionDetectionMode == MotionDetectionMode.FACE) 1500L else settleDelay
                 settleDelayJob?.cancel()
                 settleDelayJob = scope.launch {
                     delay(delayMs.milliseconds)
@@ -140,7 +153,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
             cameraProvider.unbindAll()
             
             // Check if we should actually be running
-            if (config.motionDetectionMode == "none" || config.cameraStreamActive) {
+            if (!config.motionDetectionMode.usesCamera || config.cameraStreamActive) {
                 Timber.w("Camera about to bind but motion detection disabled or stream active, skipping")
                 isRunning = false
                 isStarting = false
@@ -159,7 +172,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
             val camera2CameraInfo = Camera2CameraInfo.from(cameraInfo)
             
             // Use a more balanced exposure boost if in low light and NOT in face mode
-            if (config.motionDetectionMode != "face") {
+            if (config.motionDetectionMode != MotionDetectionMode.FACE) {
                 val range = camera2CameraInfo.getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)
                 if (range != null && range.upper > 0) {
                     // Just a small boost for pixel motion if it's dark, not full max
@@ -188,8 +201,8 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 return
             }
 
-            if (config.motionDetectionMode == "face") {
-                motionEngine.detectorMode = MotionDetectionMode.FACE_DETECTION
+            if (config.motionDetectionMode == MotionDetectionMode.FACE) {
+                motionEngine.detectorMode = DetectorMode.FACE_DETECTION
                 shouldCloseInFinally = false
                 scope.launch {
                     try {
@@ -199,8 +212,8 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                     }
                 }
                 return
-            } else if (config.motionDetectionMode == "motion") {
-                motionEngine.detectorMode = MotionDetectionMode.PIXEL_DIFF
+            } else if (config.motionDetectionMode == MotionDetectionMode.MOTION) {
+                motionEngine.detectorMode = DetectorMode.PIXEL_DIFF
             }
 
             val plane = image.planes[0]
@@ -330,6 +343,15 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
     }
 
     suspend fun stopCamera() {
+        if (directSource != null) {
+            directSource.stop()
+            motionDetected = false
+            faceDetected = false
+            lastDetection = 0
+            config.eventBroadcaster.notifyEvent(Event("motion", oldValue = false, newValue = false))
+            return
+        }
+
         Timber.i("Stopping CameraX motion detection")
         isRunning = false
         isStarting = false
@@ -350,11 +372,12 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
         faceDetected = false
         lastDetection = 0
         motionEngine.reset()
-        
+
         config.eventBroadcaster.notifyEvent(Event("motion", oldValue = false, newValue = false))
     }
 
     fun release() {
+        directSource?.release()
         config.eventBroadcaster.removeListener(this)
         motionEngine.close()
         job.cancel()

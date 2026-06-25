@@ -1,5 +1,7 @@
 package com.msp1974.vacompanion.ui.layouts
 
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -24,6 +26,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.msp1974.vacompanion.device.CameraDirectAPI
+import com.msp1974.vacompanion.device.DetectorMode
+import com.msp1974.vacompanion.device.DeviceFunctionQuirks
+import com.msp1974.vacompanion.device.DirectCameraSource
 import com.msp1974.vacompanion.device.MotionDetectionEngine
 import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.device.MotionResult
@@ -58,6 +64,13 @@ fun CameraStreamLayout(
     // PreviewView reference to allow binding after inflation
     val previewViewRef = remember { mutableStateOf<PreviewView?>(null) }
 
+    // Devices where CameraX is incompatible (e.g. Portal+) route preview +
+    // analysis through DirectCameraSource (raw Camera2 + SurfaceView) instead.
+    val useDirectCamera = remember { CameraDirectAPI in DeviceFunctionQuirks.quirks }
+    val directSource = remember(useDirectCamera) {
+        if (useDirectCamera) DirectCameraSource(context, viewModel.config, motionEngine) else null
+    }
+
     // Ensure screen stays on while viewing the stream
     DisposableEffect(view) {
         view.keepScreenOn = true
@@ -72,7 +85,7 @@ fun CameraStreamLayout(
     }
 
     LaunchedEffect(vaUiState.motionDetectionMode) {
-        motionEngine.detectorMode = if (vaUiState.motionDetectionMode == "face") MotionDetectionMode.FACE_DETECTION else MotionDetectionMode.PIXEL_DIFF
+        motionEngine.detectorMode = if (vaUiState.motionDetectionMode == MotionDetectionMode.FACE) DetectorMode.FACE_DETECTION else DetectorMode.PIXEL_DIFF
     }
 
     // Camera Provider state to handle safe unbinding on exit
@@ -89,6 +102,7 @@ fun CameraStreamLayout(
             hideJob?.cancel()
             executor.shutdown()
             motionEngine.close()
+            directSource?.release()
             // Explicitly unbind everything to prevent CAMERA_DISCONNECTED errors on exit
             runCatching {
                 cameraProviderRef.value?.unbindAll()
@@ -117,7 +131,33 @@ fun CameraStreamLayout(
             .background(Color.Black)
     ) {
         // Camera Preview
-        if (isCameraReady) {
+        if (isCameraReady && useDirectCamera && directSource != null) {
+            // Direct Camera2 path: SurfaceView fed by DirectCameraSource.
+            // Analysis still flows through motionEngine, so the overlay below
+            // and motionFlow collector work identically to the CameraX path.
+            AndroidView(
+                factory = { ctx ->
+                    SurfaceView(ctx).apply {
+                        layoutParams = ViewGroup.LayoutParams(
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                            ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
+                        holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                directSource.previewSurface = holder.surface
+                                directSource.start()
+                            }
+                            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                directSource.stop()
+                                directSource.previewSurface = null
+                            }
+                        })
+                    }
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else if (isCameraReady) {
             AndroidView(
                 factory = { ctx ->
                     PreviewView(ctx).apply {
@@ -130,7 +170,7 @@ fun CameraStreamLayout(
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
-                update = { } 
+                update = { }
             )
             
             // Handle camera binding once when ready and view is inflated
@@ -153,7 +193,7 @@ fun CameraStreamLayout(
                                 .build()
                                 .also { analysis ->
                                     analysis.setAnalyzer(executor) { image ->
-                                        if (vaUiState.motionDetectionMode == "face") {
+                                        if (vaUiState.motionDetectionMode == MotionDetectionMode.FACE) {
                                             scope.launch {
                                                 try {
                                                     motionEngine.processImageProxy(image)
@@ -258,7 +298,7 @@ fun CameraStreamLayout(
                         shape = MaterialTheme.shapes.medium
                     ) {
                         Text(
-                            text = vaUiState.motionDetectionMode.uppercase(),
+                            text = vaUiState.motionDetectionMode.key.uppercase(),
                             color = Color.White,
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,

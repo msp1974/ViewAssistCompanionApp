@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.device
 import android.content.Context
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -46,6 +47,9 @@ class DeviceInfo @Inject constructor(val context: Context) {
                         put("stringType", it.stringType)
                     }
                 }
+            }
+            putJsonArray("unsupported_functions") {
+                DeviceFunctionQuirks.userFacingWireNames().forEach { add(it) }
             }
         }
     }

@@ -683,7 +683,7 @@ abstract class Satellite(var context: Context, val config: APPConfig, val scope:
             }
         })
         // Start motion sensor
-        if (config.motionDetectionMode != "none") {
+        if (config.motionDetectionMode.usesCamera) {
             delay(2.seconds)  // Add delay to camera start to let app start up
             motionTask.startCamera()
         }

@@ -11,6 +11,7 @@ import androidx.core.content.edit
 import com.google.android.gms.common.util.ClientLibraryUtils.getPackageInfo
 import com.msp1974.vacompanion.data.AvailableAlarm
 import com.msp1974.vacompanion.data.AvailableWakeSound
+import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventNotifier
 import com.msp1974.vacompanion.utils.FirebaseManager
@@ -216,8 +217,8 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var motionDetectionMode: String by Delegates.observable("none") { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue) // or motion
+    var motionDetectionMode: MotionDetectionMode by Delegates.observable(MotionDetectionMode.NONE) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
     }
 
     var motionDetectionSensitivity: Int by Delegates.observable(0) { property, oldValue, newValue ->
@@ -337,8 +338,9 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_on"]?.jsonPrimitive?.booleanOrNull?.let { screenOn = it }
         settings["enable_network_recovery"]?.jsonPrimitive?.booleanOrNull?.let { enableNetworkRecovery = it }
         settings["motion_detection_mode"]?.jsonPrimitive?.contentOrNull?.let {
-            motionDetectionMode = it
-            enableMotionDetection = it != "none"
+            val mode = MotionDetectionMode.fromKey(it)
+            motionDetectionMode = mode
+            enableMotionDetection = mode.usesCamera
         }
         settings["motion_detection_sensitivity"]?.jsonPrimitive?.intOrNull?.let { motionDetectionSensitivity = it }
         settings["screen_timeout"]?.jsonPrimitive?.intOrNull?.let { screenTimeout = it * 1000 }

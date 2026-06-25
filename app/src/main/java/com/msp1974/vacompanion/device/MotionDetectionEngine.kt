@@ -12,7 +12,7 @@ import kotlinx.coroutines.tasks.await
 import timber.log.Timber
 import kotlin.math.abs
 
-enum class MotionDetectionMode {
+enum class DetectorMode {
     PIXEL_DIFF,
     FACE_DETECTION
 }
@@ -57,7 +57,7 @@ class MotionDetectionEngine(
     private var motionThreshold = 25 // Luma difference threshold
     private var minBlobSize = 64 // Minimum pixels in a block to consider as motion
 
-    var detectorMode = MotionDetectionMode.PIXEL_DIFF
+    var detectorMode = DetectorMode.PIXEL_DIFF
 
     private var faceDetector: com.google.mlkit.vision.face.FaceDetector? = null
 
@@ -118,50 +118,57 @@ class MotionDetectionEngine(
 
     @SuppressLint("UnsafeOptInUsageError")
     suspend fun processImageProxy(imageProxy: ImageProxy) {
-        if (detectorMode == MotionDetectionMode.FACE_DETECTION) {
-            val mediaImage = imageProxy.image ?: return
-            val rotation = imageProxy.imageInfo.rotationDegrees
-            val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
-            
-            try {
-                val faces = getFaceDetector().process(inputImage).await()
-                
-                // ML Kit bounding boxes are in the coordinate system of the InputImage.
-                // We normalize these to the UPRIGHT coordinate system first.
-                val imageW = inputImage.width.toFloat()
-                val imageH = inputImage.height.toFloat()
+        val mediaImage = imageProxy.image ?: return
+        processMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees, imageProxy.width, imageProxy.height)
+    }
 
-                val boxes = faces.map { face ->
-                    val bounds = face.boundingBox
-                    val nx1 = bounds.left.toFloat() / imageW
-                    val ny1 = bounds.top.toFloat() / imageH
-                    val nx2 = bounds.right.toFloat() / imageW
-                    val ny2 = bounds.bottom.toFloat() / imageH
-                    
-                    // Convert normalized UPRIGHT coordinates back to normalized SENSOR coordinates
-                    // so that the UI can apply consistent transformation logic (rotation + mirroring).
-                    when (rotation) {
-                        90 -> RectF(ny1, 1f - nx2, ny2, 1f - nx1)
-                        180 -> RectF(1f - nx2, 1f - ny2, 1f - nx1, 1f - ny1)
-                        270 -> RectF(1f - ny2, nx1, 1f - ny1, nx2)
-                        else -> RectF(nx1, ny1, nx2, ny2)
-                    }
+    /**
+     * Run face detection on a raw media image. Shared between the CameraX path
+     * (called via processImageProxy) and DirectCameraSource (which has no
+     * ImageProxy because it bypasses CameraX entirely).
+     */
+    suspend fun processMediaImage(mediaImage: android.media.Image, rotation: Int, sourceWidth: Int, sourceHeight: Int) {
+        if (detectorMode != DetectorMode.FACE_DETECTION) return
+        val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
+
+        try {
+            val faces = getFaceDetector().process(inputImage).await()
+
+            // ML Kit bounding boxes are in the coordinate system of the InputImage.
+            // We normalize these to the UPRIGHT coordinate system first.
+            val imageW = inputImage.width.toFloat()
+            val imageH = inputImage.height.toFloat()
+
+            val boxes = faces.map { face ->
+                val bounds = face.boundingBox
+                val nx1 = bounds.left.toFloat() / imageW
+                val ny1 = bounds.top.toFloat() / imageH
+                val nx2 = bounds.right.toFloat() / imageW
+                val ny2 = bounds.bottom.toFloat() / imageH
+
+                // Convert normalized UPRIGHT coordinates back to normalized SENSOR coordinates
+                // so that the UI can apply consistent transformation logic (rotation + mirroring).
+                when (rotation) {
+                    90 -> RectF(ny1, 1f - nx2, ny2, 1f - nx1)
+                    180 -> RectF(1f - nx2, 1f - ny2, 1f - nx1, 1f - ny1)
+                    270 -> RectF(1f - ny2, nx1, 1f - ny1, nx2)
+                    else -> RectF(nx1, ny1, nx2, ny2)
                 }
-                
-                val hasMotion = boxes.isNotEmpty()
-                val intensity = if (hasMotion) boxes.size.toFloat() / 5f else 0f 
-                
-                _motionFlow.emit(MotionResult(
-                    hasMotion, 
-                    boxes, 
-                    intensity.coerceIn(0f, 1f), 
-                    imageProxy.width, 
-                    imageProxy.height,
-                    rotation
-                ))
-            } catch (e: Exception) {
-                Timber.e(e, "Face detection failed")
             }
+
+            val hasMotion = boxes.isNotEmpty()
+            val intensity = if (hasMotion) boxes.size.toFloat() / 5f else 0f
+
+            _motionFlow.emit(MotionResult(
+                hasMotion,
+                boxes,
+                intensity.coerceIn(0f, 1f),
+                sourceWidth,
+                sourceHeight,
+                rotation
+            ))
+        } catch (e: Exception) {
+            Timber.e(e, "Face detection failed")
         }
     }
 
