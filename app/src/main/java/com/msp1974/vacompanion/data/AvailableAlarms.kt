@@ -1,7 +1,7 @@
 package com.msp1974.vacompanion.data
 
 import android.content.Context
-import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.CustomFileDownloader
 import com.msp1974.vacompanion.utils.Helpers.Companion.capitalizeWords
 import kotlinx.coroutines.CoroutineDispatcher
@@ -13,14 +13,14 @@ import kotlinx.coroutines.withContext
  */
 class AvailableAlarms(
     private val context: Context,
-    private val config: APPConfig,
+    private val deviceManager: DeviceManager,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     /**
      * Returns a combined list of alarms from assets and custom storage.
      */
     suspend fun get(): List<AvailableAlarm> = withContext(dispatcher) {
-        val downloader = CustomFileDownloader(context, config)
+        val downloader = CustomFileDownloader(context, deviceManager)
         val customAlarms = downloader.listAvailableCustomAlarms()
         
         val assetAlarms = try {

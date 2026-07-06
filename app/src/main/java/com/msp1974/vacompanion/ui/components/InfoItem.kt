@@ -6,7 +6,7 @@ import androidx.compose.ui.text.style.TextAlign
 
 @Composable
 fun InfoItem(label: String, value: String) {
-    Row() {
+    Row {
         TableCell(text = label, weight = 0.4f)
         TableCell(text = value, weight = 0.6f, alignment = TextAlign.End)
     }

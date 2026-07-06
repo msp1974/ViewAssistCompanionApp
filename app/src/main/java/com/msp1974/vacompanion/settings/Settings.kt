@@ -56,15 +56,19 @@ class APPConfig @Inject constructor(val context: Context) {
 
     // Constant values
     val name = NAME
-    val version = getPackageInfo(context, context.packageName)?.versionName.toString()
+    //val version = getPackageInfo(context, context.packageName)?.versionName.toString()
     val serverPort = SERVER_PORT
 
     // Versions
     var integrationVersion: String = "0.0.0"
-    var minRequiredApkVersion: String = version
+    var minRequiredApkVersion: String = getPackageInfo(context, context.packageName)?.versionName.toString()
 
 
     // In memory only settings
+    var accessToken: String = ""
+    var tokenExpiry: Long = 0
+
+
     var initSettings: Boolean = false
     var homeAssistantConnectedIP: String = ""
     var homeAssistantHTTPPort: Int = DEFAULT_HA_HTTP_PORT
@@ -81,6 +85,7 @@ class APPConfig @Inject constructor(val context: Context) {
     var backgroundTaskStatus: BackgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
     var isRunning: Boolean = false
     var cameraStreamActive: Boolean = false
+    var settingsOpen: Boolean = false
 
     var hasRecordAudioPermission: Boolean = false
     var hasPostNotificationPermission: Boolean = false
@@ -247,6 +252,10 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var screenSaverDisableOnTouch: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var screenOrientationMode: String by Delegates.observable("auto") { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -280,17 +289,21 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getString("uuid", getUUID()) ?: ""
         set(value) = this.sharedPrefs.edit { putString("uuid", value) }
 
+    /*
     var accessToken: String
         get() = this.sharedPrefs.getString("auth_token", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("auth_token", value) }
+
+        var tokenExpiry: Long
+        get() = this.sharedPrefs.getLong("token_expiry", 0)
+        set(value) = this.sharedPrefs.edit { putLong("token_expiry", value) }
+    */
 
     var refreshToken: String
         get() = this.sharedPrefs.getString("refresh_token", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("refresh_token", value) }
 
-    var tokenExpiry: Long
-        get() = this.sharedPrefs.getLong("token_expiry", 0)
-        set(value) = this.sharedPrefs.edit { putLong("token_expiry", value) }
+
 
     private var pairedDeviceId: String
         get() = this.sharedPrefs.getString("paired_device_id", "") ?: ""
@@ -303,7 +316,7 @@ class APPConfig @Inject constructor(val context: Context) {
     fun processSettings(settingString: String) {
         initSettings = true
         val settings = Json.parseToJsonElement(settingString).jsonObject
-        
+
         settings["ha_port"]?.jsonPrimitive?.intOrNull?.let { homeAssistantHTTPPort = it }
         settings["ha_url"]?.jsonPrimitive?.contentOrNull?.let { homeAssistantURL = it }
         settings["ha_dashboard"]?.jsonPrimitive?.contentOrNull?.let { homeAssistantDashboard = it }
@@ -343,6 +356,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_timeout"]?.jsonPrimitive?.intOrNull?.let { screenTimeout = it * 1000 }
         settings["bump_sensitivity"]?.jsonPrimitive?.floatOrNull?.let { bumpSensitivity = it / 10 }
         settings["screen_saver"]?.jsonPrimitive?.booleanOrNull?.let { screenSaver = it }
+        settings["screen_saver_disable_on_touch"]?.jsonPrimitive?.booleanOrNull?.let { screenSaverDisableOnTouch = it }
         settings["screen_orientation_mode"]?.jsonPrimitive?.contentOrNull?.let { screenOrientationMode = it }
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }

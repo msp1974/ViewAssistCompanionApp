@@ -1,4 +1,4 @@
-package com.msp1974.vacompanion.device
+package com.msp1974.vacompanion.device.info
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -12,8 +12,6 @@ import android.hardware.camera2.CameraManager
 import android.os.BatteryManager
 import android.os.Build
 import com.msp1974.vacompanion.utils.Helpers
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import timber.log.Timber
 
 data class DeviceSensor(
@@ -76,7 +74,7 @@ class DeviceHardware(
         val batteryStatus = context.registerReceiver(null, intentFilter)
         val hasBattery = batteryStatus?.getBooleanExtra(BatteryManager.EXTRA_PRESENT, false)
         val batteryVoltage = batteryStatus?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 0)
-        return hasBattery == true && batteryVoltage != 0 && Helpers.Companion.getDeviceName().toString() != "Lenovo StarView"
+        return hasBattery == true && batteryVoltage != 0 && Helpers.getDeviceName().toString() != "Lenovo StarView"
     }
 
     private fun hasFrontCamera(): Boolean {
@@ -145,9 +143,6 @@ class DeviceHardware(
         // Some devices have raw proximity sensors that report raw ADC values
         // (IR reflection intensity) instead of standard distance or binary values.
         // E.g. Rockchip PX30_EVB reports ~50 (ambient) to >4000 (close).
-        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        val proximitySensor = sensorManager.getDefaultSensor(Sensor.TYPE_PROXIMITY) ?: return "none"
-
         val isPx30Evb = Build.DEVICE.equals("px30_evb", ignoreCase = true) ||
                 Build.MODEL.equals("px30_evb", ignoreCase = true)
 

@@ -1,15 +1,16 @@
 package com.msp1974.vacompanion.wyoming
 
 import android.content.Context
-import com.msp1974.vacompanion.device.DeviceInfo
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.device.WyomingServerStatus
 import com.msp1974.vacompanion.satellite.Satellite
-import com.msp1974.vacompanion.settings.APPConfig
 import io.ktor.network.selector.ActorSelectorManager
 import io.ktor.network.sockets.ServerSocket
 import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.port
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -35,10 +36,14 @@ data class Connection(
     val handler: WyomingClientHandler,
 )
 
-abstract class WyomingTCPServer(private val context: Context, val config: APPConfig, val deviceInfo: DeviceInfo): IEvents {
+abstract class WyomingTCPServer(private val context: Context, val deviceManager: DeviceManager): IEvents {
+
+    val config = deviceManager.config
+    val deviceInfo = deviceManager.deviceInfo
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
+    private var satelliteStatusListenerJob: Job? = null
 
     private var runServer: Boolean = true
     var satellite: Satellite? = null
@@ -47,12 +52,13 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
     private var serverSocket: ServerSocket? = null
     private var restartIfStopped: Boolean = false
 
-    private val infoBuilder: WyomingInfoBuilder = WyomingInfoBuilder(config)
-    private val capabilitiesBuilder: WyomingCapabilitiesBuilder = WyomingCapabilitiesBuilder(config, deviceInfo)
+    private val infoBuilder: WyomingInfoBuilder = WyomingInfoBuilder(deviceManager)
+    private val capabilitiesBuilder: WyomingCapabilitiesBuilder = WyomingCapabilitiesBuilder(deviceManager)
 
     var state: ServerState = ServerState.STOPPED
         set(value) {
             field = value
+            updateStatus()
             onState(value, restartIfStopped)
         }
 
@@ -133,12 +139,16 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
                             }
                             Timber.d("Client disconnected: $clientId.  Total: ${clients.size}")
 
+                            if (clientId == satellite?.clientId) {
+                                satellite?.clientId = ""
+                            }
 
                             if (clients.isEmpty()) {
                                 Timber.d("No clients connected")
                                 satellite?.clientId = ""
                                 disconnectionMonitor()
                             }
+                            updateStatus()
                         }
 
                         override suspend fun onWyomingMessage(
@@ -161,6 +171,7 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
 
                     clients[id] = Connection(id, client)
                     Timber.d("Client connected: ${socket.remoteAddress}.  Total: ${clients.size}")
+                    updateStatus()
                     onEvent("client_connected", data)
                 }
             } catch (e: Throwable) {
@@ -281,6 +292,15 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
     private suspend fun startSatellite(clientId: String) {
         Timber.d("Processing run satellite")
 
+        if (config.settingsOpen) {
+            Timber.d("Settings screen open - delaying satellite start")
+            while (config.settingsOpen) {
+                delay(500)
+                clients[clientId]?.handler?.lastMessage = System.currentTimeMillis()
+            }
+            Timber.d("Settings screen closed - proceeding with satellite start")
+        }
+
         val serverIP = clients[clientId]?.handler?.clientIP ?: ""
 
         if (config.pairedDeviceID.isEmpty()) {
@@ -317,7 +337,7 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
         try {
             Timber.d("Starting satellite")
             config.homeAssistantConnectedIP = serverIP
-            satellite = object: Satellite(context, config, scope, clientId, deviceInfo) {
+            satellite = object: Satellite(context, deviceManager, scope, clientId) {
                 override fun onEvent(event: String, data: JsonObject) {
                     Timber.d("Satellite event: $event")
                 }
@@ -332,8 +352,14 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
                 }
             }.also {
                 unregisterNSD()
-                scope.launch {
-                    it.start()
+                scope.launch { it.start() }
+                if (satelliteStatusListenerJob != null && satelliteStatusListenerJob!!.isActive) {
+                    satelliteStatusListenerJob!!.cancel()
+                }
+                satelliteStatusListenerJob = scope.launch {
+                    satellite?.satelliteState?.collect { status ->
+                        updateStatus()
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -355,6 +381,7 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
                 clients.remove(satId)
             }
             registerNSD()
+            satelliteStatusListenerJob?.cancel()
         }
     }
 
@@ -376,6 +403,17 @@ abstract class WyomingTCPServer(private val context: Context, val config: APPCon
         } else {
             Timber.e("Failed sending -> $clientId: ${packet.toMap()}. No connection with that client id")
         }
+    }
+
+    private fun updateStatus() {
+        deviceManager.updateServerState(
+            WyomingServerStatus(
+                state = state,
+                connected = clients.isNotEmpty(),
+                satelliteRunning = satellite?.state == SatelliteState.RUNNING
+            )
+        )
+        Timber.d("Server status: ${deviceManager.status.value.wyoming}")
     }
 
     companion object {

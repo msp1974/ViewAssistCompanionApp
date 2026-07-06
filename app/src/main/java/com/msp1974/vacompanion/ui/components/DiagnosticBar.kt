@@ -96,7 +96,7 @@ fun DiagnosticBar(
                         MotionIndicator(diagnosticInfo)
                     }
                 }
-                Row() {
+                Row {
                     InfoGauge(
                         indicatorValue = diagnosticInfo.audioLevel,
                         maxIndicatorValue = 100,
@@ -155,6 +155,7 @@ private fun MotionIndicator(diagnosticInfo: DiagnosticInfo) {
 private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
     val configuration = LocalConfiguration.current
     val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    val labelColour = Color.White
 
     if (isPortrait) {
         Row(
@@ -165,7 +166,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 onClick = {},
                 label = { Text(if (diagnosticInfo.engine != "") diagnosticInfo.engine else "Disabled") },
                 colors = AssistChipDefaults.assistChipColors(
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
             AssistChip(
@@ -173,7 +174,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 label = { Text("Detecting") },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = if (diagnosticInfo.mode == AudioRouteOption.DETECT) CustomColours.GREEN else Color.Transparent,
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
             AssistChip(
@@ -181,7 +182,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 label = { Text("Streaming") },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = if (diagnosticInfo.mode == AudioRouteOption.STREAM) CustomColours.GREEN else Color.Transparent,
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
         }
@@ -191,7 +192,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 onClick = {},
                 label = { Text(if (diagnosticInfo.engine != "") diagnosticInfo.engine else "Disabled") },
                 colors = AssistChipDefaults.assistChipColors(
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
             AssistChip(
@@ -199,7 +200,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 label = { Text("Detecting") },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = if (diagnosticInfo.mode == AudioRouteOption.DETECT) CustomColours.GREEN else Color.Transparent,
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
             AssistChip(
@@ -207,7 +208,7 @@ private fun DiagnosticChips(diagnosticInfo: DiagnosticInfo) {
                 label = { Text("Streaming") },
                 colors = AssistChipDefaults.assistChipColors(
                     containerColor = if (diagnosticInfo.mode == AudioRouteOption.STREAM) CustomColours.GREEN else Color.Transparent,
-                    labelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    labelColor = labelColour
                 )
             )
         }

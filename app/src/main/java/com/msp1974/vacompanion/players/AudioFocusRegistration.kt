@@ -22,14 +22,14 @@ class AudioFocusRegistration(
                 .setOnAudioFocusChangeListener { }
                 .build()
             val rq = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest!!)
-            Timber.Forest.d("Audio focus request result: $rq")
+            Timber.d("Audio focus request result: $rq")
         }
     }
 
     fun abandon() {
         if (focusRequest != null) {
             val rq = AudioManagerCompat.abandonAudioFocusRequest(audioManager, focusRequest!!)
-            Timber.Forest.d("Audio focus abandon result: $rq")
+            Timber.d("Audio focus abandon result: $rq")
             focusRequest = null
         }
     }

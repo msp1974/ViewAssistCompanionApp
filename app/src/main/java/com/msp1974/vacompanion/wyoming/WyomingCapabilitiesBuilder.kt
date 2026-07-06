@@ -1,14 +1,17 @@
 package com.msp1974.vacompanion.wyoming
 
-import com.msp1974.vacompanion.device.DeviceInfo
-import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.device.DeviceManager
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
+import javax.inject.Inject
 
-class WyomingCapabilitiesBuilder(private val config: APPConfig, private val deviceInfo: DeviceInfo) {
+class WyomingCapabilitiesBuilder @Inject constructor(deviceManager: DeviceManager) {
+
+    val config = deviceManager.config
+    val deviceInfo = deviceManager.deviceInfo
 
     @OptIn(ExperimentalSerializationApi::class)
     fun buildInfo(): JsonObject {

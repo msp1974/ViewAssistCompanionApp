@@ -4,11 +4,13 @@ import android.annotation.SuppressLint
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.os.Build
 import android.system.Os
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraXConfig
 import com.msp1974.vacompanion.utils.ActivityManager
+import com.msp1974.vacompanion.utils.Helpers
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import timber.log.Timber.DebugTree
@@ -29,6 +31,17 @@ class VACAApplication: Application(), CameraXConfig.Provider {
     override fun onCreate() {
         super.onCreate()
 
+        Timber.plant(DebugTree())
+
+        Timber.i("#################################################################################################")
+        Timber.i("Starting View Assist Companion App")
+        Timber.i("Version ${packageManager.getPackageInfo(packageName, 0).versionName}")
+        Timber.i("Android version: ${Helpers.getAndroidVersion()}")
+        Timber.i("CPU: ${System.getProperty("os.arch")}")
+        Timber.i("Name: ${Helpers.getDeviceName()}")
+        Timber.i("Serial: ${Build.SERIAL}")
+        Timber.i("#################################################################################################")
+
         suppressMLKitSpam()
 
         Thread.setDefaultUncaughtExceptionHandler(AppExceptionHandler(this.applicationContext))
@@ -36,8 +49,6 @@ class VACAApplication: Application(), CameraXConfig.Provider {
         disableSSLCertificateChecking()
 
         activityManager = ActivityManager(this)
-
-        Timber.plant(DebugTree())
 
         // Create the notification channel (required for Android 8.0 and above)
         val channel = NotificationChannel(
@@ -83,13 +94,13 @@ class VACAApplication: Application(), CameraXConfig.Provider {
 
             @SuppressLint("TrustAllX509TrustManager")
             @Throws(CertificateException::class)
-            public override fun checkClientTrusted(arg0: Array<X509Certificate?>?, arg1: String?) {
+            override fun checkClientTrusted(arg0: Array<X509Certificate?>?, arg1: String?) {
                 // Not implemented
             }
 
             @SuppressLint("TrustAllX509TrustManager")
             @Throws(CertificateException::class)
-            public override fun checkServerTrusted(arg0: Array<X509Certificate?>?, arg1: String?) {
+            override fun checkServerTrusted(arg0: Array<X509Certificate?>?, arg1: String?) {
                 // Not implemented
             }
         }) as Array<TrustManager?>

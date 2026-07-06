@@ -1,5 +1,7 @@
 package com.msp1974.vacompanion.wyoming
 
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.device.info.DeviceInfo
 import com.msp1974.vacompanion.settings.APPConfig
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
@@ -9,15 +11,15 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
-class WyomingInfoBuilder(private val config: APPConfig) {
+class WyomingInfoBuilder(private val deviceManager: DeviceManager) {
 
     @OptIn(ExperimentalSerializationApi::class)
     fun buildInfo(): JsonObject {
-        val availableWakeWords = config.availableWakeWords
+        val availableWakeWords = deviceManager.config.availableWakeWords
 
 
         return buildJsonObject {
-            put("version", config.version)
+            put("version", deviceManager.deviceInfo.software.appVersion)
             putJsonArray("asr") {}
             putJsonArray("tts") {}
             putJsonArray("handle") {}
@@ -50,14 +52,14 @@ class WyomingInfoBuilder(private val config: APPConfig) {
             }
             putJsonArray("stt") {}
             putJsonObject("satellite") {
-                put("name", "VACA ${config.uuid}")
+                put("name", "VACA ${deviceManager.config.uuid}")
                 putJsonObject("attribution") {
                     put("name", "")
                     put("url", "")
                 }
                 put("installed", true)
                 put("description", "View Assist Companion App")
-                put("version", config.version)
+                put("version", deviceManager.deviceInfo.software.appVersion)
                 put("area", "")
                 put("has_vad", false)
                 putJsonObject("snd_format") {
@@ -65,7 +67,7 @@ class WyomingInfoBuilder(private val config: APPConfig) {
                     put("rate", 16000)
                     put("width", 2)
                 }
-                putJsonArray("active_wake_words") { add(JsonPrimitive(config.wakeWord)) }
+                putJsonArray("active_wake_words") { add(JsonPrimitive(deviceManager.config.wakeWord)) }
                 put("max_active_wake_words", 1)
             }
         }

@@ -34,6 +34,7 @@ internal class OnnxModelRunner(
             val sessionOptions = OrtSession.SessionOptions()
             sessionOptions.setInterOpNumThreads(1)
             sessionOptions.setIntraOpNumThreads(1)
+            sessionOptions.addConfigEntry("session_options.enable_cpu_mem_arena", "1")
             env.createSession(modelBytes, sessionOptions)
         } catch (e: FileNotFoundException) {
             throw RuntimeException("Unable to load ${wakeWord.id}. ${wakeWord.wakeWord.model} not found")

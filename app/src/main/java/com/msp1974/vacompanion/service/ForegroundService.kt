@@ -21,10 +21,9 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.VACAApplication
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.NetworkStatusManager
-import com.msp1974.vacompanion.device.DeviceInfo
-import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.BackgroundTaskStatus
 import com.msp1974.vacompanion.utils.FirebaseManager
+import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import timber.log.Timber
@@ -35,9 +34,9 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class VAForegroundService @Inject constructor() : LifecycleService() {
 
-    @Inject lateinit var config: APPConfig
-    @Inject lateinit var deviceInfo: DeviceInfo
-    @Inject lateinit var networkStatusManager: NetworkStatusManager
+    @Inject lateinit var deviceManager: DeviceManager
+
+    private val config get() = deviceManager.config
 
     private lateinit var firebase: FirebaseManager
     private var keyguardLock: KeyguardManager.KeyguardLock? = null
@@ -135,7 +134,7 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
                         firebase.logException(ex)
                     }
 
-                    backgroundTask = BackgroundTaskController(this@VAForegroundService, config, deviceInfo, networkStatusManager)
+                    backgroundTask = BackgroundTaskController(this@VAForegroundService, deviceManager)
                     backgroundTask?.start()
                     Timber.i("Background Service Started")
                     config.backgroundTaskRunning = true
@@ -199,6 +198,12 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
         this,
         Manifest.permission.RECORD_AUDIO
     ) == PackageManager.PERMISSION_GRANTED
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        Timber.i("onTaskRemoved - stopping service")
+        stopSelf()
+    }
 
     override fun onDestroy() {
         super.onDestroy()

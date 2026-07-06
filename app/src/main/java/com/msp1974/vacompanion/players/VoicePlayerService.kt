@@ -2,19 +2,21 @@ package com.msp1974.vacompanion.players
 
 import android.annotation.SuppressLint
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
 import android.os.IBinder
 import androidx.media3.common.util.UnstableApi
 import timber.log.Timber
 
 
 @UnstableApi
-class VoicePlayerService() : Service() {
+class VoicePlayerService : Service() {
 
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: AudioTrack? = null
@@ -35,8 +37,6 @@ class VoicePlayerService() : Service() {
         .setUsage(AudioAttributes.USAGE_NOTIFICATION)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
-
-
 
     override fun onCreate() {
         super.onCreate()
@@ -152,7 +152,7 @@ class VoicePlayerService() : Service() {
                     }
                 }
             }
-            .build();
+            .build()
 
         val result = audioManager.requestAudioFocus(focusRequest!!)
 

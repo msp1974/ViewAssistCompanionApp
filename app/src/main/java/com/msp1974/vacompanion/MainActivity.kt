@@ -22,6 +22,7 @@ import android.os.Build
 import android.os.Bundle
 import android.os.StrictMode
 import android.provider.Settings
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -43,7 +44,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.app.ActivityCompat
@@ -52,20 +52,21 @@ import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
-import com.msp1974.vacompanion.device.DeviceInfo
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.device.ScreenOnMode
+import com.msp1974.vacompanion.device.ScreenUtils
 import com.msp1974.vacompanion.service.VAForegroundService
-import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.BackgroundTaskStatus
+import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.ui.VADialog
+import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.components.VADialog
 import com.msp1974.vacompanion.ui.layouts.BlackScreen
 import com.msp1974.vacompanion.ui.layouts.ConnectionScreen
 import com.msp1974.vacompanion.ui.layouts.SettingsLayout
 import com.msp1974.vacompanion.ui.layouts.WebViewScreen
 import com.msp1974.vacompanion.ui.theme.AppTheme
-import com.msp1974.vacompanion.utils.AuthUtils
 import com.msp1974.vacompanion.utils.CustomWebView
 import com.msp1974.vacompanion.utils.CustomWebViewClient
 import com.msp1974.vacompanion.utils.Event
@@ -74,9 +75,6 @@ import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
 import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.Permissions
-import com.msp1974.vacompanion.device.ScreenUtils
-import com.msp1974.vacompanion.device.ScreenOnMode
-import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.utils.SoundControl
 import com.msp1974.vacompanion.utils.Updater
 import dagger.hilt.android.AndroidEntryPoint
@@ -84,18 +82,18 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import java.time.Instant
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
-import kotlin.getValue
+import kotlin.time.Duration.Companion.seconds
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
-    @Inject lateinit var config: APPConfig
-    @Inject lateinit var deviceInfo: DeviceInfo
+    @Inject lateinit var deviceManager: DeviceManager
+    private val deviceInfo get() = deviceManager.deviceInfo
 
     val viewModel: VAViewModel by viewModels()
+
+    private val config get() = deviceManager.config
 
     private val log = Logger()
     private var firebaseManager: FirebaseManager? = null
@@ -113,6 +111,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private var screenOffStartUp: Boolean = false
     private var screenOffInProgress: Boolean = false
     private var screenModeJob: Job? = null
+    private var screenDelayJob: Job? = null
     private var lastScreenStateEvent: Long = 0
     private var motionDetected: Boolean = false
     private val snackbarHostState = SnackbarHostState()
@@ -128,7 +127,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         screen = ScreenUtils(this, config)
         updater = Updater(this)
-        permissions = Permissions(this, config, deviceInfo)
+        permissions = Permissions(this, deviceManager)
 
         var keepSplashScreen = true
 
@@ -144,16 +143,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         onBackPressedDispatcher.addCallback(this, onBackButton)
         setFirebaseUserProperties()
-
-        log.i("#################################################################################################")
-        log.i("Starting View Assist Companion App")
-        log.i("Version ${config.version}")
-        log.i("Android version: ${Helpers.getAndroidVersion()}")
-        log.i("CPU: ${System.getProperty("os.arch")}")
-        log.i("Name: ${Helpers.getDeviceName()}")
-        log.i("Serial: ${Build.SERIAL}")
-        log.i("UUID: ${config.uuid}")
-        log.i("#################################################################################################")
 
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
@@ -177,15 +166,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         setContent {
             val vaUiState by viewModel.vacaState.collectAsState()
-            AppTheme(darkMode = false, dynamicColor = false) {
+            AppTheme(darkMode = vaUiState.darkMode, dynamicColor = false) {
                 Scaffold(
                     snackbarHost = { SnackbarHost(snackbarHostState) },
                     containerColor = Color.Black
                 ) { padding ->
                     Surface(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(padding),
+                        modifier = Modifier.fillMaxSize(),
                         color = Color.Black
                     ) {
                         when {
@@ -198,12 +185,17 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                                             viewModel = viewModel,
                                             onClose = {
                                                 viewModel.setShowMenu(false)
-                                            }
+                                            },
+                                            modifier = Modifier.padding(padding)
                                         )
                                     }
                                 }
                             }
-                            else -> ConnectionScreen()
+                            else -> {
+                                Box(modifier = Modifier.padding(padding)) {
+                                    ConnectionScreen()
+                                }
+                            }
                         }
 
                         WakeWordOverlay(
@@ -292,7 +284,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     fun initWebView() {
         webViewClient = CustomWebViewClient(viewModel)
         webView = CustomWebView.getView(this)
-        webView.initialise(config, webViewClient)
+        webView.initialise(deviceManager, webViewClient)
         webView.layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
@@ -388,12 +380,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.d("Broadcast received: ${intent.action}")
             when (intent.action) {
                 BroadcastSender.SATELLITE_STARTED -> {
-                    viewModel.setSatelliteRunning(true)
                     setScreenSettings()
                     webView.setZoomLevel(config.zoomLevel)
                     config.screenOn = screen.isScreenOn()
-                    val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
-                    log.d("Loading URL: $url")
+                    val url = deviceManager.authenticationManager.getHAUrl()
+                    log.d("Satellite started -> loading URL: $url")
                     webView.loadUrl(url)
                 }
                 BroadcastSender.SATELLITE_CLIENT_UPDATED -> {
@@ -403,7 +394,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     }
                 }
                 BroadcastSender.SATELLITE_STOPPED -> {
-                    viewModel.setSatelliteRunning(false)
                     if (!config.backgroundTaskRunning) {
                         finishAndRemoveTask()
                     }
@@ -422,8 +412,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 }
                 BroadcastSender.WEBVIEW_CRASH -> {
                     initWebView()
-                    val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
-                    log.d("Loading URL: $url")
+                    val url = deviceManager.authenticationManager.getHAUrl()
+                    log.d("Webview crash -> loading URL: $url")
                     webView.loadUrl(url)
                 }
                 BroadcastSender.CLOSE_APP -> {
@@ -446,8 +436,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 }
                 NotificationManager.ACTION_INTERRUPTION_FILTER_CHANGED -> {
                     val dndEnabled = SoundControl.isDoNotDisturbEnabled(context)
-                    if (config.doNotDisturb != dndEnabled) {
-                        config.doNotDisturb = dndEnabled
+                    if (deviceManager.status.value.isDND != dndEnabled) {
+                        deviceManager.updateDNDStatus(dndEnabled)
                     }
                 }
                 BroadcastSender.TOAST_MESSAGE -> {
@@ -510,6 +500,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         super.onDestroy()
     }
 
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (config.screenSaver && config.screenSaverDisableOnTouch) {
+            config.screenSaver = false
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     private fun terminateApp() {
         finishAffinity()
     }
@@ -519,10 +516,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             log.w("Background task already running.  Not starting from MainActivity")
             firebaseManager?.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
             if (config.isRunning) {
-                viewModel.setSatelliteRunning(true)
                 webView.setZoomLevel(config.zoomLevel)
-                val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
-                log.d("Loading URL: $url")
+                val url = deviceManager.authenticationManager.getHAUrl()
+                log.d("Run background tasks -> loading URL: $url")
                 webView.loadUrl(url)
             } else {
                 setStatus(getString(R.string.status_waiting_for_connection))
@@ -565,17 +561,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 when (event.eventName) {
                     "screenAlwaysOn" -> {
                         val enabled = event.newValue as Boolean
-                        //if (enabled) {
-                            //screenWake()
-                        //}
                         screen.setScreenAlwaysOn(window, enabled)
                     }
                     "screenAutoBrightness" -> {
+                        val enabled = event.newValue as Boolean
                         if (screen.isScreenOn() and !viewModel.vacaState.value.screenBlank) {
-                            screen.setScreenAutoBrightness(
-                                window,
-                                event.newValue as Boolean
-                            )
+                            screen.setScreenAutoBrightness(enabled)
+                            if (!enabled) screen.setScreenBrightness(window, config.screenBrightness)
                         }
                     }
                     "screenBrightness" -> {
@@ -584,6 +576,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                         }
                     }
                     "screenTimeout" -> screen.setScreenTimeout(config.screenTimeout)
+                    "hideSystemUI" -> screen.hideSystemUI(window)
                     else -> consumed = false
                 }
             }
@@ -598,8 +591,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "textSize" -> webView.setTextSize(event.newValue as Int)
                 "darkMode" -> setDarkMode(event.newValue as Boolean)
                 "refresh" -> webView.refresh()
-                "screenWake" -> applyScreenMode(ScreenOnMode.ON)
-                "screenSleep" -> applyScreenMode(ScreenOnMode.OFF)
                 "screenOn" -> handleScreenOnChange(event.newValue as Boolean)
                 "screenSaver" -> onScreenSaver(event.newValue as Boolean)
                 "screenOrientationMode" -> screen.setScreenOrientation(this@MainActivity, event.newValue as String)
@@ -622,9 +613,16 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     fun handleScreenOnChange(screenOn: Boolean) {
         val now = System.currentTimeMillis()
-        if (now - lastScreenStateEvent > 1000) {
+        if (now - lastScreenStateEvent > 5000) {
             if (screen.isScreenOn() != screenOn) {
                 applyScreenMode(if (screenOn) ScreenOnMode.ON else ScreenOnMode.OFF)
+                lastScreenStateEvent = now
+            }
+        } else {
+            if (screenDelayJob != null && screenDelayJob!!.isActive) screenDelayJob!!.cancel()
+            screenDelayJob = lifecycleScope.launch {
+                delay(2.seconds)
+                applyScreenMode(if (config.screenOn) ScreenOnMode.ON else ScreenOnMode.OFF)
                 lastScreenStateEvent = now
             }
         }
@@ -669,7 +667,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             uiModeManager.nightMode = if (isDark) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO
         }
 
-        webView.refreshDarkMode()
+        webView.refreshDarkMode(isDark)
     }
 
     private fun showSnackbar(message: String) {
@@ -890,7 +888,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
-    private fun checkForUpdate() {
+    private suspend fun checkForUpdate() {
         try {
             Timber.d("Checking for update")
             if (updater.isUpdateAvailable(config.minRequiredApkVersion)) {
@@ -943,7 +941,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     intent.setDataAndType(
                         uri.toUri(),
                         "application/vnd.android.package-archive"
-                    );
+                    )
                     onUpdateAppActivityResult.launch(intent)
                 }
             } else {

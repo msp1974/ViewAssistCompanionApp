@@ -3,7 +3,6 @@ package com.msp1974.vacompanion.players
 import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Intent
-import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.IBinder
 import androidx.core.net.toUri
@@ -14,15 +13,13 @@ import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
 import androidx.media3.exoplayer.ExoPlayer
-import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -30,10 +27,12 @@ import javax.inject.Inject
 import kotlin.math.min
 
 @AndroidEntryPoint
-class MusicPlayerService() : Service() {
+class MusicPlayerService : Service() {
 
     @Inject
-    lateinit var config: APPConfig
+    lateinit var deviceManager: DeviceManager
+
+    private val config get() = deviceManager.config
 
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: ExoPlayer? = null
@@ -119,7 +118,6 @@ class MusicPlayerService() : Service() {
                     player.play()
                 }
             }
-            animateUnDuckingVolume()
         }
     }
 
@@ -157,30 +155,26 @@ class MusicPlayerService() : Service() {
                 when (focusChange) {
                     AudioManager.AUDIOFOCUS_GAIN -> {
                         hasAudioFocus = true
-                        Timber.d("Music player: Audio focus restored")
-                        resume()
+                        unDuckVolume()
                     }
 
                     AudioManager.AUDIOFOCUS_LOSS -> {
                         hasAudioFocus = false
-                        //pause()
+                        duckVolume(true)
                     }
 
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
                         hasAudioFocus = false
-                        pause()
+                        duckVolume(true)
                     }
 
                     AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                         hasAudioFocus = false
-                        val duckVolume = getDuckingVolume()
-                        Timber.d("Music player: Ducking volume to $duckVolume")
-                        mediaPlayer?.volume = duckVolume
-                        ducked = true
+                        duckVolume()
                     }
                 }
             }
-            .build();
+            .build()
 
         val result = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest!!)
         hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
@@ -190,6 +184,23 @@ class MusicPlayerService() : Service() {
 
     private fun getDuckingVolume(): Float {
         return min(config.duckingVolume / 50f, musicVolume)
+    }
+
+    private fun duckVolume(silence: Boolean = false) {
+        val duckVolume = if (silence) 0f else getDuckingVolume()
+        Timber.d("Music player: Ducking volume to $duckVolume")
+        mediaPlayer?.volume = duckVolume
+        ducked = true
+    }
+
+    private fun unDuckVolume(animate: Boolean = true) {
+        if (mediaPlayer?.volume == musicVolume) return
+        if (animate) {
+            animateUnDuckingVolume()
+        } else {
+            mediaPlayer?.volume = musicVolume
+        }
+        ducked = false
     }
 
     private fun animateUnDuckingVolume (

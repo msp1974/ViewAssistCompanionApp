@@ -153,12 +153,10 @@ class OpenWakeWordEngine(
     override fun start() = muted.flatMapLatest {
         if (it) emptyFlow()
         else flow {
+            val wakeWords = activeWakeWords
             val audioSource = if(isAndroidThings) VACAAudioFormat.FALLBACK_AUDIO_SOURCE else VACAAudioFormat.DEFAULT_AUDIO_SOURCE
             val microphoneInput = MicrophoneInput(config, audioSource, frameSize = 1280)
             try {
-                // Create detectors here
-
-
                 microphoneInput.start()
                 emit(AudioResult.EngineStatus("Started"))
                 while (true) {
@@ -183,8 +181,10 @@ class OpenWakeWordEngine(
 
                         val detections = processAudio(audio, frameTimestamp)
                         for (detection in detections) {
-                            if (detection.detected) {
-                                emit(AudioResult.WakeDetected(detection))
+                            if (detection.score > 0.1f) {
+                                if (detection.wakeWordId in wakeWords) {
+                                    emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
+                                }
                             }
                         }
                     }
@@ -210,7 +210,7 @@ class OpenWakeWordEngine(
             modelProcessors.map { (wakeWordWithId, processor) ->
                 try {
                     val score = processor.process(audioFeatures)
-                    if (score > config.wakeWordThreshold) {
+                    if (score > 0.1) {
                         detections.add(
                             WakeWordDetection(
                                 wakeWordWithId.id,

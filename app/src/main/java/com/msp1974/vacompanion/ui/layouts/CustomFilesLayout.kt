@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.msp1974.vacompanion.data.AvailableAlarm
 import com.msp1974.vacompanion.data.AvailableWakeSound
 import com.msp1974.vacompanion.ui.VAViewModel
@@ -40,10 +41,15 @@ fun CustomFilesLayout(
     var selectionMode by remember { mutableStateOf(false) }
 
     val tabs = listOf("Wake Words", "Wake Sounds", "Alarms")
-    val engines = listOf("microWakeWord", "openWakeWord")
+    val engines = listOf("microWakeWord", "openWakeWord", "openWakeWord_rt")
 
     val files = when (selectedTab) {
-        0 -> if (selectedEngineTab == 0) state.customFiles.microWakeWords else state.customFiles.openWakeWords
+        0 -> when (selectedEngineTab) {
+            0 -> state.customFiles.microWakeWords
+            1 -> state.customFiles.openWakeWords
+            2 -> state.customFiles.openWakeWordsRT
+            else -> emptyList()
+        }
         1 -> state.customFiles.sounds
         2 -> state.customFiles.alarms
         else -> emptyList()
@@ -103,7 +109,12 @@ fun CustomFilesLayout(
                 IconButton(
                     onClick = {
                         if (selectedTab == 0) {
-                            val type = if (selectedEngineTab == 0) WakeWordType.MICROWAKEWORD else WakeWordType.OPENWAKEWORD
+                            val type = when (selectedEngineTab) {
+                                0 -> WakeWordType.MICROWAKEWORD
+                                1 -> WakeWordType.OPENWAKEWORD
+                                2 -> WakeWordType.OPENWAKEWORD_RT
+                                else -> WakeWordType.MICROWAKEWORD
+                            }
                             viewModel.deleteWakeWordModels(type, selectedFiles.toList())
                         } else {
                             val subDir = if (selectedTab == 1) CustomFileDownloader.SOUNDS_DIR else CustomFileDownloader.ALARMS_DIR
@@ -139,7 +150,7 @@ fun CustomFilesLayout(
             
             if (!selectionMode) {
                 IconButton(onClick = { viewModel.syncCustomFiles() }) {
-                    Icon(Icons.Default.Sync, contentDescription = "Sync Custom Files")
+                    Icon(Icons.Default.Sync, contentDescription = "Sync Custom Files", tint = MaterialTheme.colorScheme.onSurface)
                 }
             }
         }
@@ -199,7 +210,12 @@ fun CustomFilesLayout(
                     },
                     onDelete = {
                         if (selectedTab == 0) {
-                            val type = if (selectedEngineTab == 0) WakeWordType.MICROWAKEWORD else WakeWordType.OPENWAKEWORD
+                            val type = when (selectedEngineTab) {
+                                0 -> WakeWordType.MICROWAKEWORD
+                                1 -> WakeWordType.OPENWAKEWORD
+                                2 -> WakeWordType.OPENWAKEWORD_RT
+                                else -> WakeWordType.MICROWAKEWORD
+                            }
                             viewModel.deleteWakeWordModel(type, id)
                         } else {
                             val subDir = if (selectedTab == 1) CustomFileDownloader.SOUNDS_DIR else CustomFileDownloader.ALARMS_DIR
@@ -227,6 +243,25 @@ fun CustomFilesLayout(
                 }
             }
         }
+    }
+
+    if (state.customFiles.isSyncing) {
+        AlertDialog(
+            onDismissRequest = { },
+            confirmButton = { },
+            title = { Text("Synchronising") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.padding(vertical = 8.dp)
+                ) {
+                    CircularProgressIndicator()
+                    Text("Syncing custom files with server...")
+                }
+            },
+            properties = DialogProperties(dismissOnBackPress = false, dismissOnClickOutside = false)
+        )
     }
 }
 
@@ -322,6 +357,7 @@ fun CustomFilesLayoutPreview() {
             ) {
                 Tab(selected = true, onClick = {}, text = { Text("microWakeWord".replace("_", " ").capitalizeWords(), style = MaterialTheme.typography.bodySmall) })
                 Tab(selected = false, onClick = {}, text = { Text("openWakeWord".replace("_", " ").capitalizeWords(), style = MaterialTheme.typography.bodySmall) })
+                Tab(selected = false, onClick = {}, text = { Text("openWakeWord_rt".replace("_", " ").capitalizeWords(), style = MaterialTheme.typography.bodySmall) })
             }
 
             HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant)

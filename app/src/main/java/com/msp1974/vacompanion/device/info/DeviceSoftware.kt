@@ -1,4 +1,4 @@
-package com.msp1974.vacompanion.device
+package com.msp1974.vacompanion.device.info
 
 import android.content.Context
 import android.os.Build

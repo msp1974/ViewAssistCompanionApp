@@ -50,6 +50,7 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                 if (event.pointers == 2 && event.direction == WebViewGestureDetector.Direction.BOTTOM_UP) {
                     // Check if it started near the bottom
                     showBottomSheet = true
+                    vaViewModel.hideSystemUI()
                 } else {
                     // Send the event to the ViewModel to send event to HA
                     vaViewModel.onGesture(event)
@@ -117,7 +118,7 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                 sheetState = sheetState,
                 isDiagnosticsEnabled = vaViewModel.config.diagnosticsEnabled,
                 onToggleDiagnostics = { vaViewModel.onShowDiagnostics(
-                    if (vaViewModel.config.diagnosticsEnabled) false else true
+                    !vaViewModel.config.diagnosticsEnabled
                 )},
                 isDNDEnabled = vaUiState.isDND,
                 onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) }

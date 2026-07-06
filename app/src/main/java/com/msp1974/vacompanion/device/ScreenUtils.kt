@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.device
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.Context
@@ -27,7 +28,7 @@ enum class ScreenOnMode {
 
 class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper(context) {
     var log = Logger()
-    private val firebase = FirebaseManager.Companion.getInstance(context)
+    private val firebase = FirebaseManager.getInstance(context)
 
     private var wakeLock: PowerManager.WakeLock? = null
     var initBrightness: Float = 0f
@@ -42,15 +43,15 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
             ScreenOnMode.ON -> {
                 setOverlay(false)
                 setScreenAlwaysOn(window, config.screenAlwaysOn)
-                setScreenAutoBrightness(window, config.screenAutoBrightness)
                 setScreenBrightness(window, config.screenBrightness)
+                setScreenAutoBrightness(config.screenAutoBrightness)
                 setScreenTimeout(config.screenTimeout)
                 wakeScreen()
             }
             ScreenOnMode.ON_DARK -> {
                 setOverlay(true)
                 setScreenAlwaysOn(window, true)
-                setScreenAutoBrightness(window, false)
+                setScreenAutoBrightness(false)
                 setScreenBrightness(window, 0.01f)
                 wakeScreen()
             }
@@ -63,7 +64,7 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
                     try {
                         setPartialWakeLock()
                         setScreenAlwaysOn(window, false)
-                        setScreenAutoBrightness(window, false)
+                        setScreenAutoBrightness(false)
                         setScreenBrightness(window, 0.01f)
                         setOverlay(true)
 
@@ -125,10 +126,9 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         return getDeviceBrightnessMode() == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
     }
 
-    fun setScreenAutoBrightness(window: Window, state: Boolean) {
+    fun setScreenAutoBrightness(state: Boolean) {
         if (!state) {
             setDeviceBrightnessMode(false)
-            setScreenBrightness(window, config.screenBrightness)
         } else {
             setDeviceBrightnessMode(true)
         }
@@ -189,6 +189,7 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         }
     }
 
+    @SuppressLint("SourceLockedOrientationActivity")
     fun setScreenOrientation(activity: Activity, mode: String) {
         when (mode) {
             "auto" ->  activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
@@ -199,11 +200,11 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         }
     }
 
-    fun wakeScreen(lockDuration: Long = 5000) {
+    fun wakeScreen(lockDuration: Long = 500) {
         log.d("Acquiring screen on wake lock")
         
         // Activity-level wake flags
-        (context as? android.app.Activity)?.let { activity ->
+        (context as? Activity)?.let { activity ->
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
                 activity.setTurnScreenOn(true)
                 activity.setShowWhenLocked(true)

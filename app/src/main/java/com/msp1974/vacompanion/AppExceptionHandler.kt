@@ -32,6 +32,8 @@ class AppExceptionHandler(val context: Context) : Thread.UncaughtExceptionHandle
     }
 
     private fun restartApp() {
+        Timber.i("Cleaning up and restarting app via AlarmManager")
+
         // Stop foreground service
         Intent(context, VAForegroundService::class.java).also {
             it.action = VAForegroundService.Actions.STOP.toString()
@@ -40,18 +42,17 @@ class AppExceptionHandler(val context: Context) : Thread.UncaughtExceptionHandle
 
         val intent = Intent(context, MainActivity::class.java)
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-        context.startActivity(intent)
-        Runtime.getRuntime().exit(0) // Close the current process
-    }
 
-    private fun oldRestartApp() {
-        val intent = Intent(context, MainActivity::class.java)
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP
-                or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                or Intent.FLAG_ACTIVITY_NEW_TASK)
-        val pendingIntent = PendingIntent.getActivity(context.applicationContext, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT)
-        val mgr = context.applicationContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        mgr[AlarmManager.RTC, System.currentTimeMillis() + 5000] = pendingIntent
-        Runtime.getRuntime().exit(0)  // Close current process
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val mgr = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        mgr.set(AlarmManager.RTC, System.currentTimeMillis() + 1000, pendingIntent)
+
+        Runtime.getRuntime().exit(0) // Close the current process
     }
 }

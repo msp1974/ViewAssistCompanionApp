@@ -20,7 +20,7 @@ import com.msp1974.vacompanion.R
 import timber.log.Timber
 
 @UnstableApi
-class AlarmService() : Service() {
+class AlarmService : Service() {
 
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: ExoPlayer? = null
@@ -136,7 +136,7 @@ class AlarmService() : Service() {
                     }
                 }
             }
-            .build();
+            .build()
 
         val result = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest!!)
 

@@ -64,12 +64,13 @@ class OpenWakeWordCustomProvider(
      * to a Direct ByteBuffer.
      * If the uri is invalid, returns null.
      */
-    private fun ContentResolver.getModelBufferOrNull(uri: Uri): ByteBuffer? =
+    private fun ContentResolver.getModelBufferOrNull(uri: Uri): ByteBuffer? {
         try {
-            val file = File(uri.path?: "")
+            val file = File(uri.path ?: "")
             val bytes = file.readBytes()
             return ByteBuffer.wrap(bytes)
         } catch (e: Exception) {
             return null
         }
+    }
 }

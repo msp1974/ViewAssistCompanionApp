@@ -18,7 +18,6 @@ interface AvailableWakeWordProvider{
     suspend fun get(): AvailableWakeWordsType
 }
 
-
 class AvailableWakeWords(
     val context: Context,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
@@ -57,7 +56,11 @@ class AvailableWakeWords(
                         context.assets,
                         extension = OpenWakeWordAssetProvider.TFLITE_EXT
                     ).get()
-                    val custom = OpenWakeWordCustomProvider(context, targetDir).get()
+                    val custom = OpenWakeWordCustomProvider(
+                        context,
+                        targetDir,
+                        extension = OpenWakeWordAssetProvider.TFLITE_EXT
+                    ).get()
                     availableWakeWords[wakeWordType.toString()] = assets + custom
                 }
             }

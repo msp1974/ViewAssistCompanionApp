@@ -49,6 +49,9 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"
         tools:ignore="RequestInstallPackagesPolicy" />
 
+    <attribution android:tag="@string/empty" android:label="@string/audio_playback_attribution" />
+    <attribution android:tag="audioPlayback" android:label="@string/audio_playback_attribution" />
+
     <application
         android:name=".VACAApplication"
         android:usesCleartextTraffic="true"

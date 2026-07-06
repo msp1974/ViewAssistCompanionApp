@@ -13,11 +13,13 @@ import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import com.msp1974.vacompanion.VACADeviceAdminReceiver
-import com.msp1974.vacompanion.device.DeviceInfo
-import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.device.DeviceManager
 import timber.log.Timber
 
-class Permissions(val context: Context, val config: APPConfig, val deviceInfo: DeviceInfo) {
+class Permissions(val context: Context, val deviceManager: DeviceManager) {
+
+    val config = deviceManager.config
+    val deviceInfo = deviceManager.deviceInfo
 
     companion object {
         const val CAMERA = Manifest.permission.CAMERA

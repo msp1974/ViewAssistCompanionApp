@@ -1,9 +1,7 @@
 package com.msp1974.vacompanion.di
 
 import android.content.Context
-import com.msp1974.vacompanion.data.NetworkStatusManager
-import com.msp1974.vacompanion.device.DeviceInfo
-import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.device.DeviceManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,19 +16,7 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideAPPConfig(@ApplicationContext context: Context): APPConfig {
-        return APPConfig(context)
-    }
-
-    @Provides
-    @Singleton
-    fun provideDevice(@ApplicationContext context: Context): DeviceInfo {
-        return DeviceInfo(context)
-    }
-
-    @Provides
-    @Singleton
-    fun provideNetworkStatusManager(@ApplicationContext context: Context): NetworkStatusManager {
-        return NetworkStatusManager(context)
+    fun provideDeviceManager(@ApplicationContext context: Context): DeviceManager {
+        return DeviceManager(context)
     }
 }

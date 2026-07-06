@@ -1,12 +1,11 @@
 package com.msp1974.vacompanion.ui.layouts
 
-import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.view.ViewGroup
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -56,8 +55,8 @@ fun CameraStreamLayout(
     // Track if we are ready to start the camera (after background stop)
     var isCameraReady by remember { mutableStateOf(false) }
 
-    // Surface holder state to allow binding after inflation
-    val surfaceViewRef = remember { mutableStateOf<SurfaceView?>(null) }
+    // PreviewView reference to allow binding after inflation
+    val previewViewRef = remember { mutableStateOf<PreviewView?>(null) }
 
     // Ensure screen stays on while viewing the stream
     DisposableEffect(view) {
@@ -121,12 +120,13 @@ fun CameraStreamLayout(
         if (isCameraReady) {
             AndroidView(
                 factory = { ctx ->
-                    SurfaceView(ctx).apply {
+                    PreviewView(ctx).apply {
                         layoutParams = ViewGroup.LayoutParams(
                             ViewGroup.LayoutParams.MATCH_PARENT,
                             ViewGroup.LayoutParams.MATCH_PARENT
                         )
-                        surfaceViewRef.value = this
+                        implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+                        previewViewRef.value = this
                     }
                 },
                 modifier = Modifier.fillMaxSize(),
@@ -134,9 +134,9 @@ fun CameraStreamLayout(
             )
             
             // Handle camera binding once when ready and view is inflated
-            LaunchedEffect(isCameraReady) {
-                val surfaceView = surfaceViewRef.value
-                if (isCameraReady && surfaceView != null) {
+            LaunchedEffect(previewViewRef.value) {
+                val previewView = previewViewRef.value
+                if (isCameraReady && previewView != null) {
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
                     cameraProviderFuture.addListener({
                         try {
@@ -144,20 +144,7 @@ fun CameraStreamLayout(
                             cameraProviderRef.value = cameraProvider
 
                             val preview = Preview.Builder().build().also {
-                                it.setSurfaceProvider { request ->
-                                    val surface = surfaceView.holder.surface
-                                    if (surface.isValid) {
-                                        request.provideSurface(surface, ContextCompat.getMainExecutor(context)) { _ -> }
-                                    } else {
-                                        surfaceView.holder.addCallback(object : SurfaceHolder.Callback {
-                                            override fun surfaceCreated(holder: SurfaceHolder) {
-                                                request.provideSurface(holder.surface, ContextCompat.getMainExecutor(context)) { }
-                                            }
-                                            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
-                                            override fun surfaceDestroyed(holder: SurfaceHolder) {}
-                                        })
-                                    }
-                                }
+                                it.surfaceProvider = previewView.surfaceProvider
                             }
 
                             val imageAnalysis = ImageAnalysis.Builder()

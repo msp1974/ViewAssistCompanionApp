@@ -55,13 +55,12 @@ import com.msp1974.vacompanion.ui.theme.CustomColours
 @Composable
 fun ConnectionScreen(vaViewModel: VAViewModel = viewModel()) {
     val vaUiState by vaViewModel.vacaState.collectAsState()
-    var showSettings by remember { mutableStateOf(false) }
     var showPermissions by remember { mutableStateOf(false) }
 
-    if (showSettings) {
+    if (vaUiState.showSettings) {
         SettingsLayout(
             vaViewModel,
-            { showSettings = false }
+            { vaViewModel.setShowSettings(false) }
         )
     } else if (showPermissions) {
         PermissionsLayout(
@@ -71,7 +70,7 @@ fun ConnectionScreen(vaViewModel: VAViewModel = viewModel()) {
     } else {
         ConnectionContent(
             vaUiState = vaUiState,
-            onSettingsClick = { showSettings = true },
+            onSettingsClick = { vaViewModel.setShowSettings(true) },
             onLaunchOnBootChange = { vaViewModel.launchOnBoot = it },
             onCheckForUpdate = { vaViewModel.checkForUpdate() },
             onPermissionsClick = { showPermissions = true },

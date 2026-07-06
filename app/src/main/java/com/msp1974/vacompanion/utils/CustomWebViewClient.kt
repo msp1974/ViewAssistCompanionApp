@@ -24,15 +24,18 @@ import java.net.URL
 import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
 import com.msp1974.vacompanion.data.NetworkStatus
+import com.msp1974.vacompanion.device.authentication.IAuthenticationService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
     val log = Logger()
-    val config = viewModel.config
-    val networkStatusManager = viewModel.networkStatusManager
+    val config = viewModel.deviceManager.config
+    //val networkStatusManager = viewModel.deviceManager.networkStatusManager
     private val firebase = FirebaseManager.getInstance(config.context)
     private val resources = viewModel.resources
-    private var networkStatus = NetworkStatus.Available
+    //private var networkStatus = NetworkStatus.Available
 
     companion object {
 
@@ -42,11 +45,14 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
     }
 
     init {
+        /*
         viewModel.viewModelScope.launch {
             networkStatusManager.networkStatus.collect {
                 networkStatus = it.status
             }
         }
+
+         */
     }
 
     override fun onRenderProcessGone(
@@ -77,20 +83,19 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
                 val activityContext = config.context.takeIf { it is Application || it is Activity } ?: return false
 
                 // If the url is our client id then capture the auth code and get an access token
-                if (it.contains(AuthUtils.CLIENT_URL)) {
-                    val authCode = AuthUtils.getReturnAuthCode(url)
+                if (it.contains(IAuthenticationService.CLIENT_ID)) {
+                    val authCode = url.toUri().getQueryParameter("code") ?: ""
                     if (authCode != "") {
                         // Get access token using auth token
-                        val auth = AuthUtils.authoriseWithAuthCode(AuthUtils.getHAUrl(config), authCode, !config.ignoreSSLErrors)
-                        if (auth.accessToken == "") {
-                            // Not authorised.  Send back to login screen
-                            view.loadUrl(AuthUtils.getAuthUrl(AuthUtils.getHAUrl(config)))
-                        } else {
-                            // Authorised. Load HA default dashboard
-                            config.accessToken = auth.accessToken
-                            config.refreshToken = auth.refreshToken
-                            config.tokenExpiry = auth.expires
-                            view.loadUrl(AuthUtils.getURL(AuthUtils.getHAUrl(config)))
+                        viewModel.viewModelScope.launch {
+                            viewModel.deviceManager.authenticationManager.getAccessToken(authCode)
+                            withContext(Dispatchers.Main) {
+                                if (config.accessToken != "") {
+                                    view.loadUrl(viewModel.deviceManager.authenticationManager.getHAUrl())
+                                } else {
+                                    view.loadUrl(viewModel.deviceManager.authenticationManager.getExternalAuthUrl())
+                                }
+                            }
                         }
                     }
                 } else if (it.startsWith(APP_PREFIX)) {
@@ -136,7 +141,6 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
     }
 
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-        Timber.d("Loading url: $url")
         if (url != ERROR_URL) {
             setPageLoadingState(PageLoadingStage.STARTED)
         }

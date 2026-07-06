@@ -39,7 +39,7 @@ android {
         applicationId = "com.msp1974.vacompanion"
         minSdk = 26
         targetSdk = 36
-        versionName = "0.12.0"
+        versionName = "0.12.1"
         versionCode = code
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -106,7 +106,6 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
-    implementation(libs.material3)
     implementation(libs.core.splashscreen)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
@@ -116,37 +115,33 @@ dependencies {
     implementation (libs.timber)
     implementation (libs.onnxruntime.android)
     implementation (libs.semver)
-    implementation (libs.okhttp)
     implementation (libs.androidx.webkit)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.camera.core)
     implementation(libs.androidx.camera.compose)
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.view)
     implementation(libs.accompanist.permissions)
-    implementation(libs.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.litert)
     implementation(libs.protobuf.kotlin)
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.ktor.network)
+    implementation(libs.ktor.client.core) // Ktor-Core
+    implementation(libs.ktor.client.cio) // Ktor-Engine
+    implementation(libs.ktor.serialization.kotlinx.json) // Ktor- To work with Serialization
+    implementation(libs.ktor.client.content.negotiation) // Serialization
     implementation(libs.androidx.datastore.core)
     testImplementation(libs.junit)
-    testImplementation(libs.mockk)
-    androidTestImplementation(libs.mockk.android)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.media3.exoplayer)
-    implementation(libs.androidx.media3.exoplayer.dash)
-    implementation(libs.androidx.media3.ui)
-    implementation(libs.androidx.media3.ui.compose)
     implementation(libs.mlkit.face.detection)
-    implementation(libs.jtransforms)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 }

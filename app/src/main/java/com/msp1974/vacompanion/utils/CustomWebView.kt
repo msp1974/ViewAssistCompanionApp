@@ -3,21 +3,30 @@ package com.msp1974.vacompanion.utils
 import android.annotation.SuppressLint
 import kotlin.jvm.JvmOverloads
 import android.content.Context
-import android.content.res.Configuration
 import android.view.MotionEvent
 import android.content.res.Resources.NotFoundException
-import android.os.Handler
-import android.os.Looper
 import android.util.AttributeSet
 import android.webkit.*
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebSettingsCompat.DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING
 import androidx.webkit.WebViewFeature
+import com.msp1974.vacompanion.data.NetworkStatus
 import com.msp1974.vacompanion.jsinterface.ViewAssistCallback
 import com.msp1974.vacompanion.jsinterface.WebAppInterface
 import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
-import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.PageLoadingStage
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.device.authentication.AuthenticationException
+import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import timber.log.Timber
 
 @SuppressLint("SetJavaScriptEnabled", "ViewConstructor")
@@ -27,8 +36,14 @@ class CustomWebView @JvmOverloads constructor(
     defStyleAttr: Int = 0,
 ) : WebView(context, attrs, defStyleAttr) {
 
-    lateinit private var customWebviewClient: CustomWebViewClient
-    lateinit private var config: APPConfig
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(Dispatchers.Default + job)
+
+    private lateinit var customWebviewClient: CustomWebViewClient
+    private lateinit var deviceManager: DeviceManager
+    private val config get() = deviceManager.config
+    private var reAuthRequired: Boolean = false
+    private var revokeRequired: Boolean = false
 
     private val gestureDetector = WebViewGestureDetector()
     private val log = Logger()
@@ -44,10 +59,10 @@ class CustomWebView @JvmOverloads constructor(
         gestureDetector.setOnGestureListener(listener)
     }
 
-    fun initialise(config: APPConfig, customWebViewClient: CustomWebViewClient) {
+    fun initialise(deviceManager: DeviceManager, customWebViewClient: CustomWebViewClient) {
         log.d("Initialising WebView")
 
-        this.config = config
+        this.deviceManager = deviceManager
         this.customWebviewClient = customWebViewClient
 
         webViewClient = customWebViewClient
@@ -77,6 +92,8 @@ class CustomWebView @JvmOverloads constructor(
             webChromeClient = CustomWebChromeClient(context)
         }
 
+        refreshDarkMode(config.darkMode)
+
         // Add JS interfaces
         removeJavascriptInterface("Android")
         addJavascriptInterface(androidInterface, "Android")
@@ -87,8 +104,78 @@ class CustomWebView @JvmOverloads constructor(
             addJavascriptInterface(WebAppInterface(webViewClientA.config, ViewAssistEventHandler), "ViewAssistApp")
 
             removeJavascriptInterface("externalApp")
-            addJavascriptInterface(WebViewJavascriptInterface(this, AuthUtils(config).externalAuthCallback), "externalApp")
+            addJavascriptInterface(WebViewJavascriptInterface(this, externalAuthCallback), "externalApp")
         }
+
+        scope.launch {
+            deviceManager.networkStatus.collect {
+                if (it.status == NetworkStatus.Available) {
+                    if (reAuthRequired) {
+                        Timber.d("Requesting previously postponed re-authorisation")
+                        reAuthRequired = false
+                        requestAuthorisation()
+                    }
+                    if (revokeRequired) {
+                        revokeRequired = false
+                        deviceManager.authenticationManager.revokeSession()
+                    }
+                }
+            }
+        }
+    }
+
+    suspend fun requestAuthorisation(forceRefresh: Boolean = false) {
+        try {
+            if (config.refreshToken != "") {
+                deviceManager.authenticationManager.ensureValidSession(forceRefresh)
+                withContext(Dispatchers.Main) {
+                    callAuthJS()
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    loadUrl(deviceManager.authenticationManager.getExternalAuthUrl())
+                }
+            }
+        } catch (ex: AuthenticationException) {
+            Timber.e("Error authenticating with HA: ${ex.message}")
+        }
+    }
+
+
+    val externalAuthCallback = object : ExternalAuthCallback {
+        override fun onRequestExternalAuth(view: WebView, payload: String) {
+            if (deviceManager.networkStatusManager.networkInfo.status == NetworkStatus.Available) {
+                val json = Json { ignoreUnknownKeys = true }
+                val payloadJson = json.parseToJsonElement(payload).jsonObject
+                val forceRefresh = payloadJson["force"]?.jsonPrimitive?.boolean ?: false
+                scope.launch {
+                    requestAuthorisation(forceRefresh)
+                }
+            } else {
+                Timber.w("Requested authentication with HA while network was unavailable")
+                reAuthRequired = true
+            }
+        }
+        override fun onRequestRevokeExternalAuth(view: WebView) {
+            if (deviceManager.networkStatusManager.networkInfo.status == NetworkStatus.Available) {
+                scope.launch {
+                    deviceManager.authenticationManager.revokeSession()
+                }
+            } else {
+                Timber.w("Requested authentication revoke when network unavailable")
+            }
+        }
+
+    }
+
+    private fun callAuthJS() {
+        evaluateJavascript(
+            "window.externalAuthSetToken(true, {\n" +
+                    "\"access_token\": \"${config.accessToken}\",\n" +
+                    "\"expires_in\": ${((config.tokenExpiry - System.currentTimeMillis())/1000).toInt()}\n" +
+                    "});",
+            null
+        )
     }
 
     val ViewAssistEventHandler = object : ViewAssistCallback {
@@ -104,31 +191,37 @@ class CustomWebView @JvmOverloads constructor(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        gestureDetector.onTouchEvent(event, height)
+        val gestureHandled = gestureDetector.onTouchEvent(event, height)
         if (requestDisallow) {
             requestDisallowInterceptTouchEvent(true)
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> requestDisallow = false
         }
+
+        //Prevent scrolling if more than 1 finger is used
+        if (event.pointerCount > 1 || gestureHandled) {
+            return true
+        }
+
         return super.onTouchEvent(event)
     }
 
-    fun refreshDarkMode() {
-        val nightModeFlag = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
-        if (nightModeFlag == Configuration.UI_MODE_NIGHT_YES) {
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
-                WebSettingsCompat.setForceDark(
-                    settings,
-                    WebSettingsCompat.FORCE_DARK_ON
-                )
-            }
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
-                WebSettingsCompat.setForceDarkStrategy(
-                    settings,
-                    DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING
-                )
-            }
+    fun refreshDarkMode(isDark: Boolean) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
+            WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, isDark)
+        } else if (WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK)) {
+            WebSettingsCompat.setForceDark(
+                settings,
+                if (isDark) WebSettingsCompat.FORCE_DARK_ON else WebSettingsCompat.FORCE_DARK_OFF
+            )
+        }
+
+        if (isDark && WebViewFeature.isFeatureSupported(WebViewFeature.FORCE_DARK_STRATEGY)) {
+            WebSettingsCompat.setForceDarkStrategy(
+                settings,
+                DARK_STRATEGY_PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING
+            )
         }
     }
 
@@ -157,8 +250,8 @@ class CustomWebView @JvmOverloads constructor(
     }
 
     fun refresh() {
-        val url = AuthUtils.getURL(AuthUtils.getHAUrl(config))
-        log.d("Loading URL: $url")
+        val url = deviceManager.authenticationManager.getHAUrl()
+        log.d("CustomWebView - refresh -> Loading URL: $url")
         loadUrl(url)
     }
 

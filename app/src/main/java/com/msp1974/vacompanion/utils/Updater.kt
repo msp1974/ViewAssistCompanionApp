@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.msp1974.vacompanion.device.authentication.HttpClientProvider
 import com.msp1974.vacompanion.settings.APPConfig
 import io.github.z4kn4fein.semver.toVersion
 import kotlinx.serialization.json.Json
@@ -17,8 +18,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
-import okhttp3.OkHttpClient
-import okhttp3.Request
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import io.ktor.http.isSuccess
 import timber.log.Timber
 import java.io.File
 
@@ -29,6 +31,7 @@ data class LatestRelease(
 
 class Updater(val activity: Activity) {
     private val log = Logger()
+    private val client = HttpClientProvider().get()
     var latestRelease: LatestRelease = LatestRelease("0.0.0", "")
 
     private fun getDownloadLink(data: JsonObject): String {
@@ -53,7 +56,7 @@ class Updater(val activity: Activity) {
         return ""
     }
 
-    fun getLatestRelease(forceUpdate: Boolean = true): LatestRelease {
+    suspend fun getLatestRelease(forceUpdate: Boolean = true): LatestRelease {
         if (latestRelease.version == "0.0.0" || forceUpdate) {
             val data = githubApiGET("${APPConfig.GITHUB_API_URL}/latest")
             latestRelease.version =
@@ -64,7 +67,7 @@ class Updater(val activity: Activity) {
         return latestRelease
     }
 
-    fun getVersionRelease(version: String): LatestRelease {
+    suspend fun getVersionRelease(version: String): LatestRelease {
         val data = githubApiGET("${APPConfig.GITHUB_API_URL}/tags/v$version")
         latestRelease.version =
             data.getOrDefault("name", "0.0.0").toString().replace("v", "").replace("\"", "")
@@ -72,7 +75,7 @@ class Updater(val activity: Activity) {
         return latestRelease
     }
 
-    fun isUpdateAvailable(version: String = ""): Boolean {
+    suspend fun isUpdateAvailable(version: String = ""): Boolean {
         var release: LatestRelease
         try {
             if (version != "") {
@@ -151,22 +154,15 @@ class Updater(val activity: Activity) {
 
     }
 
-    private fun githubApiGET(url: String): JsonObject {
-        val client = OkHttpClient()
-
-        val request = Request.Builder()
-            .url(url)
-            .build()
-
+    private suspend fun githubApiGET(url: String): JsonObject {
         try {
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    AuthUtils.Companion.log.e("Unexpected code $response")
-                    return buildJsonObject { put("unexpected_code", response.code) }
-                }
-                val response = response.body.string()
-                return JsonObject(Json.parseToJsonElement(response).jsonObject)
+            val response = client.get(url)
+            if (!response.status.isSuccess()) {
+                Timber.e("Unexpected code $response")
+                return buildJsonObject { put("unexpected_code", response.status.value) }
             }
+            val responseBody = response.bodyAsText()
+            return JsonObject(Json.parseToJsonElement(responseBody).jsonObject)
         } catch (e: Exception) {
             log.e(e.message.toString())
             return buildJsonObject { put("error",e.message.toString() ) }

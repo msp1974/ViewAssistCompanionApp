@@ -11,7 +11,6 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
-import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.FirebaseManager
 import timber.log.Timber
@@ -23,7 +22,7 @@ class VolumeObserver(
     private val onVolumeChanged: (musicVolume:Int, notificationVolume:Int) -> Unit
 ) : ContentObserver(Handler(Looper.getMainLooper())) {
 
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val audioManager = context.getSystemService(AUDIO_SERVICE) as AudioManager
 
     override fun onChange(selfChange: Boolean, uri: Uri?) {
         super.onChange(selfChange, uri)
@@ -65,7 +64,9 @@ internal class AudioVolumeManager(context: Context) {
 
 class VolumeManager(val context: Context) {
     @Inject
-    lateinit var config: APPConfig
+    lateinit var deviceManager: DeviceManager
+
+    private val config get() = deviceManager.config
 
     val firebase = FirebaseManager.getInstance(context)
 

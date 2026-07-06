@@ -248,7 +248,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 sendBroadcast = true
             }
         } else {
-            if (faceDetected && (System.currentTimeMillis() - lastDetection) > 2000) {
+            if (faceDetected && (System.currentTimeMillis() - lastDetection) > 1000) {
                 Timber.i("Face no longer detected")
                 faceDetected = false
                 sendBroadcast = true

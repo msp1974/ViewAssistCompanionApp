@@ -14,7 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun QuickActionsSheet(
     onDismiss: () -> Unit,
@@ -41,9 +41,11 @@ fun QuickActionsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            Row(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                maxItemsInEachRow = Int.MAX_VALUE
             ) {
                 QuickActionButton(
                     icon = Icons.Default.Refresh,

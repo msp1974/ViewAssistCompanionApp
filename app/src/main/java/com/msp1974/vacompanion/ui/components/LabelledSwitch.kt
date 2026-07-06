@@ -39,7 +39,7 @@ fun LabelledSwitch(isOn: Boolean, callback: (Boolean) -> Unit) {
         )
         Switch(
             checked = checked,
-            onCheckedChange = { it ->
+            onCheckedChange = {
                 checked = it
                 callback(it)
             },

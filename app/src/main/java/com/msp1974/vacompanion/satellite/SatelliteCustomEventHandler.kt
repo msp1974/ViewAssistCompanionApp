@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.satellite
 
 import android.content.Context
 import android.media.AudioManager
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.device.VolumeManager
 import com.msp1974.vacompanion.utils.Event
@@ -16,6 +17,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -26,12 +28,13 @@ import java.time.format.DateTimeFormatter
 
 class SatelliteCustomEventHandler(
     val context: Context,
-    val config: APPConfig,
+    val deviceManager: DeviceManager,
     val scope: CoroutineScope,
     val satellite: Satellite
 ): EventListener {
 
     val volumeManager = VolumeManager(context)
+    val config = deviceManager.config
 
     private val serviceStarted = CompletableDeferred<Int>()
 
@@ -52,6 +55,8 @@ class SatelliteCustomEventHandler(
                     config.eventBroadcaster.removeListener(this@SatelliteCustomEventHandler)
                 }
             }
+
+
             serviceStarted.await()
             job.cancel()
             Timber.d("Satellite custom event handler stopped")
@@ -108,6 +113,9 @@ class SatelliteCustomEventHandler(
             }
             "screenSaver" -> {
                 satellite.sendSetting("screen_saver", event.newValue)
+            }
+            "screenSaverDisableOnTouch" -> {
+                satellite.sendSetting("screen_saver_disable_on_touch", event.newValue)
             }
             "currentPath" -> {
                 satellite.sendStatus(
@@ -180,7 +188,7 @@ class SatelliteCustomEventHandler(
                 }
             }
             "updateAvailableWakeWords" -> {
-                val infoBuilder = WyomingInfoBuilder(config)
+                val infoBuilder = WyomingInfoBuilder(deviceManager)
                 satellite.sendEvent("info", infoBuilder.buildInfo())
             }
             "updateCustomFiles" -> {

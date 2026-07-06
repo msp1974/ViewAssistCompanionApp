@@ -17,7 +17,7 @@ open class WakeWordEngine(val context: Context, val config: APPConfig, val engin
     private var engineInstance: WakeWordEngineProvider? = null
 
     private suspend fun get(): WakeWordEngineProvider? {
-        Timber.i("Starting ${config.wakeWordEngine} wake word engine")
+        Timber.i("Starting $engine wake word engine")
 
 
         if (config.availableWakeWords == null) {
@@ -38,40 +38,31 @@ open class WakeWordEngine(val context: Context, val config: APPConfig, val engin
                 return MicroWakeWordEngine(context, config, activeWakeWords, activeStopWords, availableWakeWords, availableStopWords, isAndroidThings = isAndroidThings, muted = config.isMuted)
             }
             WakeWordEngineModel.OPENWAKEWORD -> {
-                availableWakeWords.forEach { entry ->
-                    if (config.wakeWord == entry.id) {
-                        return OpenWakeWordEngine(
-                            context = context,
-                            config = config,
-                            engine = WakeWordEngineModel.OPENWAKEWORD,
-                            activeWakeWords = activeWakeWords,
-                            availableWakeWords = availableWakeWords,
-                            detectionCooldownMs = 1500L,
-                            isAndroidThings = isAndroidThings,
-                            muted = config.isMuted,
+                return OpenWakeWordEngine(
+                    context = context,
+                    config = config,
+                    engine = WakeWordEngineModel.OPENWAKEWORD,
+                    activeWakeWords = activeWakeWords,
+                    availableWakeWords = availableWakeWords,
+                    detectionCooldownMs = 1500L,
+                    isAndroidThings = isAndroidThings,
+                    muted = config.isMuted,
 
-                        )
-                    }
-                }
+                )
             }
             WakeWordEngineModel.OPENWAKEWORD_RT -> {
-                availableWakeWords.forEach { entry ->
-                    if (config.wakeWord == entry.id) {
-                        return OpenWakeWordEngine(
-                            context = context,
-                            config = config,
-                            engine = WakeWordEngineModel.OPENWAKEWORD_RT,
-                            activeWakeWords = activeWakeWords,
-                            availableWakeWords = availableWakeWords,
-                            detectionCooldownMs = 1500L,
-                            isAndroidThings = isAndroidThings,
-                            muted = config.isMuted
-                        )
-                    }
-                }
+                return OpenWakeWordEngine(
+                    context = context,
+                    config = config,
+                    engine = WakeWordEngineModel.OPENWAKEWORD_RT,
+                    activeWakeWords = activeWakeWords,
+                    availableWakeWords = availableWakeWords,
+                    detectionCooldownMs = 1500L,
+                    isAndroidThings = isAndroidThings,
+                    muted = config.isMuted
+                )
             }
         }
-        return null
     }
 
     fun getAvailableWakeWords(): List<WakeWordWithId> {
