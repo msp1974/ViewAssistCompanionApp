@@ -211,6 +211,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
         )
 
         holdLastDetectionLevel(detection.score)
+        BroadcastSender.sendBroadcast(context, BroadcastSender.WAKE_WORD_DETECTED)
         onWakeWordDetected(detection)
     }
 

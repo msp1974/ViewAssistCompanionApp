@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion
 
+import com.msp1974.vacompanion.ui.components.WakeWordOverlay
 import android.Manifest
 import android.Manifest.permission
 import android.annotation.SuppressLint
@@ -197,6 +198,10 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                             }
                         }
 
+                        WakeWordOverlay(
+                            visible = vaUiState.showWakeAnimation
+                        )
+
                         when {
                             vaUiState.alertDialog != null -> {
                                 VADialog(
@@ -349,6 +354,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             addAction(BroadcastSender.WEBVIEW_CRASH)
             addAction(BroadcastSender.TOAST_MESSAGE)
             addAction(BroadcastSender.CLOSE_APP)
+            addAction(BroadcastSender.WAKE_WORD_DETECTED)
         }
         LocalBroadcastManager.getInstance(this)
             .registerReceiver(satelliteBroadcastReceiver, filter)
@@ -412,6 +418,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 }
                 BroadcastSender.CLOSE_APP -> {
                     terminateApp()
+                }
+                BroadcastSender.WAKE_WORD_DETECTED -> {
+                    viewModel.showWakeAnimation()
                 }
                 Intent.ACTION_SCREEN_ON -> {
                     // Handles if screen woken by hardware button
