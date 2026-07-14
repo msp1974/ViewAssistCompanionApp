@@ -65,11 +65,10 @@ class CustomWebView @JvmOverloads constructor(
         this.deviceManager = deviceManager
         this.customWebviewClient = customWebViewClient
 
-        webViewClient = customWebViewClient
+        setWebViewClient(customWebViewClient)
         setFocusable(true)
         setFocusableInTouchMode(true)
 
-        setRendererPriorityPolicy(RENDERER_PRIORITY_IMPORTANT, false)
         setLayerType(LAYER_TYPE_HARDWARE, null)
 
         settings.apply {
@@ -79,7 +78,6 @@ class CustomWebView @JvmOverloads constructor(
             allowFileAccess = true
             allowContentAccess = true
             mediaPlaybackRequiresUserGesture = false
-            safeBrowsingEnabled = false
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             textZoom = 100
             useWideViewPort = true
@@ -89,7 +87,7 @@ class CustomWebView @JvmOverloads constructor(
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_DEFAULT
 
-            webChromeClient = CustomWebChromeClient(context)
+            setWebChromeClient(CustomWebChromeClient(context))
         }
 
         refreshDarkMode(config.darkMode)
@@ -98,8 +96,8 @@ class CustomWebView @JvmOverloads constructor(
         removeJavascriptInterface("Android")
         addJavascriptInterface(androidInterface, "Android")
 
-        if (webViewClient::class == CustomWebViewClient::class) {
-            val webViewClientA = webViewClient as CustomWebViewClient
+        if (customWebviewClient::class == CustomWebViewClient::class) {
+            val webViewClientA = customWebviewClient
             removeJavascriptInterface("ViewAssistApp")
             addJavascriptInterface(WebAppInterface(webViewClientA.config, viewAssistEventHandler), "ViewAssistApp")
 
@@ -279,8 +277,7 @@ class CustomWebView @JvmOverloads constructor(
     }
 
     fun setPageLoadingState(stage: PageLoadingStage) {
-        val w = webViewClient as CustomWebViewClient
-        w.setPageLoadingState(stage)
+        customWebviewClient.setPageLoadingState(stage)
     }
 
     fun refresh() {

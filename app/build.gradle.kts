@@ -39,7 +39,7 @@ android {
 
     defaultConfig {
         applicationId = "com.msp1974.vacompanion"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
         versionName = "0.13.2"
         versionCode = code
@@ -79,6 +79,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -98,7 +99,7 @@ androidComponents {
 
 
 dependencies {
-
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.2")
     implementation(project(":microfeatures"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
