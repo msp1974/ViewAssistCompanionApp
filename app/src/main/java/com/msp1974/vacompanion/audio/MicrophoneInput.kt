@@ -12,6 +12,7 @@ import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.pow
 
 class MicrophoneInput (
     val config: APPConfig,
@@ -64,13 +65,15 @@ class MicrophoneInput (
         val audioRecord = this.audioRecord ?: error("Microphone not started")
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
-            if (useSpeex && !AutomaticGainControl.isAvailable()) {
-                speex.echoSuppressionEnabled = false
-                speex.denoiseEnabled = false
-                speex.setMaxAGCGain(20f + (config.micGain * 1.95f))
-                return speex.processFrame(audioBuffer.copyOfRange(0, readCount))
+            val frame = audioBuffer.copyOfRange(0, readCount)
+            if (useSpeex && !AutomaticGainControl.isAvailable() && config.micGain != 0) {
+                // mic_gain is a plain dB trim (-10..+10 dB); 0 = unprocessed
+                val gain = 10.0.pow(config.micGain / 20.0).toFloat()
+                for (i in frame.indices) {
+                    frame[i] = (frame[i] * gain).toInt().coerceIn(-32768, 32767).toShort()
+                }
             }
-            return audioBuffer.copyOfRange(0, readCount)
+            return frame
         }
         return ShortArray(0)
     }
