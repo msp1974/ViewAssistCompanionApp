@@ -51,8 +51,6 @@ class OpenWakeWordEngine(
     private val slidingWindowSize = 3
     private val probabilities = ArrayDeque<Float>(slidingWindowSize)
 
-    private val lastScores = mutableMapOf<String, Float>()
-
     /**
      * Flow of wake word detection events.
      *
@@ -156,6 +154,9 @@ class OpenWakeWordEngine(
         if (it) emptyFlow()
         else flow {
             val wakeWords = activeWakeWords
+            // Reset the smoothing window for this session so scores from a previous session
+            // can't cause an immediate false trigger on restart (e.g. after muting).
+            probabilities.clear()
             val audioSource = if(isAndroidThings) VACAAudioFormat.FALLBACK_AUDIO_SOURCE else VACAAudioFormat.DEFAULT_AUDIO_SOURCE
             val microphoneInput = MicrophoneInput(config, audioSource)
             try {
@@ -183,13 +184,11 @@ class OpenWakeWordEngine(
 
                         val detections = processAudio(audio, frameTimestamp)
                         for (detection in detections) {
-                            val lastScore = lastScores[detection.wakeWordId] ?: 0f
-                            if (detection.score > 0.1f || lastScore > 0.1f) {
-                                if (detection.wakeWordId in wakeWords) {
-                                    emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
-                                }
+                            // Trigger gating: only emit detections whose smoothed (windowed
+                            // average) score is above the trigger threshold.
+                            if (detection.detected && detection.wakeWordId in wakeWords) {
+                                emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
                             }
-                            lastScores[detection.wakeWordId] = detection.score
                         }
                     }
                     yield()
@@ -214,12 +213,13 @@ class OpenWakeWordEngine(
             modelProcessors.map { (wakeWordWithId, processor) ->
                 try {
                     val score = processor.process(audioFeatures)
+                    val smoothedScore = updateProbabilityWindow(score)
                     detections.add(
                         WakeWordDetection(
                             wakeWordWithId.id,
                             wakeWordWithId.wakeWord.wake_word,
-                            isWakeWordDetected(score),
-                            score,
+                            smoothedScore > config.wakeWordThreshold,
+                            smoothedScore,
                             timestamp = timestamp
                         )
                     )
@@ -234,12 +234,18 @@ class OpenWakeWordEngine(
         return detections
     }
 
-    private fun isWakeWordDetected(probability: Float): Boolean {
+    /**
+     * Feeds a raw model score into the sliding window and returns the windowed average, i.e.
+     * the smoothed probability that is compared against the trigger threshold everywhere
+     * downstream. Returns 0.0 while the window is still filling so a detection can never
+     * trigger on fewer than [slidingWindowSize] frames.
+     */
+    private fun updateProbabilityWindow(probability: Float): Float {
         if (probabilities.size == slidingWindowSize)
             probabilities.removeFirst()
         probabilities.add(probability)
 
-        return probabilities.size == slidingWindowSize && probabilities.average() > config.wakeWordThreshold
+        return if (probabilities.size == slidingWindowSize) probabilities.average() else 0f
     }
 
     fun enable() {
