@@ -46,6 +46,17 @@ class AudioDSP {
         return floatBuffer
     }
 
+    /**
+     * Converts PCM16 samples to the float scale expected by OpenWakeWord's
+     * upstream mel-spectrogram model.
+     *
+     * The model accepts float tensors, but their values retain the original
+     * signed 16-bit PCM magnitude.
+     */
+    fun openWakeWordInput(audioBuffer: ShortArray): FloatArray {
+        return FloatArray(audioBuffer.size) { index -> audioBuffer[index].toFloat() }
+    }
+
     fun shortArrayToByteBuffer(audioBuffer: ShortArray): ByteArray {
         val byteBuffer = ByteArray(audioBuffer.size * 2)
         for (i in audioBuffer.indices) {

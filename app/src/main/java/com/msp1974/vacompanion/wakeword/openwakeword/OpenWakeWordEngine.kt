@@ -52,6 +52,7 @@ class OpenWakeWordEngine(
     private val probabilities = ArrayDeque<Float>(slidingWindowSize)
 
     private val lastScores = mutableMapOf<String, Float>()
+    private val audioDSP = AudioDSP()
 
     /**
      * Flow of wake word detection events.
@@ -162,26 +163,28 @@ class OpenWakeWordEngine(
                 microphoneInput.start()
                 emit(AudioResult.EngineStatus("Started"))
                 while (true) {
-                    val audio = microphoneInput.readFloat()
+                    val pcmAudio = microphoneInput.readShort()
                     val frameTimestamp = System.currentTimeMillis()
 
-                    if (audio.isNotEmpty()) {
+                    if (pcmAudio.isNotEmpty()) {
 
                         if (config.diagnosticsEnabled) {
-                            emit(AudioResult.AudioLevel(AudioDSP().audioLevel(audio)))
+                            val normalisedAudio = audioDSP.normaliseAudioBuffer(pcmAudio)
+                            emit(AudioResult.AudioLevel(audioDSP.audioLevel(normalisedAudio)))
                         }
 
                         if (isStreaming || config.recordingWakewordEnabled) {
-                            val a = AudioDSP().floatArrayToByteBuffer(audio)
+                            val audioBytes = audioDSP.shortArrayToByteBuffer(pcmAudio)
                             emit(
                                 AudioResult.Audio(
-                                    ByteString.copyFrom(a),
+                                    ByteString.copyFrom(audioBytes),
                                     timestamp = frameTimestamp
                                 )
                             )
                         }
 
-                        val detections = processAudio(audio, frameTimestamp)
+                        val openWakeWordAudio = audioDSP.openWakeWordInput(pcmAudio)
+                        val detections = processAudio(openWakeWordAudio, frameTimestamp)
                         for (detection in detections) {
                             val lastScore = lastScores[detection.wakeWordId] ?: 0f
                             if (detection.score > 0.1f || lastScore > 0.1f) {
