@@ -235,15 +235,19 @@ class RtspCameraStreamer(
         }
     }
 
-    private fun unbindCamera() {
+    private suspend fun unbindCamera() {
+        // Stop the encoder (awaiting its drain loop's actual exit, not just requesting
+        // cancellation) before unbinding the camera - CameraX tearing down the shared
+        // Surface out from under a still-polling MediaCodec causes a benign but noisy
+        // IllegalStateException from dequeueOutputBuffer otherwise.
+        encoder?.stop()
+        encoder = null
         try {
             cameraProvider?.unbindAll()
         } catch (e: Exception) {
             Timber.w("RtspCameraStreamer: error unbinding camera: $e")
         }
         cameraProvider = null
-        encoder?.stop()
-        encoder = null
         packetizer = null
         cachedSpsPps = null
         setRtspStreamActive(false)
