@@ -236,6 +236,35 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var rtspStreamEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspStreamPort: Int by Delegates.observable(DEFAULT_RTSP_STREAM_PORT) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspStreamWidth: Int by Delegates.observable(DEFAULT_RTSP_STREAM_WIDTH) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspStreamHeight: Int by Delegates.observable(DEFAULT_RTSP_STREAM_HEIGHT) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspStreamFps: Int by Delegates.observable(DEFAULT_RTSP_STREAM_FPS) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    // True only while an RTSP viewer is actually connected and holding the camera (i.e.
+    // between a successful PLAY and TEARDOWN/disconnect) - not the same as
+    // rtspStreamEnabled. Used purely for camera arbitration with motion detection
+    // (device/Camera.kt) and the on-device diagnostic preview (cameraStreamActive),
+    // mirroring how cameraStreamActive already arbitrates that same conflict.
+    var rtspStreamActive: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var currentPath: String by Delegates.observable("") { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -362,6 +391,11 @@ class APPConfig @Inject constructor(val context: Context) {
             enableMotionDetection = it != "none"
         }
         settings["motion_detection_sensitivity"]?.jsonPrimitive?.intOrNull?.let { motionDetectionSensitivity = it }
+        settings["rtsp_stream_enabled"]?.jsonPrimitive?.booleanOrNull?.let { rtspStreamEnabled = it }
+        settings["rtsp_stream_port"]?.jsonPrimitive?.intOrNull?.let { rtspStreamPort = it }
+        settings["rtsp_stream_width"]?.jsonPrimitive?.intOrNull?.let { rtspStreamWidth = it }
+        settings["rtsp_stream_height"]?.jsonPrimitive?.intOrNull?.let { rtspStreamHeight = it }
+        settings["rtsp_stream_fps"]?.jsonPrimitive?.intOrNull?.let { rtspStreamFps = it }
         settings["screen_timeout"]?.jsonPrimitive?.intOrNull?.let { screenTimeout = it * 1000 }
         settings["bump_sensitivity"]?.jsonPrimitive?.floatOrNull?.let { bumpSensitivity = it / 10 }
         settings["screen_saver"]?.jsonPrimitive?.booleanOrNull?.let { screenSaver = it }
@@ -424,6 +458,10 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_DUCKING_VOLUME = 2
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0
+        const val DEFAULT_RTSP_STREAM_PORT = 8554
+        const val DEFAULT_RTSP_STREAM_WIDTH = 640
+        const val DEFAULT_RTSP_STREAM_HEIGHT = 480
+        const val DEFAULT_RTSP_STREAM_FPS = 15
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }
