@@ -27,7 +27,12 @@ object VACAAudioFormat {
     /** Android AudioFormat channel config for mono input. */
     @JvmField val CHANNEL_IN_CONFIG = AudioFormat.CHANNEL_IN_MONO
 
+    /** Capture source for USB/Bluetooth mics (SCO requires VOICE_COMMUNICATION). */
     const val DEFAULT_AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+
+    /** Capture source for the built-in mic; preserves far-field speech. */
+    const val BUILT_IN_MIC_AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_RECOGNITION
+
     const val FALLBACK_AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
 
     const val DEFAULT_BUFFER_SIZE_IN_SHORTS = 1280
