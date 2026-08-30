@@ -146,6 +146,8 @@ data class State(
     var motionDetectionMode: String = "motion",
     var rtspStreamEnabled: Boolean = false,
     var rtspStreamActive: Boolean = false,
+    var rtspStreamRotation: Int = 0,
+    var rtspStreamMirror: Boolean = false,
     var sensorState: SensorState = SensorState()
     )
 
@@ -219,6 +221,8 @@ class VAViewModel @Inject constructor(
                 motionDetectionMode = config.motionDetectionMode,
                 rtspStreamEnabled = config.rtspStreamEnabled,
                 rtspStreamActive = config.rtspStreamActive,
+                rtspStreamRotation = config.rtspStreamRotation,
+                rtspStreamMirror = config.rtspStreamMirror,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -350,6 +354,16 @@ class VAViewModel @Inject constructor(
             "rtspStreamActive" -> {
                 _vacaState.update { currentState ->
                     currentState.copy(rtspStreamActive = event.newValue as Boolean)
+                }
+            }
+            "rtspStreamRotation" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(rtspStreamRotation = event.newValue as Int)
+                }
+            }
+            "rtspStreamMirror" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(rtspStreamMirror = event.newValue as Boolean)
                 }
             }
             "motion" -> {
@@ -646,6 +660,14 @@ class VAViewModel @Inject constructor(
         // listen to) - no separate notify needed here, unlike setCameraStreamActive
         // above which predates that plumbing for cameraStreamActive.
         config.rtspStreamEnabled = enabled
+    }
+
+    fun cycleRtspStreamRotation() {
+        config.rtspStreamRotation = (config.rtspStreamRotation + 90).mod(360)
+    }
+
+    fun setRtspStreamMirror(mirror: Boolean) {
+        config.rtspStreamMirror = mirror
     }
 
     fun refreshCustomFiles() {

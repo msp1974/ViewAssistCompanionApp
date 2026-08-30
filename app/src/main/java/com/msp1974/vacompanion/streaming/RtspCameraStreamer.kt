@@ -63,6 +63,7 @@ class RtspCameraStreamer(
     private var serverJob: Job? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var encoder: H264Encoder? = null
+    private var glFrameTransformer: GlFrameTransformer? = null
     private var packetizer: RtpH264Packetizer? = null
     private var cachedSpsPps: Pair<ByteArray, ByteArray>? = null
 
@@ -173,6 +174,10 @@ class RtspCameraStreamer(
                         )
                         .build()
                 )
+            // Deliberately not using Preview.Builder.setTargetRotation/setMirrorMode here -
+            // verified empirically that they have no effect on a raw Surface handed
+            // straight to a SurfaceProvider (as we do below); GlFrameTransformer applies
+            // the actual rotation/mirror instead. See its docs for the full story.
             Camera2Interop.Extender(previewBuilder).setCaptureRequestOption(
                 CaptureRequest.CONTROL_AE_ANTIBANDING_MODE,
                 CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO
@@ -209,12 +214,25 @@ class RtspCameraStreamer(
 
     private fun onCameraSurfaceRequested(request: SurfaceRequest, fps: Int) {
         val resolution = request.resolution
-        Timber.i("RtspCameraStreamer: camera granted resolution ${resolution.width}x${resolution.height}")
-        val bitrate = estimateBitrate(resolution.width, resolution.height, fps)
+        val rotation = config.rtspStreamRotation
+        val mirror = config.rtspStreamMirror
+        // A 90/270 rotation swaps which dimension is "width" for anything actually
+        // watching the stream, so the encoder (and therefore the SDP/SPS) must be
+        // configured with the post-rotation shape, not the camera's native one.
+        val (encWidth, encHeight) = if (rotation.mod(180) != 0) {
+            resolution.height to resolution.width
+        } else {
+            resolution.width to resolution.height
+        }
+        Timber.i(
+            "RtspCameraStreamer: camera granted resolution ${resolution.width}x${resolution.height}, " +
+                "encoding at ${encWidth}x${encHeight} (rotation=$rotation, mirror=$mirror)"
+        )
+        val bitrate = estimateBitrate(encWidth, encHeight, fps)
 
         cachedSpsPps = null
         packetizer = RtpH264Packetizer()
-        val newEncoder = object : H264Encoder(resolution.width, resolution.height, fps, bitrate) {
+        val newEncoder = object : H264Encoder(encWidth, encHeight, fps, bitrate) {
             override fun onConfig(sps: ByteArray, pps: ByteArray) {
                 cachedSpsPps = sps to pps
             }
@@ -228,26 +246,38 @@ class RtspCameraStreamer(
             }
         }
         encoder = newEncoder
-        val surface = newEncoder.start()
+        val encoderSurface = newEncoder.start()
 
-        request.provideSurface(surface, ContextCompat.getMainExecutor(context)) { result ->
-            Timber.d("RtspCameraStreamer: encoder surface released, result=${result.resultCode}")
+        // CameraX's own setTargetRotation/setMirrorMode only affect consumers that
+        // participate in its transform pipeline (PreviewView does) - a raw Surface handed
+        // straight to a SurfaceProvider, as we do for the encoder, does not get
+        // pre-rotated (verified empirically against a physical device). So CameraX renders
+        // onto the transformer's input surface instead, and the transformer applies the
+        // rotation/mirror itself via a small GL pass before handing frames to the encoder.
+        val transformer = GlFrameTransformer(encoderSurface, encWidth, encHeight, rotation, mirror)
+        glFrameTransformer = transformer
+
+        request.provideSurface(transformer.inputSurface!!, ContextCompat.getMainExecutor(context)) { result ->
+            Timber.d("RtspCameraStreamer: camera surface released, result=${result.resultCode}")
         }
     }
 
     private suspend fun unbindCamera() {
-        // Stop the encoder (awaiting its drain loop's actual exit, not just requesting
-        // cancellation) before unbinding the camera - CameraX tearing down the shared
-        // Surface out from under a still-polling MediaCodec causes a benign but noisy
-        // IllegalStateException from dequeueOutputBuffer otherwise.
-        encoder?.stop()
-        encoder = null
         try {
             cameraProvider?.unbindAll()
         } catch (e: Exception) {
             Timber.w("RtspCameraStreamer: error unbinding camera: $e")
         }
         cameraProvider = null
+        // Release order matters, same class of race as the encoder's own drain loop
+        // (see H264Encoder.stop): the transformer's eglSwapBuffers targets the encoder's
+        // input Surface, so it must fully stop before the encoder releases that Surface -
+        // and the encoder's stop() must itself await its drain loop's exit before
+        // releasing the codec.
+        glFrameTransformer?.release()
+        glFrameTransformer = null
+        encoder?.stop()
+        encoder = null
         packetizer = null
         cachedSpsPps = null
         setRtspStreamActive(false)

@@ -256,6 +256,18 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    // Degrees clockwise (0/90/180/270) applied to the RTSP stream's camera output -
+    // for a wall-mounted tablet whose physical orientation doesn't match the camera's
+    // natural sensor orientation. processSettings() rounds any other value down to one
+    // of these four.
+    var rtspStreamRotation: Int by Delegates.observable(DEFAULT_RTSP_STREAM_ROTATION) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspStreamMirror: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     // True only while an RTSP viewer is actually connected and holding the camera (i.e.
     // between a successful PLAY and TEARDOWN/disconnect) - not the same as
     // rtspStreamEnabled. Used purely for camera arbitration with motion detection
@@ -396,6 +408,12 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["rtsp_stream_width"]?.jsonPrimitive?.intOrNull?.let { rtspStreamWidth = it }
         settings["rtsp_stream_height"]?.jsonPrimitive?.intOrNull?.let { rtspStreamHeight = it }
         settings["rtsp_stream_fps"]?.jsonPrimitive?.intOrNull?.let { rtspStreamFps = it }
+        settings["rtsp_stream_rotation"]?.jsonPrimitive?.intOrNull?.let {
+            // Round down to one of the four supported values rather than trusting the
+            // caller, since an unsupported value would silently no-op downstream.
+            rtspStreamRotation = ((it / 90) * 90).mod(360)
+        }
+        settings["rtsp_stream_mirror"]?.jsonPrimitive?.booleanOrNull?.let { rtspStreamMirror = it }
         settings["screen_timeout"]?.jsonPrimitive?.intOrNull?.let { screenTimeout = it * 1000 }
         settings["bump_sensitivity"]?.jsonPrimitive?.floatOrNull?.let { bumpSensitivity = it / 10 }
         settings["screen_saver"]?.jsonPrimitive?.booleanOrNull?.let { screenSaver = it }
@@ -462,6 +480,7 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_RTSP_STREAM_WIDTH = 640
         const val DEFAULT_RTSP_STREAM_HEIGHT = 480
         const val DEFAULT_RTSP_STREAM_FPS = 15
+        const val DEFAULT_RTSP_STREAM_ROTATION = 0
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }
