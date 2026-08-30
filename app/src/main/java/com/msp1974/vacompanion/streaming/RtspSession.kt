@@ -86,11 +86,32 @@ abstract class RtspSession(
     private suspend fun readLine(): String? {
         val byte = receiveChannel.readByte()
         if (byte.toInt() == -1) return null
+        if (byte == INTERLEAVED_FRAME_MARKER) {
+            // A real RTSP client (VLC, ffplay) sends RTCP receiver reports back to us on
+            // the interleaved RTCP channel per RFC 2326 10.12 - this is normal, expected
+            // traffic once PLAYing, not a malformed request. We don't consume RTCP
+            // feedback in this minimal server, so discard the frame and keep reading for
+            // the next actual request line rather than tearing the session down.
+            skipInterleavedFrame()
+            return readLine()
+        }
         val sb = StringBuilder()
         sb.append(byte.toInt().toChar())
         val rest = receiveChannel.readLine()
         if (rest != null) sb.append(rest)
         return sb.toString().trimEnd('\r')
+    }
+
+    private suspend fun skipInterleavedFrame() {
+        // '$' <channel:1><length:2 big-endian><payload> already had its '$' consumed by
+        // the caller; read and discard the rest of the frame.
+        receiveChannel.readByte() // channel number, unused
+        val lenHigh = receiveChannel.readByte().toInt() and 0xFF
+        val lenLow = receiveChannel.readByte().toInt() and 0xFF
+        val length = (lenHigh shl 8) or lenLow
+        if (length > 0) {
+            receiveChannel.readPacket(length)
+        }
     }
 
     private suspend fun readRequest(): RtspRequest? {
@@ -225,6 +246,7 @@ abstract class RtspSession(
     }
 
     companion object {
+        private val INTERLEAVED_FRAME_MARKER = '$'.code.toByte()
         private val REASONS = mapOf(
             200 to "OK",
             461 to "Unsupported Transport",
