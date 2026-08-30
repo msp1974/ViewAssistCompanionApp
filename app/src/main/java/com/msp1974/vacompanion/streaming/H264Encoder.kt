@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.nio.ByteBuffer
@@ -111,8 +112,12 @@ abstract class H264Encoder(
         onAccessUnit(nals, info.presentationTimeUs, isKeyFrame)
     }
 
-    fun stop() {
-        drainJob?.cancel()
+    suspend fun stop() {
+        // cancelAndJoin (not just cancel) so the drain loop's in-flight
+        // dequeueOutputBuffer call - cancellation is cooperative and doesn't interrupt
+        // a call already blocked in it - has actually returned before we stop/release
+        // the codec out from under it on another thread.
+        drainJob?.cancelAndJoin()
         drainJob = null
         try {
             codec?.stop()
