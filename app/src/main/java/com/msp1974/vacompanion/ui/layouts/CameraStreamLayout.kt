@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -336,6 +337,38 @@ fun CameraStreamLayout(
                         checkedTrackColor = MaterialTheme.colorScheme.primary
                     )
                 )
+            }
+            if (vaUiState.rtspStreamEnabled) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Rotation: ${vaUiState.rtspStreamRotation}°",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { viewModel.cycleRtspStreamRotation() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.RotateRight,
+                            contentDescription = "Rotate RTSP stream 90°",
+                            tint = Color.White
+                        )
+                    }
+                    Text(
+                        text = "Mirror",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Switch(
+                        checked = vaUiState.rtspStreamMirror,
+                        onCheckedChange = { viewModel.setRtspStreamMirror(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
+                }
             }
         }
     }
