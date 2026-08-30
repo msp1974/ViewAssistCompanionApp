@@ -150,6 +150,8 @@ data class State(
     var cameraStreamActive: Boolean = false,
     var motionDetectionSensitivity: Int = 0,
     var motionDetectionMode: String = "motion",
+    var rtspStreamEnabled: Boolean = false,
+    var rtspStreamActive: Boolean = false,
     var sensorState: SensorState = SensorState()
     )
 
@@ -224,6 +226,8 @@ class VAViewModel @Inject constructor(
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
                 isBluetoothMicEnabled = config.bluetoothMicEnabled,
+                rtspStreamEnabled = config.rtspStreamEnabled,
+                rtspStreamActive = config.rtspStreamActive,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -353,6 +357,16 @@ class VAViewModel @Inject constructor(
                             motionDetectionMode = mode
                         )
                     )
+                }
+            }
+            "rtspStreamEnabled" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(rtspStreamEnabled = event.newValue as Boolean)
+                }
+            }
+            "rtspStreamActive" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(rtspStreamActive = event.newValue as Boolean)
                 }
             }
             "motion" -> {
@@ -646,6 +660,14 @@ class VAViewModel @Inject constructor(
         config.cameraStreamActive = active
         deviceManager.updateCameraStreamActive(active)
         config.eventBroadcaster.notifyEvent(Event("cameraStreamActive", "", active))
+    }
+
+    fun setRtspStreamEnabled(enabled: Boolean) {
+        // config.rtspStreamEnabled is a Delegates.observable property, so this alone
+        // notifies eventBroadcaster (which RtspCameraStreamer and this ViewModel both
+        // listen to) - no separate notify needed here, unlike setCameraStreamActive
+        // above which predates that plumbing for cameraStreamActive.
+        config.rtspStreamEnabled = enabled
     }
 
     fun refreshCustomFiles() {
