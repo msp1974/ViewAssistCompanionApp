@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.streaming
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.camera2.CaptureRequest
 import android.util.Range
@@ -149,6 +150,7 @@ class RtspCameraStreamer(
         scope.launch { withContext(Dispatchers.Main) { unbindCamera() } }
     }
 
+    @SuppressLint("UnsafeOptInUsageError")
     private suspend fun bindCamera(lifecycleOwner: LifecycleOwner): Boolean = withContext(Dispatchers.Main) {
         try {
             setRtspStreamActive(true)
