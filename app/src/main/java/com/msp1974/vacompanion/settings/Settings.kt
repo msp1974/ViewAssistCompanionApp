@@ -293,6 +293,10 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("startOnBoot", false)
         set(value) = this.sharedPrefs.edit { putBoolean("startOnBoot", value) }
 
+    var bypassBluetoothMic: Boolean
+        get() = this.sharedPrefs.getBoolean("bypass_bluetooth_mic", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("bypass_bluetooth_mic", value) }
+
     var uuid: String
         get() = this.sharedPrefs.getString("uuid", getUUID()) ?: ""
         set(value) = this.sharedPrefs.edit { putString("uuid", value) }

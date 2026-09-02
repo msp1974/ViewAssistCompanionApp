@@ -601,6 +601,23 @@ class VAViewModel @Inject constructor(
         }
     }
 
+    fun restartApp() {
+        val context = application.applicationContext
+        val intent = android.content.Intent(context, com.msp1974.vacompanion.MainActivity::class.java)
+        intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            context, 0, intent,
+            android.app.PendingIntent.FLAG_CANCEL_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        val mgr = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
+        mgr.set(android.app.AlarmManager.RTC, System.currentTimeMillis() + 1000, pendingIntent)
+        android.content.Intent(context, com.msp1974.vacompanion.service.VAForegroundService::class.java).also {
+            it.action = com.msp1974.vacompanion.service.VAForegroundService.Actions.STOP.toString()
+            context.startService(it)
+        }
+        Runtime.getRuntime().exit(0)
+    }
+
     fun setShowMenu(show: Boolean) {
         _vacaState.update { currentState ->
             currentState.copy(

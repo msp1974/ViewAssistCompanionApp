@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.SettingsVoice
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.zIndex
 import com.msp1974.vacompanion.ui.VAViewModel
+import com.msp1974.vacompanion.ui.components.AudioSettingsDialog
 import com.msp1974.vacompanion.ui.components.MenuLayout
 import com.msp1974.vacompanion.ui.components.MenuOption
 import com.msp1974.vacompanion.ui.components.UUIDEditDialog
@@ -41,7 +43,9 @@ enum class SettingsScreen {
 enum class Dialog {
     NONE,
     CLEAR_PAIRING,
-    EDIT_UUID
+    EDIT_UUID,
+    AUDIO_SETTINGS,
+    RESTART_APP
 }
 
 /**
@@ -97,6 +101,14 @@ fun SettingsLayout(
                         )
                     }
 
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Audio Settings",
+                            subtitle = "Configure Bluetooth microphone usage",
+                            icon = Icons.Default.SettingsVoice,
+                            onClick = { currentDialog = Dialog.AUDIO_SETTINGS }
+                        )
+                    )
                     menuOptions.add(
                         MenuOption(
                             title = "Manage Custom Files",
@@ -182,6 +194,30 @@ fun SettingsLayout(
                         dialogTitle = "Clear Paired Device Entry",
                         dialogText = "This will delete the currently paired Home Assistant server and allow another server to connect and pair to this device.",
                         confirmText = "Confirm",
+                        dismissText = "Cancel",
+                    )
+                }
+                Dialog.AUDIO_SETTINGS -> {
+                    AudioSettingsDialog(
+                        onDismissRequest = { currentDialog = Dialog.NONE },
+                        onConfirmation = { useBluetoothMic ->
+                            viewModel.config.bypassBluetoothMic = !useBluetoothMic
+                            currentDialog = Dialog.RESTART_APP
+                        },
+                        onClose = { },
+                        initialValue = viewModel.config.bypassBluetoothMic
+                    )
+                }
+                Dialog.RESTART_APP -> {
+                    VADialog(
+                        onDismissRequest = { currentDialog = Dialog.NONE },
+                        onConfirmation = {
+                            currentDialog = Dialog.NONE
+                            viewModel.restartApp()
+                        },
+                        dialogTitle = "Restart App",
+                        dialogText = "Configuration changed. Restart VACA?",
+                        confirmText = "OK",
                         dismissText = "Cancel",
                     )
                 }
