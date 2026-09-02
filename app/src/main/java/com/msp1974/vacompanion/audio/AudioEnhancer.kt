@@ -54,8 +54,8 @@ class AudioEnhancer(
         // Noise suppression cleans up generic noise, then the AGC levels the final, cleaned signal.
         var processed = input
 
-        if (noiseSuppressionEnabled) processed = noiseSuppressor.process(processed)
         if (agcEnabled) processed = agc.process(processed)
+        if (noiseSuppressionEnabled) processed = noiseSuppressor.process(processed)
         return processed
     }
 
@@ -110,7 +110,7 @@ class AutomaticGainController(
     var minNoiseGateThresholdDbfs: Float = -65f,
     var maxNoiseGateThresholdDbfs: Float = -20f,
     envelopeAttackMs: Float = 3f,
-    envelopeReleaseMs: Float = 500f,
+    envelopeReleaseMs: Float = 250f,
     noiseFloorRiseMs: Float = 5000f,
 ) {
     private val attackCoeff = timeConstantToCoeff(envelopeAttackMs, sampleRate)

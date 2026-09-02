@@ -9,6 +9,7 @@ import com.google.protobuf.ByteString
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.audio.VACAAudioFormat
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
@@ -30,14 +31,13 @@ import timber.log.Timber
  */
 class OpenWakeWordEngine(
     val context: Context,
-    val config: APPConfig,
+    val deviceManager: DeviceManager,
     val engine: WakeWordEngineModel,
     val activeWakeWords: List<String>,
     //val activeStopWords: List<String>,
     val availableWakeWords: List<WakeWordWithId>,
     //val availableStopWords: List<WakeWordWithId>,
     muted: Boolean = false,
-    private val isAndroidThings: Boolean = false,
     private val detectionCooldownMs: Long = 2000L,
 ): WakeWordEngineProvider() {
 
@@ -45,6 +45,7 @@ class OpenWakeWordEngine(
     private val modelProcessors = mutableMapOf<WakeWordWithId, ModelProcessor>()
     private val detectionCooldowns = mutableMapOf<String, Long>()
 
+    private val config: APPConfig = deviceManager.config
     var isEnabled = true
 
     private var _audioProcessor: AudioProcessor = AudioProcessor(assetManager)
@@ -157,8 +158,7 @@ class OpenWakeWordEngine(
         if (it) emptyFlow()
         else flow {
             val wakeWords = activeWakeWords
-            val audioSource = if(isAndroidThings) VACAAudioFormat.FALLBACK_AUDIO_SOURCE else VACAAudioFormat.DEFAULT_AUDIO_SOURCE
-            val microphoneInput = MicrophoneInput(config, audioSource)
+            val microphoneInput = MicrophoneInput(context, deviceManager)
             try {
                 microphoneInput.start()
                 emit(AudioResult.EngineStatus("Started"))

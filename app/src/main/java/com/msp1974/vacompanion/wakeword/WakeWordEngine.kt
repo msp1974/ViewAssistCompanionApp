@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.wakeword
 
 import android.content.Context
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Helpers.Companion.round
 import com.msp1974.vacompanion.wakeword.microwakeword.MicroWakeWordEngine
@@ -10,11 +11,13 @@ import com.msp1974.vacompanion.wakeword.openwakeword.OpenWakeWordEngine
 import kotlinx.coroutines.flow.flow
 import timber.log.Timber
 
-open class WakeWordEngine(val context: Context, val config: APPConfig, val engine: WakeWordEngineModel, val isAndroidThings: Boolean) {
+open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager, val engine: WakeWordEngineModel) {
 
     private var activeWakeWords: List<String> = listOf()
     private var activeStopWords: List<String> = listOf()
     private var engineInstance: WakeWordEngineProvider? = null
+
+    private val config: APPConfig = deviceManager.config
 
     private suspend fun get(): WakeWordEngineProvider? {
         Timber.i("Starting $engine wake word engine")
@@ -35,30 +38,34 @@ open class WakeWordEngine(val context: Context, val config: APPConfig, val engin
                     context.assets,
                     "microwakeword/stopWords"
                 ).get()
-                return MicroWakeWordEngine(context, config, activeWakeWords, activeStopWords, availableWakeWords, availableStopWords, isAndroidThings = isAndroidThings, muted = config.isMuted)
+                return MicroWakeWordEngine(
+                    context=context,
+                    deviceManager=deviceManager,
+                    activeWakeWords=activeWakeWords,
+                    activeStopWords=activeStopWords,
+                    availableWakeWords=availableWakeWords,
+                    availableStopWords=availableStopWords,
+                    muted = config.isMuted)
             }
             WakeWordEngineModel.OPENWAKEWORD -> {
                 return OpenWakeWordEngine(
                     context = context,
-                    config = config,
+                    deviceManager = deviceManager,
                     engine = WakeWordEngineModel.OPENWAKEWORD,
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
                     detectionCooldownMs = 1500L,
-                    isAndroidThings = isAndroidThings,
-                    muted = config.isMuted,
-
+                    muted = config.isMuted
                 )
             }
             WakeWordEngineModel.OPENWAKEWORD_RT -> {
                 return OpenWakeWordEngine(
                     context = context,
-                    config = config,
+                    deviceManager = deviceManager,
                     engine = WakeWordEngineModel.OPENWAKEWORD_RT,
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
                     detectionCooldownMs = 1500L,
-                    isAndroidThings = isAndroidThings,
                     muted = config.isMuted
                 )
             }

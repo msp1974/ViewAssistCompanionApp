@@ -25,13 +25,13 @@ import com.msp1974.vacompanion.ui.components.MenuLayout
 import com.msp1974.vacompanion.ui.theme.CustomColours
 
 private fun enhancementSourceLabel(source: String): String = when (source) {
-    AudioEnhancerSource.HARDWARE -> "Hardware"
+    AudioEnhancerSource.ANDROID -> "Android"
     AudioEnhancerSource.SOFTWARE -> "Software"
     else -> "Not Available"
 }
 
 private fun enhancementSourceColor(source: String): Color = when (source) {
-    AudioEnhancerSource.HARDWARE -> CustomColours.GREEN
+    AudioEnhancerSource.ANDROID -> CustomColours.GREEN
     AudioEnhancerSource.SOFTWARE -> CustomColours.AMBER
     else -> CustomColours.RED
 }

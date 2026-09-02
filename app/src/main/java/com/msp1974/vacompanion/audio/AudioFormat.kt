@@ -27,8 +27,18 @@ object VACAAudioFormat {
     /** Android AudioFormat channel config for mono input. */
     @JvmField val CHANNEL_IN_CONFIG = AudioFormat.CHANNEL_IN_MONO
 
-    const val DEFAULT_AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_COMMUNICATION
+    const val DEFAULT_AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_RECOGNITION
+    const val BLUETOOTH_AUDIO_SOURCE = MediaRecorder.AudioSource.VOICE_COMMUNICATION
     const val FALLBACK_AUDIO_SOURCE = MediaRecorder.AudioSource.MIC
 
     const val DEFAULT_BUFFER_SIZE_IN_SHORTS = 1280
+
+    fun getAudioSourceName(source: Int): String {
+        return when (source) {
+            MediaRecorder.AudioSource.VOICE_RECOGNITION -> "Voice Recognition"
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION -> "Voice Communication"
+            MediaRecorder.AudioSource.MIC -> "Mic"
+            else -> "UNKNOWN"
+        }
+    }
 }

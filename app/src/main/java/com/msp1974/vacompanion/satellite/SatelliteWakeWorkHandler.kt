@@ -82,13 +82,12 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
         try {
             if (config.wakeWordEngine != "none") {
                 state = WakeWordHandlerState.STARTING
-                engine = WakeWordEngine(context, config,
+                engine = WakeWordEngine(context, deviceManager,
                     when (config.wakeWordEngine) {
                         "openwakeword" -> WakeWordEngineModel.OPENWAKEWORD
                         "openwakeword_rt" -> WakeWordEngineModel.OPENWAKEWORD_RT
                         else -> WakeWordEngineModel.MICROWAKEWORD
-                    },
-                    deviceInfo.software.isAndroidThings
+                    }
                 )
                 engine?.setActiveWakeWords(listOf(config.wakeWord))
                 engine?.setActiveStopWords(listOf("stop"))
