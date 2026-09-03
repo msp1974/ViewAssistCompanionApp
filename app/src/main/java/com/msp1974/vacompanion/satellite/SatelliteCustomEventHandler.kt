@@ -126,7 +126,7 @@ class SatelliteCustomEventHandler(
             "screenOn" -> {
                 val isOn = event.newValue as Boolean
                 satellite.sendSetting("screen_on", isOn)
-                if (isOn && config.enableMotionDetection) {
+                if (isOn && config.enableMotionDetection && !config.cameraStreamActive && !config.rtspStreamActive) {
                     // Force restart of camera when screen turns on to ensure recovery
                     scope.launch {
                         delay(500.milliseconds)
@@ -137,7 +137,7 @@ class SatelliteCustomEventHandler(
             "motionDetectionMode" -> {
                 val mode = event.newValue as String
                 if (mode != "none") {
-                    if (!config.cameraStreamActive) {
+                    if (!config.cameraStreamActive && !config.rtspStreamActive) {
                         satellite.motionTask.startCamera()
                     }
                 } else {
@@ -180,7 +180,15 @@ class SatelliteCustomEventHandler(
                 val active = event.newValue as Boolean
                 if (active) {
                     scope.launch { satellite.motionTask.stopCamera() }
-                } else if (config.enableMotionDetection) {
+                } else if (config.enableMotionDetection && !config.rtspStreamActive) {
+                    satellite.motionTask.startCamera()
+                }
+            }
+            "rtspStreamActive" -> {
+                val active = event.newValue as Boolean
+                if (active) {
+                    scope.launch { satellite.motionTask.stopCamera() }
+                } else if (config.enableMotionDetection && !config.cameraStreamActive) {
                     satellite.motionTask.startCamera()
                 }
             }
