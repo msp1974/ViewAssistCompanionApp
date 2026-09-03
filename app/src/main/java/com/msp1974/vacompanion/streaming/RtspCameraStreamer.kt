@@ -2,9 +2,11 @@ package com.msp1974.vacompanion.streaming
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
 import android.util.Range
 import android.util.Size
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
@@ -184,19 +186,33 @@ class RtspCameraStreamer(
             )
             val preview = previewBuilder.build()
 
+            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
+            val baseSessionConfig = SessionConfig.Builder(preview).build()
+            val cameraInfo = cameraProviderInstance.getCameraInfo(cameraSelector, baseSessionConfig)
+            // Purely for correct output-canvas SHAPE, not "which way is up" (that's the
+            // user-facing rotation control's job, deliberately not auto-corrected - see
+            // GlFrameTransformer's docs). Some devices' camera HAL reports frames through
+            // SurfaceTexture with a 90/270-degree axis swap already baked into
+            // getTransformMatrix() (verified empirically: a device whose front camera
+            // reports SENSOR_ORIENTATION=90 produced a visibly distorted, squished-toward-
+            // square stream when the output canvas was sized as if that swap didn't
+            // happen) while others report it near-identity. Whether *this* device's camera
+            // needs that swap accounted for when sizing the canvas is exactly what
+            // SENSOR_ORIENTATION tells us, and it's available before the first frame
+            // (unlike the transform matrix itself), so it's used only for that yes/no
+            // swap decision below - not fed into the rotation angle.
+            val sensorOrientation =
+                Camera2CameraInfo.from(cameraInfo).getCameraCharacteristic(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+
             preview.setSurfaceProvider(
                 object : Preview.SurfaceProvider {
                     override fun onSurfaceRequested(request: SurfaceRequest) {
-                        onCameraSurfaceRequested(request, fps)
+                        onCameraSurfaceRequested(request, fps, sensorOrientation)
                     }
                 }
             )
 
-            val cameraSelector = CameraSelector.DEFAULT_FRONT_CAMERA
-            val baseSessionConfig = SessionConfig.Builder(preview).build()
-            val supportedFrameRateRanges =
-                cameraProviderInstance.getCameraInfo(cameraSelector, baseSessionConfig)
-                    .getSupportedFrameRateRanges(baseSessionConfig)
+            val supportedFrameRateRanges = cameraInfo.getSupportedFrameRateRanges(baseSessionConfig)
             val targetFrameRateRange = selectFrameRateRange(supportedFrameRateRanges, fps)
             val sessionConfig = SessionConfig.Builder(preview).apply {
                 if (targetFrameRateRange != null) setFrameRateRange(targetFrameRateRange)
@@ -212,21 +228,26 @@ class RtspCameraStreamer(
         }
     }
 
-    private fun onCameraSurfaceRequested(request: SurfaceRequest, fps: Int) {
+    private fun onCameraSurfaceRequested(request: SurfaceRequest, fps: Int, sensorOrientation: Int) {
         val resolution = request.resolution
         val rotation = config.rtspStreamRotation
         val mirror = config.rtspStreamMirror
-        // A 90/270 rotation swaps which dimension is "width" for anything actually
-        // watching the stream, so the encoder (and therefore the SDP/SPS) must be
-        // configured with the post-rotation shape, not the camera's native one.
-        val (encWidth, encHeight) = if (rotation.mod(180) != 0) {
+        // Two independent things can each require a width/height swap for the output
+        // canvas to be correctly proportioned (not stretched): the user's requested
+        // rotation, and this device's camera HAL baking a 90/270 axis swap into
+        // SurfaceTexture's own transform (see the sensorOrientation doc above). Two
+        // swaps cancel out, so it's an XOR, not an OR.
+        val sensorImpliesSwap = sensorOrientation.mod(180) != 0
+        val rotationImpliesSwap = rotation.mod(180) != 0
+        val (encWidth, encHeight) = if (sensorImpliesSwap != rotationImpliesSwap) {
             resolution.height to resolution.width
         } else {
             resolution.width to resolution.height
         }
         Timber.i(
             "RtspCameraStreamer: camera granted resolution ${resolution.width}x${resolution.height}, " +
-                "encoding at ${encWidth}x${encHeight} (rotation=$rotation, mirror=$mirror)"
+                "encoding at ${encWidth}x${encHeight} " +
+                "(sensorOrientation=$sensorOrientation, rotation=$rotation, mirror=$mirror)"
         )
         val bitrate = estimateBitrate(encWidth, encHeight, fps)
 
