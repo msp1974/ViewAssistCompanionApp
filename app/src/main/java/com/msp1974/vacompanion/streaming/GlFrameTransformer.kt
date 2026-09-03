@@ -39,6 +39,16 @@ import java.util.concurrent.CountDownLatch
  * new frame is drawn onto [outputSurface] with the requested transform applied and the
  * frame's original presentation time carried over so encoder timestamps/RTP timing stay
  * correct.
+ *
+ * Rotation/mirror are applied to the texture-sampling matrix (extraMatrix, composed with
+ * the hardware-supplied stMatrix via proper 4x4 multiplication - see onFrameAvailable),
+ * not to the position geometry: rotating position only produces an undistorted result
+ * when the output canvas is square, which a 90/270 rotation (which itself swaps
+ * width/height) never is. An earlier attempt substituted different per-vertex texcoord
+ * *values* instead of composing a matrix, which implicitly assumed stMatrix was a pure
+ * rotation - wrong on a real device, whose stMatrix included a translation component too,
+ * so it didn't compose correctly. Composing via multiplyMM handles an arbitrary affine
+ * stMatrix correctly.
  */
 class GlFrameTransformer(
     private val outputSurface: Surface,
@@ -67,34 +77,31 @@ class GlFrameTransformer(
         private set
 
     private val stMatrix = FloatArray(16)
-    private val mvpMatrix = FloatArray(16)
+    private val mvpMatrix = FloatArray(16).also { Matrix.setIdentityM(it, 0) }
+
+    // Rotation/mirror, as a proper affine matrix (rotate about the texcoord center 0.5,0.5,
+    // then mirror) rather than substituting different texcoord VALUES per vertex - the
+    // latter implicitly assumes stMatrix is a pure rotation with no translation component,
+    // which turned out to be false on a real device (its stMatrix has ty=1). Composing via
+    // multiplyMM handles an arbitrary affine stMatrix correctly; ad-hoc texcoord
+    // substitution doesn't. Combined into stMatrix on every frame in onFrameAvailable
+    // (stMatrix itself is only known once frames start arriving), so the shader's
+    // uSTMatrix uniform ends up being (hardware correction) * (our rotation/mirror) as a
+    // single matrix - no shader changes needed.
+    private val extraMatrix = FloatArray(16).also { m ->
+        Matrix.setIdentityM(m, 0)
+        Matrix.translateM(m, 0, 0.5f, 0.5f, 0f)
+        if (mirror) Matrix.scaleM(m, 0, -1f, 1f, 1f)
+        Matrix.rotateM(m, 0, rotationDegrees.toFloat(), 0f, 0f, 1f)
+        Matrix.translateM(m, 0, -0.5f, -0.5f, 0f)
+    }
+    private val combinedMatrix = FloatArray(16)
 
     @Volatile
     private var released = false
+    private var loggedFirstFrame = false
 
     init {
-        // Deliberately NOT correcting for the camera's own sensor mounting angle
-        // (CameraCharacteristics.SENSOR_ORIENTATION) here - that varies per device and
-        // getting it right for every device isn't worth chasing blind. Instead this just
-        // guarantees each 90-degree step in rotationDegrees is a real, correctly-signed
-        // 90-degree clockwise turn of whatever the camera's raw (uncorrected) output looks
-        // like, so a user can dial in the right value for their specific device/mounting
-        // via the on-device rotate control rather than relying on it defaulting correctly.
-        Matrix.setIdentityM(mvpMatrix, 0)
-        // android.opengl.Matrix.*M calls post-multiply (m := m * X), which means the LAST
-        // call ends up applied FIRST to a given vertex (innermost) and the FIRST call ends
-        // up applied LAST (outermost) - (A*B)*v = A*(B*v), B (called second) hits v first.
-        // We want rotation applied to the raw frame first, then the mirror applied to that
-        // already-rotated result (mirroring the final image, not the pre-rotation sensor
-        // frame) - so scaleM (mirror, outermost/last-applied) must be called BEFORE
-        // rotateM (innermost/first-applied) here, not after.
-        if (mirror) {
-            Matrix.scaleM(mvpMatrix, 0, -1f, 1f, 1f)
-        }
-        // android.opengl.Matrix.rotateM treats a positive angle as counter-clockwise
-        // (standard math convention), so negate to get the clockwise rotation we want.
-        Matrix.rotateM(mvpMatrix, 0, -rotationDegrees.toFloat(), 0f, 0f, 1f)
-
         val latch = CountDownLatch(1)
         handler.post {
             setupEgl(outputWidth, outputHeight)
@@ -117,6 +124,15 @@ class GlFrameTransformer(
             makeCurrent()
             st.updateTexImage()
             st.getTransformMatrix(stMatrix)
+            // hardware correction (stMatrix) applied on top of our own rotation/mirror
+            // (extraMatrix): a screen-space texcoord is first placed where OUR rotation
+            // wants it (extraMatrix), then that result is hardware-corrected (stMatrix) to
+            // find where to actually sample the raw buffer.
+            Matrix.multiplyMM(combinedMatrix, 0, stMatrix, 0, extraMatrix, 0)
+            if (!loggedFirstFrame) {
+                loggedFirstFrame = true
+                Timber.i("GlFrameTransformer: first frame stMatrix=${stMatrix.joinToString()}")
+            }
             drawFrame()
             EGLExt.eglPresentationTimeANDROID(eglDisplay, eglSurface, st.timestamp)
             EGL14.eglSwapBuffers(eglDisplay, eglSurface)
@@ -136,7 +152,7 @@ class GlFrameTransformer(
         GLES20.glEnableVertexAttribArray(aTextureCoordHandle)
 
         GLES20.glUniformMatrix4fv(uMvpMatrixHandle, 1, false, mvpMatrix, 0)
-        GLES20.glUniformMatrix4fv(uStMatrixHandle, 1, false, stMatrix, 0)
+        GLES20.glUniformMatrix4fv(uStMatrixHandle, 1, false, combinedMatrix, 0)
 
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
         GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
@@ -180,6 +196,14 @@ class GlFrameTransformer(
         if (eglSurface == EGL14.EGL_NO_SURFACE) throw RuntimeException("eglCreateWindowSurface failed")
 
         makeCurrent()
+        val actualWidth = IntArray(1)
+        val actualHeight = IntArray(1)
+        EGL14.eglQuerySurface(eglDisplay, eglSurface, EGL14.EGL_WIDTH, actualWidth, 0)
+        EGL14.eglQuerySurface(eglDisplay, eglSurface, EGL14.EGL_HEIGHT, actualHeight, 0)
+        Timber.i(
+            "GlFrameTransformer: requested output ${width}x${height}, " +
+                "EGL surface actually reports ${actualWidth[0]}x${actualHeight[0]}"
+        )
         GLES20.glViewport(0, 0, width, height)
     }
 
@@ -275,15 +299,15 @@ class GlFrameTransformer(
             -1f, 1f,
             1f, 1f,
         )
+        private val quadVertices: FloatBuffer = ByteBuffer.allocateDirect(QUAD_VERTICES.size * 4)
+            .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(QUAD_VERTICES); position(0) }
+
         private val QUAD_TEX_COORDS = floatArrayOf(
             0f, 0f,
             1f, 0f,
             0f, 1f,
             1f, 1f,
         )
-
-        private val quadVertices: FloatBuffer = ByteBuffer.allocateDirect(QUAD_VERTICES.size * 4)
-            .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(QUAD_VERTICES); position(0) }
         private val quadTexCoords: FloatBuffer = ByteBuffer.allocateDirect(QUAD_TEX_COORDS.size * 4)
             .order(ByteOrder.nativeOrder()).asFloatBuffer().apply { put(QUAD_TEX_COORDS); position(0) }
 
