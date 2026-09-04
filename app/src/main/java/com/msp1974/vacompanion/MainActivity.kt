@@ -465,6 +465,14 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         super.onResume()
         Timber.d("Main Activity resumed")
 
+        // Only resume the webview if it should currently be visible - not while intentionally
+        // blanked (screensaver/screenSaver flag), otherwise this would wake up any autoplaying
+        // dashboard video (e.g. a live camera card) and drive media.codec CPU while blanked.
+        if (::webView.isInitialized && !viewModel.vacaState.value.screenBlank) {
+            webView.onResume()
+            webView.resumeTimers()
+        }
+
         // Catch if background tasks not running
         if (initialised && Helpers.isNetworkAvailable(this) && config.backgroundTaskStatus == BackgroundTaskStatus.NOT_STARTED ) {
             Timber.e("Background task starting on resume as is is not running")
@@ -473,6 +481,17 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             }
         }
         setScreenSettings()
+    }
+
+    override fun onPause() {
+        Timber.d("Main Activity paused")
+        // Stop any WebView processing (including in-page video/WebRTC decode) while not visible,
+        // rather than relying on the view merely being detached from the window.
+        if (::webView.isInitialized) {
+            webView.onPause()
+            webView.pauseTimers()
+        }
+        super.onPause()
     }
 
     override fun onDestroy() {
