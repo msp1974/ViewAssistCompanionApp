@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
@@ -24,6 +25,8 @@ fun QuickActionsSheet(
     onToggleDiagnostics: () -> Unit,
     isDNDEnabled: Boolean,
     onToggleDND: () -> Unit,
+    isBluetoothMicEnabled: Boolean,
+    onToggleBluetoothMic: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(),
 ) {
     ModalBottomSheet(
@@ -69,6 +72,14 @@ fun QuickActionsSheet(
                     isSelected = isDiagnosticsEnabled,
                     onClick = {
                         onToggleDiagnostics()
+                    }
+                )
+                QuickActionButton(
+                    icon = Icons.Default.Bluetooth,
+                    label = "BT Mic",
+                    isSelected = isBluetoothMicEnabled,
+                    onClick = {
+                        onToggleBluetoothMic()
                     }
                 )
                 QuickActionButton(

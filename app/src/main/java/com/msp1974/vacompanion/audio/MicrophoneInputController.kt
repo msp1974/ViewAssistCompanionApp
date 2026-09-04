@@ -18,6 +18,8 @@ import androidx.core.content.ContextCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import timber.log.Timber
 
 private const val DEVICE_CHANGE_DEBOUNCE_MS = 1000L
@@ -46,7 +48,7 @@ class MicrophoneInputController(
     private val context: Context,
     private val deviceManager: DeviceManager,
     private val onPreferredMicrophoneChanged: () -> Unit,
-) {
+) : EventListener {
     companion object {
         private val activeMicInputListeners = mutableListOf<() -> Unit>()
 
@@ -114,15 +116,30 @@ class MicrophoneInputController(
     fun start() {
         preferredDevice = null
         audioManager.registerAudioDeviceCallback(deviceCallback, null)
+        deviceManager.config.eventBroadcaster.addListener(this)
         evaluatePreferredMicrophone()
     }
 
     fun stop() {
         audioManager.unregisterAudioDeviceCallback(deviceCallback)
+        deviceManager.config.eventBroadcaster.removeListener(this)
         debounceHandler.removeCallbacks(evaluateRunnable)
         unregisterPermissionGrantedReceiver()
         preferredDevice = null
         stopSco()
+    }
+
+    // bluetoothMicEnabled is SharedPreferences-backed, so it comes through as a raw pref-key
+    // event (see APPConfig.onSharedPreferenceChangedListener) rather than a typed Delegates.
+    // observable one - re-evaluate on any change, whichever way it flips.
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "bluetooth_mic_enabled") {
+            Timber.d("Bluetooth mic enabled setting changed, re-evaluating preferred microphone")
+            if (!deviceManager.config.bluetoothMicEnabled && preferredDevice?.let { isBluetoothMic(it) } == true) {
+                stopSco()
+            }
+            scheduleEvaluate()
+        }
     }
 
     private fun isBluetoothMic(device: AudioDeviceInfo): Boolean {
@@ -165,7 +182,7 @@ class MicrophoneInputController(
         }
 
         return devices.firstOrNull { isUsbMic(it) }
-            ?: devices.firstOrNull { isBluetoothMic(it) }
+            ?: devices.firstOrNull { deviceManager.config.bluetoothMicEnabled && isBluetoothMic(it) }
             ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
     }
 
