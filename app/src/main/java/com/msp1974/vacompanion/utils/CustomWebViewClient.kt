@@ -23,6 +23,7 @@ import timber.log.Timber
 import java.net.URL
 import androidx.core.net.toUri
 import androidx.lifecycle.viewModelScope
+import com.msp1974.vacompanion.device.authentication.AuthenticationException
 import com.msp1974.vacompanion.device.authentication.IAuthenticationService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -74,13 +75,20 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
                     if (authCode != "") {
                         // Get access token using auth token
                         viewModel.viewModelScope.launch {
-                            viewModel.deviceManager.authenticationManager.getAccessToken(authCode)
-                            withContext(Dispatchers.Main) {
-                                if (config.accessToken != "") {
-                                    view.loadUrl(viewModel.deviceManager.authenticationManager.getHAUrl())
-                                } else {
-                                    view.loadUrl(viewModel.deviceManager.authenticationManager.getExternalAuthUrl())
+                            try {
+                                viewModel.deviceManager.authenticationManager.getAccessToken(
+                                    authCode
+                                )
+                                withContext(Dispatchers.Main) {
+                                    if (config.accessToken != "") {
+                                        view.loadUrl(viewModel.deviceManager.authenticationManager.getHAUrl())
+                                    } else {
+                                        view.loadUrl(viewModel.deviceManager.authenticationManager.getExternalAuthUrl())
+                                    }
                                 }
+                            } catch (e: AuthenticationException) {
+                                Timber.e("Failed to get access token: $e")
+                                BroadcastSender.sendBroadcast(config.context, BroadcastSender.TOAST_MESSAGE, "Error: Unable to authenticate with HomeAssistant")
                             }
                         }
                     }

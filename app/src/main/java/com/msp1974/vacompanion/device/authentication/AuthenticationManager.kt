@@ -102,13 +102,15 @@ class AuthenticationManager(
     }
 
     fun getExternalAuthUrl(): String {
-        val url = getBaseUrl().toString().toUri()
+        val base = getBaseUrl()
+        val isSSL = base.protocol == IAuthenticationService.HTTPS
+        val url = base.toString().toUri()
             .buildUpon()
             .path("")
             .appendPath("auth")
             .appendPath("authorize")
-            .appendQueryParameter("client_id", IAuthenticationService.CLIENT_ID)
-            .appendQueryParameter("redirect_uri", IAuthenticationService.CLIENT_ID)
+            .appendQueryParameter("client_id", authenticationService.getClientId(isSSL))
+            .appendQueryParameter("redirect_uri", authenticationService.getClientId(isSSL))
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("scope", "homeassistant")
             .build()

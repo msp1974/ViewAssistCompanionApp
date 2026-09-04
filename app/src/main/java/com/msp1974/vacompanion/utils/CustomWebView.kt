@@ -141,7 +141,12 @@ class CustomWebView @JvmOverloads constructor(
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.
                 callAuthJS(view, false)
+                if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
+                    deviceManager.authenticationManager.revokeSession()
+                    reload()
+                }
             }
+
         }
     }
 
