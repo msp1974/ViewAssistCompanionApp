@@ -28,7 +28,6 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.annotation.OptIn
-import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.camera.core.ExperimentalMirrorMode
@@ -69,7 +68,6 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
-import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.Permissions
 import com.msp1974.vacompanion.utils.SoundControl
 import com.msp1974.vacompanion.utils.Updater
@@ -90,8 +88,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     val viewModel: VAViewModel by viewModels()
 
     private val config get() = deviceManager.config
-
-    private val log = Logger()
+    
     private var firebaseManager: FirebaseManager? = null
 
     private lateinit var webView: CustomWebView
@@ -130,7 +127,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         firebaseManager = try {
             FirebaseManager.getInstance(this)
         } catch (e: Exception) {
-            log.w("Firebase unavailable: ${e.message}")
+            Timber.w("Firebase unavailable: ${e.message}")
             null
         }
         enableEdgeToEdge()
@@ -216,7 +213,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
 
         // Check and get required user permissions
-        log.d("Checking permissions")
+        Timber.d("Checking permissions")
         updatePermissionStatus()
         if (!viewModel.vacaState.value.permissions.hasCorePermissions || !viewModel.vacaState.value.permissions.hasOptionalPermissions) {
             // Turn on screen for startup to show permission request
@@ -225,7 +222,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             setScreenSettings()
             permissions.requestCorePermissions { checkAndRequestWriteSettingsPermission() }
         } else {
-            log.d("All permissions already granted")
+            Timber.d("All permissions already granted")
             initialise()
         }
 
@@ -316,14 +313,14 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         while (!hasNetwork) {
             setStatus(getString(R.string.status_waiting_for_network))
             Timber.w("No Network...")
-            delay(2000)
+            delay(2.seconds)
             hasNetwork = Helpers.isNetworkAvailable(this)
         }
         Timber.d("Network active")
 
         while (!screen.isScreenOn()) {
             Timber.d("Waiting for screen on...")
-            delay(1000)
+            delay(1.seconds)
         }
         Timber.d("Screen on")
 
@@ -404,7 +401,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 BroadcastSender.WEBVIEW_CRASH -> {
                     initWebView()
                     val url = deviceManager.authenticationManager.getHAUrl()
-                    log.d("Webview crash -> loading URL: $url")
+                    Timber.d("Webview crash -> loading URL: $url")
                     webView.loadUrl(url)
                 }
                 BroadcastSender.CLOSE_APP -> {
@@ -460,17 +457,17 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != screenOrientation) {
-            log.d("Orientation changed to ${newConfig.orientation}")
+            Timber.d("Orientation changed to ${newConfig.orientation}")
         }
     }
 
     override fun onResume() {
         super.onResume()
-        log.d("Main Activity resumed")
+        Timber.d("Main Activity resumed")
 
         // Catch if background tasks not running
         if (initialised && Helpers.isNetworkAvailable(this) && config.backgroundTaskStatus == BackgroundTaskStatus.NOT_STARTED ) {
-            log.e("Background task starting on resume as is is not running")
+            Timber.e("Background task starting on resume as is is not running")
             lifecycleScope.launch {
                 runBackgroundTasks()
             }
@@ -479,7 +476,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     override fun onDestroy() {
-        log.d("Main Activity destroyed")
+        Timber.d("Main Activity destroyed")
         try {
             screen.setScreenTimeout(config.screenTimeout)
             config.eventBroadcaster.removeListener(this)
@@ -505,12 +502,12 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     private suspend fun runBackgroundTasks() {
         if ( config.backgroundTaskStatus != BackgroundTaskStatus.NOT_STARTED ) {
-            log.w("Background task already running.  Not starting from MainActivity")
+            Timber.w("Background task already running.  Not starting from MainActivity")
             firebaseManager?.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
             if (viewModel.vacaState.value.satelliteRunning) {
                 webView.setZoomLevel(config.zoomLevel)
                 val url = deviceManager.authenticationManager.getHAUrl()
-                log.d("Run background tasks -> loading URL: $url")
+                Timber.d("Run background tasks -> loading URL: $url")
                 webView.loadUrl(url)
             } else {
                 setStatus(getString(R.string.status_waiting_for_connection))
@@ -520,11 +517,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         config.backgroundTaskStatus = BackgroundTaskStatus.STARTING
 
         if (!updateProcessComplete) {
-            delay(1000)
+            delay(1.seconds)
             runUpdateRoutine()
             return
         }
-        log.d("Starting background tasks")
+        Timber.d("Starting background tasks")
         setStatus(getString(R.string.status_waiting_for_connection))
         try {
             Intent(this.applicationContext, VAForegroundService::class.java).also {
@@ -532,13 +529,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 startService(it)
             }
         } catch (ex: Exception) {
-            log.w("Error starting background tasks - ${ex.message}")
+            Timber.w("Error starting background tasks - ${ex.message}")
             config.backgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
         }
 
         if (screenOffStartUp) {
             Timber.d("Screen off startup.  Reverting to screen off")
-            delay(2000)
+            delay(2.seconds)
             applyScreenMode(ScreenOnMode.OFF)
             screenOffStartUp = false
         }
@@ -571,10 +568,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     "hideSystemUI" -> screen.hideSystemUI(window)
                     else -> consumed = false
                 }
+                if (consumed) {
+                    Timber.d("MainActivity - Setting: ${event.eventName} - ${event.newValue}")
+                }
             }
-            if (consumed) {
-                log.d("MainActivity - Setting: ${event.eventName} - ${event.newValue}")
-            }
+
 
             consumed = true
 
@@ -598,7 +596,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 else -> consumed = false
             }
             if (consumed) {
-                log.d("MainActivity - Event: ${event.eventName} - ${event.newValue}")
+                Timber.d("MainActivity - Event: ${event.eventName} - ${event.newValue}")
             }
         }
     }
@@ -643,7 +641,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     fun setDarkMode(isDark: Boolean) {
-        log.d("Setting dark mode: $isDark")
+        Timber.d("Setting dark mode: $isDark")
         try {
             if (isDark) {
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -660,7 +658,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     if (isDark) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO
             }
         } catch (e: Exception) {
-            log.w("Error setting dark mode: ${e.message}")
+            Timber.w("Error setting dark mode: ${e.message}")
         }
 
         webView.refreshDarkMode(isDark)
@@ -737,8 +735,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     try {
                         val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
                         onWriteSettingsPermissionActivityResult.launch(intent)
-                    } catch (e: Exception) {
-                        log.i("Device does not require explicit permission")
+                    } catch (_: Exception) {
+                        Timber.i("Device does not require explicit permission")
                         config.canSetScreenWritePermission = false
                         checkAndRequestNotificationAccessPolicyPermission()
                     }
@@ -772,7 +770,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     try {
                         val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                         onNotificationAccessPolicyPermissionActivityResult.launch(intent)
-                    } catch (e: Exception) {
+                    } catch (_: Exception) {
                         Timber.i("Device does not require explicit permission")
                         checkAndRequestDeviceAdminPermission()
                     }
@@ -807,7 +805,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         try {
             Timber.d("Checking for update")
             if (updater.isUpdateAvailable(config.minRequiredApkVersion)) {
-                log.d("Update available - ${updater.latestRelease.downloadURL}")
+                Timber.d("Update available - ${updater.latestRelease.downloadURL}")
 
                 val a = VADialog(
                     title = "Update Required",
@@ -844,7 +842,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         setStatus(getString(R.string.status_downloading_update))
         updater.requestDownload { uri ->
             if (uri != "") {
-                log.d("Download complete = $uri")
+                Timber.d("Download complete = $uri")
                 setStatus(getString(R.string.status_installing_update))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)
