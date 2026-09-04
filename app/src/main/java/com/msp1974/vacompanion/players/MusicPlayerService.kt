@@ -26,6 +26,7 @@ import kotlinx.coroutines.withContext
 import timber.log.Timber
 import javax.inject.Inject
 import kotlin.math.min
+import kotlin.time.Duration.Companion.milliseconds
 
 @SuppressLint("UnsafeOptInUsageError")
 @AndroidEntryPoint
@@ -43,6 +44,7 @@ class MusicPlayerService : Service() {
     private var hasAudioFocus = false
     private var musicVolume: Float = 1f
     private var ducked: Boolean = false
+    private var lastUrl: String = ""
 
     // Player.getVolume() is only accessible on the main thread, but unDuckVolume()/
     // animateUnDuckingVolume() need the current volume for comparisons/animation math that can
@@ -78,14 +80,34 @@ class MusicPlayerService : Service() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            Timber.e("Player error - recreating player....")
+            Timber.e(error, "Player error - recreating player....")
+            val wasPlaying = mediaPlayer?.isPlaying ?: false
+            val position = mediaPlayer?.currentPosition ?: 0L
+
             stop()
             createMediaPlayer()
+
+            if (lastUrl.isNotEmpty()) {
+                scope.launch {
+                    delay(1000.milliseconds)
+                    withContext(Dispatchers.Main) {
+                        if (lastUrl.isNotEmpty()) {
+                            play(lastUrl)
+                            mediaPlayer?.let { player ->
+                                if (position > 0) player.seekTo(position)
+                                if (!wasPlaying) player.pause()
+                            }
+                        }
+                    }
+                }
+            }
             super.onPlayerError(error)
         }
 
         override fun onPlayerErrorChanged(error: PlaybackException?) {
-            Timber.e("Player error changed - recreating player....")
+            if (error != null) {
+                Timber.e(error, "Player error changed")
+            }
             super.onPlayerErrorChanged(error)
         }
     }
@@ -113,6 +135,9 @@ class MusicPlayerService : Service() {
     }
 
     fun play(url: String) {
+        if (url.isNotEmpty()) {
+            lastUrl = url
+        }
         Timber.d("Playing music: $url with volume: $musicVolume")
         if (mediaPlayer == null) return
         if (url.isNotEmpty()) {
@@ -253,10 +278,10 @@ class MusicPlayerService : Service() {
                     withContext(Dispatchers.Main) {
                         setPlayerVolume(vol)
                     }
-                    delay(delay)
+                    delay(delay.milliseconds)
                 }
             }
-            delay(2000)
+            delay(2000.milliseconds)
             ducked = false
         }
     }
