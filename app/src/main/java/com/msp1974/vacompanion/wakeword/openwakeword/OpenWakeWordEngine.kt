@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.AssetManager
 import androidx.annotation.RequiresPermission
-import com.google.protobuf.ByteString
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.audio.VACAAudioFormat
@@ -177,7 +176,7 @@ class OpenWakeWordEngine(
                             val audioBytes = AudioDSP().shortArrayToByteBuffer(audio)
                             emit(
                                 AudioResult.Audio(
-                                    ByteString.copyFrom(audioBytes),
+                                    audioBytes,
                                     timestamp = frameTimestamp
                                 )
                             )

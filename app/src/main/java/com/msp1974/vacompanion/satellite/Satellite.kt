@@ -12,7 +12,7 @@ import com.msp1974.vacompanion.device.Camera
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.VolumeObserver
 import com.msp1974.vacompanion.ui.DiagnosticInfo
-import com.msp1974.vacompanion.audio.MicrophoneInputController
+import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.Helpers
 import com.msp1974.vacompanion.wakeword.AvailableWakeWords
@@ -315,7 +315,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     if (streamAudio) {
                         sendAudio(audio)
                     }
-                    audioLogManager.onAudio(AudioDSP().byteArrayToShortArray(audio.audio.toByteArray()))
+                    audioLogManager.onAudio(AudioDSP().byteArrayToShortArray(audio.audio))
                 }
 
                 override suspend fun onWakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
@@ -767,7 +767,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     AudioRouteOption.DETECT
                 },
                 motionDetectionMode = config.motionDetectionMode,
-                activeMic = MicrophoneInputController.activeMicInput,
+                activeMic = AudioInRouter.activeMicInput,
                 recordingWakewordEnabled = config.recordingWakewordEnabled,
                 audioLog = audioLogManager.getLog()
             )

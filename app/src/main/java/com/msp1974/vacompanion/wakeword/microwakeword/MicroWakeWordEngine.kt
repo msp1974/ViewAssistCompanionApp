@@ -6,7 +6,6 @@ import androidx.annotation.RequiresPermission
 import com.msp1974.vacompanion.wakeword.microwakeword.microwakeword.MicroWakeWord
 import com.msp1974.vacompanion.wakeword.microwakeword.microwakeword.MicroWakeWordDetector
 import com.msp1974.vacompanion.wakeword.models.WakeWordWithId
-import com.google.protobuf.ByteString
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.audio.VACAAudioFormat
@@ -88,16 +87,19 @@ open class MicroWakeWordEngine (
                     val frameTimestamp = System.currentTimeMillis()
 
                     if (config.diagnosticsEnabled) {
-                        val audioByteString = ByteString.copyFrom(audio)
+                        val audioBytes = ByteArray(audio.remaining())
+                        audio.get(audioBytes)
                         audio.rewind()
-                        emit(AudioResult.AudioLevel(AudioDSP().audioLevel(audioByteString.toByteArray())))
+                        emit(AudioResult.AudioLevel(AudioDSP().audioLevel(audioBytes)))
                     }
 
                     // Emit audio result even if not streaming so that the controller can maintain a rolling history buffer
                     if (isStreaming || config.recordingWakewordEnabled) {
+                        val audioBytes = ByteArray(audio.remaining())
+                        audio.get(audioBytes)
                         emit(
                             AudioResult.Audio(
-                                ByteString.copyFrom(audio),
+                                audioBytes,
                                 timestamp = frameTimestamp
                             )
                         )
