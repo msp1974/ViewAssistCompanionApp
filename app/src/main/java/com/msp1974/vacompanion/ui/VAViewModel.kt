@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import androidx.core.content.ContextCompat.getString
-import androidx.datastore.core.Closeable
+import java.io.Closeable
 import androidx.lifecycle.application
 import androidx.lifecycle.viewModelScope
 import com.msp1974.vacompanion.R
@@ -126,6 +126,7 @@ data class State(
     var darkMode: Boolean = false,
     var isDND: Boolean = false,
     var isBluetoothMicEnabled: Boolean = false,
+    var isBluetoothMicConnected: Boolean = false,
     var screenBlank: Boolean = true,
 
     var appInfo: Map<String, String> = mapOf(),
@@ -189,6 +190,7 @@ class VAViewModel @Inject constructor(
                         webViewPageLoadingStage = status.webViewPageLoadingStage,
                         cameraStreamActive = status.cameraStreamActive,
                         screenBlank = status.screenBlank,
+                        isBluetoothMicConnected = status.bluetoothMicConnected,
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             muted = status.isMuted
                         ),

@@ -27,6 +27,7 @@ fun QuickActionsSheet(
     onToggleDND: () -> Unit,
     isBluetoothMicEnabled: Boolean,
     onToggleBluetoothMic: () -> Unit,
+    isBluetoothMicConnected: Boolean,
     sheetState: SheetState = rememberModalBottomSheetState(),
 ) {
     ModalBottomSheet(
@@ -74,14 +75,16 @@ fun QuickActionsSheet(
                         onToggleDiagnostics()
                     }
                 )
-                QuickActionButton(
-                    icon = Icons.Default.Bluetooth,
-                    label = "BT Mic",
-                    isSelected = isBluetoothMicEnabled,
-                    onClick = {
-                        onToggleBluetoothMic()
-                    }
-                )
+                if (isBluetoothMicConnected) {
+                    QuickActionButton(
+                        icon = Icons.Default.Bluetooth,
+                        label = "BT Mic",
+                        isSelected = isBluetoothMicEnabled,
+                        onClick = {
+                            onToggleBluetoothMic()
+                        }
+                    )
+                }
                 QuickActionButton(
                     icon = Icons.Default.Settings,
                     label = "Settings",

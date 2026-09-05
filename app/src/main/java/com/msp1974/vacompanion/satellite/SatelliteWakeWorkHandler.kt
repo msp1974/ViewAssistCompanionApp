@@ -170,7 +170,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
                 }
 
                 is WakeWordEngineProvider.AudioResult.Audio -> {
-                    if (it.audio.size() > 0) {
+                    if (it.audio.isNotEmpty()) {
                         onAudio(it, engine!!.isStreaming())
                     }
                 }

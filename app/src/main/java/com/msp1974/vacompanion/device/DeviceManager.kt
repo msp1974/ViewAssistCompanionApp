@@ -1,6 +1,10 @@
 package com.msp1974.vacompanion.device
 
 import android.content.Context
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.device.authentication.AuthenticationManager
 import com.msp1974.vacompanion.device.authentication.Token
 import com.msp1974.vacompanion.device.info.DeviceInfo
@@ -38,7 +42,8 @@ data class Status(
     val isMuted: Boolean = false,
     val webViewPageLoadingStage: PageLoadingStage = PageLoadingStage.NOT_STARTED,
     val cameraStreamActive: Boolean = false,
-    val screenBlank: Boolean = true
+    val screenBlank: Boolean = true,
+    val bluetoothMicConnected: Boolean = false
 )
 
 @Singleton
@@ -69,8 +74,25 @@ class DeviceManager @Inject constructor(
     private val _status = MutableStateFlow(Status())
     val status: StateFlow<Status> = _status.asStateFlow()
 
+    // Tracks whether a Bluetooth mic is physically connected, independent of
+    // config.bluetoothMicEnabled, so the UI can hide the quick-actions toggle when there's
+    // nothing to route to while still persisting the enabled/disabled preference underneath.
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val bluetoothMicDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = updateBluetoothMicConnected()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = updateBluetoothMicConnected()
+    }
+
+    private fun updateBluetoothMicConnected() {
+        val connected = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .any { AudioInRouter.isBluetoothMic(it) }
+        _status.update { it.copy(bluetoothMicConnected = connected) }
+    }
+
     init {
         runListeners()
+        audioManager.registerAudioDeviceCallback(bluetoothMicDeviceCallback, null)
+        updateBluetoothMicConnected()
     }
 
     private fun runListeners() {
