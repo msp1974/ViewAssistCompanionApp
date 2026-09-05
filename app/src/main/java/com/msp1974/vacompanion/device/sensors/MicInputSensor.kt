@@ -4,7 +4,7 @@ import android.content.Context
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
-import com.msp1974.vacompanion.audio.MicrophoneInputController
+import com.msp1974.vacompanion.audio.AudioInRouter
 import kotlinx.coroutines.launch
 
 class MicInputSensor(private val context: Context) : Sensor {
@@ -38,21 +38,21 @@ class MicInputSensor(private val context: Context) : Sensor {
 
     init {
         audioManager.registerAudioDeviceCallback(deviceCallback, null)
-        MicrophoneInputController.addActiveMicInputListener(activeMicInputListener)
+        AudioInRouter.addActiveMicInputListener(activeMicInputListener)
     }
 
     private fun updateInputs() {
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         
         val filteredDevices = devices.filter { device ->
-            MicrophoneInputController.getDeviceTypeName(device.type) != "Other"
+            AudioInRouter.getDeviceTypeName(device.type) != "Other"
         }
 
         val inputNames = filteredDevices.map { device ->
-            "${device.productName} (${MicrophoneInputController.getDeviceTypeName(device.type)})"
+            "${device.productName} (${AudioInRouter.getDeviceTypeName(device.type)})"
         }.distinct()
 
-        val activeInput = MicrophoneInputController.activeMicInput
+        val activeInput = AudioInRouter.activeMicInput
 
         val newState = MicInputState(
             availableInputs = inputNames,
@@ -81,6 +81,6 @@ class MicInputSensor(private val context: Context) : Sensor {
 
     override fun stop() {
         audioManager.unregisterAudioDeviceCallback(deviceCallback)
-        MicrophoneInputController.removeActiveMicInputListener(activeMicInputListener)
+        AudioInRouter.removeActiveMicInputListener(activeMicInputListener)
     }
 }

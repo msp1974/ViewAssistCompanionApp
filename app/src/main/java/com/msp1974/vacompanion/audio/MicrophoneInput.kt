@@ -63,8 +63,8 @@ class MicrophoneInput (
     // Owns all microphone device selection, the AudioDeviceCallback, and Bluetooth SCO -
     // MicrophoneInput is deliberately blind to any of that beyond calling
     // getPreferredMicrophone() to learn what to capture from and applyPreferredDevice() to
-    // route to it. See MicrophoneInputController for details.
-    private val micController = MicrophoneInputController(context, deviceManager) { onPreferredMicrophoneChanged() }
+    // route to it. See AudioInRouter for details.
+    private val micController = AudioInRouter(context, deviceManager) { onPreferredMicrophoneChanged() }
 
     private val bufferSize =
         AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
@@ -87,7 +87,7 @@ class MicrophoneInput (
 
         val preferred = micController.getPreferredMicrophone()
         Timber.i(
-            "Using microphone: ${preferred.device?.productName} ${MicrophoneInputController.getDeviceTypeName(preferred.device?.type ?: -1)}, AudioSource: ${VACAAudioFormat.getAudioSourceName(preferred.audioSource)}")
+            "Using microphone: ${preferred.device?.productName} ${AudioInRouter.getDeviceTypeName(preferred.device?.type ?: -1)}, AudioSource: ${VACAAudioFormat.getAudioSourceName(preferred.audioSource)}")
         val record = AudioRecord(
             preferred.audioSource,
             sampleRateInHz,
@@ -113,7 +113,7 @@ class MicrophoneInput (
         return record
     }
 
-    // Called by MicrophoneInputController whenever the preferred microphone changes - just
+    // Called by AudioInRouter whenever the preferred microphone changes - just
     // restart the AudioRecord so createAudioRecord() picks up the new device/source.
     private fun onPreferredMicrophoneChanged() {
         if (audioRecord == null) return

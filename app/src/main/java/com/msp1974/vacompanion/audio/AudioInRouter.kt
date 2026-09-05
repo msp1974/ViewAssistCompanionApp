@@ -44,7 +44,7 @@ data class PreferredMicrophone(val device: AudioDeviceInfo?, val audioSource: In
  * to all of this: it calls [getPreferredMicrophone] to learn what to capture from and with what
  * AudioSource, and [applyPreferredDevice] to route an AudioRecord to it.
  */
-class MicrophoneInputController(
+class AudioInRouter(
     private val context: Context,
     private val deviceManager: DeviceManager,
     private val onPreferredMicrophoneChanged: () -> Unit,
@@ -80,6 +80,16 @@ class MicrophoneInputController(
                 AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE Headset"
                 else -> "Other"
             }
+        }
+
+        // Shared with DeviceManager, which tracks whether a Bluetooth mic is physically
+        // connected (independent of the bluetoothMicEnabled setting) so the UI can hide the
+        // quick-actions toggle when there's nothing to route to.
+        fun isBluetoothMic(device: AudioDeviceInfo): Boolean {
+            return device.isSource && (
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && device.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+            )
         }
     }
 
@@ -140,13 +150,6 @@ class MicrophoneInputController(
             }
             scheduleEvaluate()
         }
-    }
-
-    private fun isBluetoothMic(device: AudioDeviceInfo): Boolean {
-        return device.isSource && (
-            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && device.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
-        )
     }
 
     private fun isUsbMic(device: AudioDeviceInfo): Boolean {
