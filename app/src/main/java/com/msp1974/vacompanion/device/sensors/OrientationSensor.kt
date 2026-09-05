@@ -35,7 +35,10 @@ class OrientationSensor(private val context: Context) : Sensor, ComponentCallbac
     }
 
     override suspend fun requestSensorUpdate(context: Context) {
-        // No-op: Handled by ComponentCallbacks
+        val currentOrientation = getOrientationString(context.resources.configuration.orientation)
+        Sensor.sensorWorkerScope.launch {
+            onSensorUpdated(basicSensor.id, currentOrientation)
+        }
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {
