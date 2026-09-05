@@ -106,6 +106,12 @@ class SensorManager(
         }
     }
 
+    suspend fun requestSensorUpdates() {
+        sensors.forEach {
+            it.requestSensorUpdate(context)
+        }
+    }
+
     private suspend fun processBatchedUpdates() {
         val updates = synchronized(pendingUpdates) {
             val u = if (pendingUpdates.isNotEmpty()) pendingUpdates.toMap() else null

@@ -733,6 +733,9 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 sendStatus(data)
             }
         }
+        scope.launch {
+            deviceManager.sensorsManager.requestSensorUpdates()
+        }
 
         // Start motion sensor
         if (config.motionDetectionMode != "none") {
