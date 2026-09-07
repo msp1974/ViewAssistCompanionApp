@@ -10,6 +10,7 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.http.ContentType
 import io.ktor.http.URLProtocol
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 import io.ktor.http.parameters
 import timber.log.Timber
 import java.net.URL
@@ -39,14 +40,14 @@ interface IAuthenticationService {
         grantType: String = GRANT_TYPE_CODE,
         code: String,
         clientId: String? = null,
-    ): Token
+    ): Token?
 
     suspend fun refreshToken(
         url: URL,
         grantType: String = GRANT_TYPE_REFRESH,
         refreshToken: String,
         clientId: String? = null,
-    ): HttpResponse
+    ): Token?
 
     suspend fun revokeToken(
         url: URL,
@@ -66,10 +67,11 @@ class AuthenticationService() : IAuthenticationService {
         clientId: String?
     ): Token {
         try {
-            val auth_url = url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_TOKEN
+            val authUrl = url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_TOKEN
             val cid = clientId ?: getClientId(url.protocol == IAuthenticationService.HTTPS)
-            Timber.d("Requesting token from HA: $auth_url -> $cid -> $code")
-            val response = client.post(auth_url) {
+            val obfuscatedSource = "{'grant_type': '$grantType', 'code': '${code.subSequence(0,10)}...', 'client_id': '$cid'}"
+            Timber.d("getToken Request: $authUrl -> $obfuscatedSource")
+            val response = client.post(authUrl) {
                 contentType(ContentType.Application.FormUrlEncoded)
                 setBody(FormDataContent(parameters {
                     append("grant_type", grantType)
@@ -77,10 +79,12 @@ class AuthenticationService() : IAuthenticationService {
                     append("client_id", cid)
                 }))
             }
-            Timber.d("Token response: ${response.body<String>()}")
-            return response.body<Token>()
+            val result = response.body<Token>()
+            val obfuscatedResult = "{'access_token': '${result.accessToken.subSequence(0,10)}...', 'expires_in': ${result.expiresIn}, 'refresh_token': '${result.refreshToken?.subSequence(0,10)}...', 'token_type': '${result.tokenType}'}"
+            Timber.d("getToken Result: $obfuscatedResult")
+            return result
         } catch (e: Exception) {
-            throw AuthenticationException("Failed to get token", 0, null)
+            throw AuthenticationException("Failed to get token", 0, e.message)
         }
     }
 
@@ -89,23 +93,45 @@ class AuthenticationService() : IAuthenticationService {
         grantType: String,
         refreshToken: String,
         clientId: String?
-    ): HttpResponse {
-        return client.post(url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_TOKEN) {
-            contentType(ContentType.Application.FormUrlEncoded)
-            setBody(FormDataContent(parameters {
-                append("grant_type", grantType)
-                append("refresh_token", refreshToken)
-                append("client_id", clientId?:getClientId(url.protocol == IAuthenticationService.HTTPS))
-            }))
+    ): Token {
+        try {
+            val authUrl = url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_TOKEN
+            val cid = clientId ?: getClientId(url.protocol == IAuthenticationService.HTTPS)
+            val obfuscatedSource = "{'grant_type': '$grantType', 'refresh_token': '${refreshToken.subSequence(0,10)}...', 'client_id': '${cid}'}"
+            Timber.d("refreshToken Request: $authUrl -> $obfuscatedSource")
+            val response = client.post(authUrl) {
+                contentType(ContentType.Application.FormUrlEncoded)
+                setBody(FormDataContent(parameters {
+                    append("grant_type", grantType)
+                    append("refresh_token", refreshToken)
+                    append("client_id", cid)
+                }))
+            }
+            if (response.status.isSuccess()) {
+                val result = response.body<Token>()
+                val obfuscatedResult = "{'access_token': '${result.accessToken.subSequence(0,10)}...', 'expires_in': ${result.expiresIn}, 'refresh_token': '${result.refreshToken?.subSequence(0,10)}...', 'token_type': '${result.tokenType}'}"
+                Timber.d("refreshToken Result: $obfuscatedResult")
+                return result
+            }
+            throw AuthenticationException("Failed to refresh token", response.status.value, response.body<String>())
+        } catch (e: Exception) {
+            // Network/TLS failures (e.g. a misconfigured HA URL whose certificate doesn't cover
+            // the configured host) must surface as AuthenticationException like getToken() does,
+            // not escape as a raw exception - callers only catch AuthenticationException.
+            throw AuthenticationException("Failed to refresh token", 0, e.message)
         }
     }
 
     override suspend fun revokeToken(url: URL, token: String) {
-        client.post(url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_REVOKE) {
-            contentType(ContentType.Application.FormUrlEncoded)
-            setBody(FormDataContent(parameters {
-                append("token", token)
-            }))
+        try {
+            client.post(url.toString().removeSuffix("/") + "/" + SEGMENT_AUTH_REVOKE) {
+                contentType(ContentType.Application.FormUrlEncoded)
+                setBody(FormDataContent(parameters {
+                    append("token", token)
+                }))
+            }
+        } catch (e: Exception) {
+            throw AuthenticationException("Failed to revoke token", 0, e.message)
         }
     }
 }

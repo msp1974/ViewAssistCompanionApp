@@ -16,6 +16,7 @@ import com.msp1974.vacompanion.jsinterface.WebAppInterface
 import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.device.authentication.AuthenticationException
 import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -100,7 +101,7 @@ class CustomWebView @JvmOverloads constructor(
         if (webViewClient::class == CustomWebViewClient::class) {
             val webViewClientA = webViewClient as CustomWebViewClient
             removeJavascriptInterface("ViewAssistApp")
-            addJavascriptInterface(WebAppInterface(webViewClientA.config, ViewAssistEventHandler), "ViewAssistApp")
+            addJavascriptInterface(WebAppInterface(webViewClientA.config, viewAssistEventHandler), "ViewAssistApp")
 
             removeJavascriptInterface("externalApp")
             addJavascriptInterface(WebViewJavascriptInterface(this, externalAuthCallback), "externalApp")
@@ -116,7 +117,7 @@ class CustomWebView @JvmOverloads constructor(
                     }
                     if (revokeRequired) {
                         revokeRequired = false
-                        deviceManager.authenticationManager.revokeSession()
+                        safeRevokeSession()
                     }
                 }
             }
@@ -135,18 +136,35 @@ class CustomWebView @JvmOverloads constructor(
                     view.loadUrl(deviceManager.authenticationManager.getExternalAuthUrl())
                 }
             }
-        } catch (ex: Exception) {
-            Timber.e(ex, "Error authenticating with HA")
+        } catch (ex: AuthenticationException) {
+            Timber.e(ex, "AuthenticationException: Error authenticating with HA")
             withContext(Dispatchers.Main) {
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.
                 callAuthJS(view, false)
                 if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
-                    deviceManager.authenticationManager.revokeSession()
+                    safeRevokeSession()
                     reload()
                 }
             }
+        } catch (ex: Exception) {
+            Timber.e(ex, "Exception: Error authenticating -> $ex")
+        }
+    }
 
+    /**
+     * revokeSession() can itself throw (e.g. an AuthenticationException wrapping a network/TLS
+     * failure against a misconfigured HA URL) - calls from an unguarded coroutine launch, or from
+     * inside another catch block, need this instead of a bare call so a failed revoke can't crash
+     * the app. Losing the server-side revoke here is harmless: the token isn't cleared locally
+     * until the call succeeds (see AuthenticationManager.revokeSession()), so nothing is left in
+     * an inconsistent state - it'll simply be retried the next time a revoke is requested.
+     */
+    private suspend fun safeRevokeSession() {
+        try {
+            deviceManager.authenticationManager.revokeSession()
+        } catch (ex: Exception) {
+            Timber.e(ex, "Error revoking HA session")
         }
     }
 
@@ -168,7 +186,7 @@ class CustomWebView @JvmOverloads constructor(
         override fun onRequestRevokeExternalAuth(view: WebView) {
             if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
                 scope.launch {
-                    deviceManager.authenticationManager.revokeSession()
+                    safeRevokeSession()
                 }
             } else {
                 Timber.w("Requested authentication revoke when network unavailable")
@@ -178,10 +196,13 @@ class CustomWebView @JvmOverloads constructor(
     }
 
     private fun callAuthJS(view: WebView, success: Boolean) {
+        val tokenExpiry = ((config.tokenExpiry - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+        val obfuscatedOutput = "{'access_token': ${config.accessToken.subSequence(0,10)}..., 'expires_in': $tokenExpiry"
+        Timber.d("Calling authJS: success: $success -> $obfuscatedOutput")
         val script = if (success) {
             "window.externalAuthSetToken(true, {\n" +
                 "\"access_token\": \"${config.accessToken}\",\n" +
-                "\"expires_in\": ${((config.tokenExpiry - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)}\n" +
+                "\"expires_in\": $tokenExpiry\n" +
                 "});"
         } else {
             "window.externalAuthSetToken(false);"
@@ -189,7 +210,7 @@ class CustomWebView @JvmOverloads constructor(
         view.evaluateJavascript(script, null)
     }
 
-    val ViewAssistEventHandler = object : ViewAssistCallback {
+    val viewAssistEventHandler = object : ViewAssistCallback {
         override fun onEvent(event: String, data: String) {
             //if (event == "location-changed") {
             //    Handler(Looper.getMainLooper()).post({
