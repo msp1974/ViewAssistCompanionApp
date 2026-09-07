@@ -46,7 +46,27 @@ class MicrophoneInput (
         var aecSource: String  = AudioEnhancerSource.UNAVAILABLE
             private set
 
+        // Wall-clock deadline (System.currentTimeMillis()) until which captured mic frames are
+        // replaced with digital silence before they reach the AGC, the wake-word engine, or
+        // anything streamed onward. Used to blank out the device's own short, non-interactive
+        // sound effects (wake-word confirmation chime, error sound) - most devices have no
+        // hardware AEC, so without this the acoustic leak-back from speaker to mic both pollutes
+        // the AGC's envelope/noise-floor (leaving it too low to amplify the command that follows
+        // until it decays back down) and gets forwarded to HA. Never used for TTS/alarm playback,
+        // where the mic must stay live for barge-in.
+        @Volatile
+        private var suppressUntilMs: Long = 0L
 
+        /**
+         * Silences captured mic audio for [durationMs] from now. Safe to call repeatedly with a
+         * shorter, more precise duration once it's known (e.g. once actual playback is confirmed
+         * to have ended) - each call simply replaces the deadline outright.
+         */
+        fun suppressMicFor(durationMs: Long) {
+            suppressUntilMs = System.currentTimeMillis() + durationMs
+        }
+
+        private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs
     }
 
     private var audioRecord: AudioRecord? = null
@@ -86,6 +106,8 @@ class MicrophoneInput (
     private fun createAudioRecord(): AudioRecord {
 
         val preferred = micController.getPreferredMicrophone()
+        val isBuiltIn = preferred.device?.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
+
         Timber.i(
             "Using microphone: ${preferred.device?.productName} ${AudioInRouter.getDeviceTypeName(preferred.device?.type ?: -1)}, AudioSource: ${VACAAudioFormat.getAudioSourceName(preferred.audioSource)}")
         val record = AudioRecord(
@@ -98,18 +120,15 @@ class MicrophoneInput (
         check(record.state == AudioRecord.STATE_INITIALIZED) {
             "Failed to initialize AudioRecord"
         }
-
-        val isBuiltIn = preferred.device?.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
-        setupAudioEffects(record, attachNs = !isBuiltIn)
-
         micController.applyPreferredDevice(record, preferred.device)
+        setupAudioEffects(record, attachNs = !isBuiltIn)
 
         if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
             record.startRecording()
         } else {
             Timber.w("Microphone already started")
         }
-        Timber.d("Microphone started")
+        Timber.i("Microphone started")
         return record
     }
 
@@ -136,7 +155,7 @@ class MicrophoneInput (
             if (isRecording) it.stop()
             it.release()
         }
-
+        audioRecord = null
         audioRecord = createAudioRecord()
     }
 
@@ -156,6 +175,14 @@ class MicrophoneInput (
         if (readCount > 0) {
             totalFramesRead += readCount
             val frame = audioBuffer.copyOfRange(0, readCount)
+            if (isMicSuppressed()) {
+                // Return true digital silence without running it through the AGC/NS - this
+                // keeps the frame cadence the wake-word engine expects, while leaving the AGC's
+                // envelope/noise-floor exactly where they were before the suppressed sound
+                // started (rather than dragged up by it), so gain is already correct for real
+                // speech the instant suppression lifts.
+                return ShortArray(frame.size)
+            }
             if (applyEnhancement) {
                 // processFrame() internally no-ops on AGC/noise suppression when the
                 // device covers them in hardware - so it's always safe/cheap to route

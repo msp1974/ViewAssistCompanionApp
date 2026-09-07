@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.media3.common.Player
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.audio.AudioDSP
+import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
@@ -36,6 +37,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -408,17 +410,29 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         if (config.wakeWordSound != "none") {
             try {
                 val soundUri = currentWakeWordSoundUri ?: resolveWakeSoundUri(config.wakeWordSound)
-                
+
                 if (soundUri != null) {
+                    // Gate the mic before the chime starts, not after - most devices have no
+                    // hardware AEC, so without this the chime's acoustic leak-back would pollute
+                    // the AGC's envelope and get forwarded to HA. The capped duration is a safety
+                    // net in case ENDED is never observed below.
+                    MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_MAX_SUPPRESSION_MS)
                     mediaManager.soundPlayer.play(soundUri)
                 }
 
                 Timber.i("Started wake word sound")
                 scope.launch {
-                    while(mediaManager.soundPlayer.state.value != Player.STATE_ENDED) {
-                        delay(50.milliseconds)
-                    }
-                    audioPipeline?.silenceAudioBefore = System.currentTimeMillis()
+                    // The player may already be sitting at STATE_ENDED from a previous play of
+                    // this same (cached) sound, so wait for it to actually leave ENDED first -
+                    // confirming this playback has genuinely (re)started - before waiting for it
+                    // to end again. Without this, a stale ENDED reading here would shrink the
+                    // mic gate down to the trailing margin before the chime has even played.
+                    mediaManager.soundPlayer.state.first { it != Player.STATE_ENDED }
+                    mediaManager.soundPlayer.state.first { it == Player.STATE_ENDED }
+                    // Now that actual playback end is known, shrink the gate down to just the
+                    // acoustic/capture-latency margin instead of the full safety-net duration.
+                    MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_TRAILING_MARGIN_MS)
+                    audioPipeline?.silenceAudioBefore = System.currentTimeMillis() + NOTIFICATION_SOUND_TRAILING_MARGIN_MS
                     Timber.i("Ended wake word sound")
                 }
             } catch (e: Exception) {
@@ -446,6 +460,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     fun playErrorSound() {
         try {
             scope.launch {
+                // Same reasoning as playWakeWordDetectionSound() - keep the error sound's
+                // acoustic leak-back out of the AGC/mic stream. Its end isn't tracked here, so
+                // this relies on the capped safety-net duration rather than a precise margin.
+                MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_MAX_SUPPRESSION_MS)
                 mediaManager.soundPlayer.play("asset:///other/error.mp3".toUri())
             }
         } catch (e: Exception) {
@@ -805,5 +823,16 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     companion object {
         fun isoNow(): String = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+
+        // Upper bound on how long a short notification sound (wake sound/error sound) could
+        // plausibly take to report ENDED, in case that never arrives (e.g. player error) - keeps
+        // the mic gated no longer than this even if the precise end-of-playback signal is missed.
+        private const val NOTIFICATION_SOUND_MAX_SUPPRESSION_MS = 4000L
+
+        // Trailing margin applied once playback is confirmed ended, covering the acoustic
+        // speaker->mic leak-back (no AEC on many devices) plus the mic capture pipeline's own
+        // buffering latency, so the tail of the sound can't still be sitting in a buffer that
+        // reads out just after suppression would otherwise have lifted.
+        private const val NOTIFICATION_SOUND_TRAILING_MARGIN_MS = 200L
     }
 }
