@@ -196,15 +196,17 @@ class CustomWebView @JvmOverloads constructor(
     }
 
     private fun callAuthJS(view: WebView, success: Boolean) {
-        val tokenExpiry = ((config.tokenExpiry - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
-        val obfuscatedOutput = "{'access_token': ${config.accessToken.subSequence(0,10)}..., 'expires_in': $tokenExpiry"
-        Timber.d("Calling authJS: success: $success -> $obfuscatedOutput")
         val script = if (success) {
+            val tokenExpiry = ((config.tokenExpiry - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
+            val obfuscatedOutput = "{'access_token': ${if (config.accessToken.isNotBlank()) config.accessToken.subSequence(0,10) else "None"}..., 'expires_in': $tokenExpiry"
+            Timber.d("Calling authJS: success: $success -> $obfuscatedOutput")
+
             "window.externalAuthSetToken(true, {\n" +
                 "\"access_token\": \"${config.accessToken}\",\n" +
                 "\"expires_in\": $tokenExpiry\n" +
                 "});"
         } else {
+            Timber.d("Calling authJS: success: $success")
             "window.externalAuthSetToken(false);"
         }
         view.evaluateJavascript(script, null)
