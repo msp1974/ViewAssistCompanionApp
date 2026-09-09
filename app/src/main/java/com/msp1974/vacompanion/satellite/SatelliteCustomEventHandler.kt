@@ -92,14 +92,20 @@ class SatelliteCustomEventHandler(
                     satellite.restartWakeWordDetection()
                 }
             }
+            "speakerEnrollmentStart" -> {
+                scope.launch {
+                    satellite.startSpeakerEnrollment()
+                }
+            }
+            "speakerEnrollmentClear" -> {
+                scope.launch {
+                    satellite.clearSpeakerEnrollment()
+                }
+            }
             "recognitionError" -> {
                 val errorText = event.oldValue as? String ?: ""
                 if (errorText.isNotEmpty()) {
                     config.eventBroadcaster.notifyEvent(Event("showToastError", "", errorText))
-                }
-
-                if (config.wakeWordSound != "none") {
-                    satellite.playErrorSound()
                 }
                 //audioRoute = AudioRouteOption.DETECT
                 satellite.sendDiagnostics(0f, 0f)

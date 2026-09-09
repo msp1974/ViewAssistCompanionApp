@@ -131,6 +131,42 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var speakerVerificationEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var speakerVerificationThreshold: Float by Delegates.observable(DEFAULT_SPEAKER_VERIFICATION_THRESHOLD) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var speakerVerificationModelPath: String by Delegates.observable(DEFAULT_SPEAKER_VERIFICATION_MODEL_PATH) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var speakerVerificationEmbeddingPath: String by Delegates.observable("") { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var speakerVerificationFailOpen: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var experimentalMwwSmoothingWindow: Int by Delegates.observable(3) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var experimentalMwwConsecutiveHits: Int by Delegates.observable(2) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var experimentalMwwCooldownMs: Int by Delegates.observable(1500) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var experimentalAudioBackend: String by Delegates.observable(DEFAULT_AUDIO_BACKEND) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var notificationVolume: Int by Delegates.observable(DEFAULT_NOTIFICATION_VOLUME) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -180,6 +216,10 @@ class APPConfig @Inject constructor(val context: Context) {
     }
 
     var diagnosticsEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var debugWakeClipDumpEnabled: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
 
@@ -351,6 +391,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["do_not_disturb"]?.jsonPrimitive?.booleanOrNull?.let { doNotDisturb = it }
         settings["dark_mode"]?.jsonPrimitive?.booleanOrNull?.let { darkMode = it }
         settings["diagnostics_enabled"]?.jsonPrimitive?.booleanOrNull?.let { diagnosticsEnabled = it }
+        settings["debug_wake_clip_dump_enabled"]?.jsonPrimitive?.booleanOrNull?.let { debugWakeClipDumpEnabled = it }
         settings["integration_version"]?.jsonPrimitive?.contentOrNull?.let { integrationVersion = it }
         settings["min_required_apk_version"]?.jsonPrimitive?.contentOrNull?.let { minRequiredApkVersion = it }
         settings["zoom_level"]?.jsonPrimitive?.intOrNull?.let { zoomLevel = it }
@@ -372,6 +413,20 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_saver_disable_on_touch"]?.jsonPrimitive?.booleanOrNull?.let { screenSaverDisableOnTouch = it }
         settings["screen_orientation_mode"]?.jsonPrimitive?.contentOrNull?.let { screenOrientationMode = it }
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
+        settings["speaker_verification_enabled"]?.jsonPrimitive?.booleanOrNull?.let { speakerVerificationEnabled = it }
+        settings["speaker_verification_threshold"]?.jsonPrimitive?.floatOrNull?.let { speakerVerificationThreshold = it.round(2) }
+        settings["speaker_verification_model_path"]?.jsonPrimitive?.contentOrNull?.let { speakerVerificationModelPath = it }
+        settings["speaker_verification_embedding_path"]?.jsonPrimitive?.contentOrNull?.let { speakerVerificationEmbeddingPath = it }
+        settings["speaker_verification_fail_open"]?.jsonPrimitive?.booleanOrNull?.let { speakerVerificationFailOpen = it }
+        settings["experimental_mww_smoothing_window"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwSmoothingWindow = it }
+        settings["experimental_mww_consecutive_hits"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwConsecutiveHits = it }
+        settings["experimental_mww_cooldown_ms"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwCooldownMs = it }
+        settings["experimental_audio_backend"]?.jsonPrimitive?.contentOrNull?.let { experimentalAudioBackend = it }
+        settings["experimental_webrtc_apm"]?.jsonPrimitive?.booleanOrNull?.let { enabled ->
+            if (enabled) {
+                experimentalAudioBackend = AUDIO_BACKEND_WEBRTC_APM
+            }
+        }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
 
@@ -428,6 +483,11 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_DUCKING_VOLUME = 2
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0
+        const val DEFAULT_SPEAKER_VERIFICATION_THRESHOLD = 0.3f
+        const val DEFAULT_SPEAKER_VERIFICATION_MODEL_PATH = "speaker/3dspeaker_speech_eres2net_sv_en_voxceleb_16k.onnx"
+        const val AUDIO_BACKEND_PLATFORM_DSP = "platform_dsp"
+        const val AUDIO_BACKEND_WEBRTC_APM = "webrtc_apm"
+        const val DEFAULT_AUDIO_BACKEND = AUDIO_BACKEND_WEBRTC_APM
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }

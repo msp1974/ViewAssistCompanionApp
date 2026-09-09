@@ -282,9 +282,19 @@ abstract class SatelliteAudioPipeline(
     }
 
     suspend fun sendMicAudio(audio: WakeWordEngineProvider.AudioResult.Audio): Boolean {
+        if (pipelineRunning.isCompleted) return false
         if (pipelineStage == PipelineStage.LISTENING  || pipelineStage == PipelineStage.VOICE_STARTED) {
-            audioOutQueue.send(audio)
-            return true
+            return runCatching {
+                audioOutQueue.send(audio)
+                true
+            }.onFailure {
+                Timber.w(
+                    it,
+                    "Dropping mic audio: pipeline output queue unavailable at stage=%s [%d]",
+                    pipelineStage,
+                    pipelineId
+                )
+            }.getOrDefault(false)
         }
         return false
     }

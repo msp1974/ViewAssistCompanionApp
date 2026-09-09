@@ -85,6 +85,17 @@ android {
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
+    packaging {
+        jniLibs {
+            // sherpa-onnx AAR and onnxruntime-android both ship libonnxruntime.so
+            pickFirsts += setOf(
+                "lib/arm64-v8a/libonnxruntime.so",
+                "lib/armeabi-v7a/libonnxruntime.so",
+                "lib/x86/libonnxruntime.so",
+                "lib/x86_64/libonnxruntime.so"
+            )
+        }
+    }
 }
 
 androidComponents {
@@ -117,6 +128,7 @@ dependencies {
     implementation (libs.androidx.preference.ktx)
     implementation (libs.timber)
     implementation (libs.onnxruntime.android)
+    implementation(files("libs/sherpa-onnx-static-link-onnxruntime-1.13.7.aar"))
     implementation (libs.semver)
     implementation (libs.androidx.webkit)
     implementation(libs.kotlinx.serialization.json)
@@ -142,6 +154,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.mlkit.face.detection)
+    implementation(libs.webrtc.sdk.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 }

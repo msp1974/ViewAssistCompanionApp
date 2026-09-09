@@ -92,6 +92,7 @@ data class DiagnosticInfo(
     var vadDetection: Boolean = false,
     var motionDetected: Boolean = false,
     var hasCamera: Boolean = false,
+    var hasSpeakerEnrollment: Boolean = false,
     var lastMotionTimestamp: Long = 0,
     var motionInterval: Int = 10000,
     var motionDetectionMode: String = "motion",
@@ -146,6 +147,7 @@ data class State(
     var cameraStreamActive: Boolean = false,
     var motionDetectionSensitivity: Int = 0,
     var motionDetectionMode: String = "motion",
+    var speakerEnrollmentStatus: String = "",
     var sensorState: SensorState = SensorState()
     )
 
@@ -225,6 +227,7 @@ class VAViewModel @Inject constructor(
                     engine = config.wakeWordEngine,
                     muted = config.isMuted,
                     hasCamera = deviceInfo.hardware.hasFrontCamera,
+                    hasSpeakerEnrollment = hasSpeakerEnrollment(),
                     motionDetectionMode = config.motionDetectionMode
                 )
             )
@@ -280,6 +283,22 @@ class VAViewModel @Inject constructor(
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             engine = event.newValue as String
                         )
+                    )
+                }
+            }
+            "speakerVerificationEmbeddingPath", "speakerVerificationEnabled" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        diagnosticInfo = currentState.diagnosticInfo.copy(
+                            hasSpeakerEnrollment = hasSpeakerEnrollment()
+                        )
+                    )
+                }
+            }
+            "speakerEnrollmentStatus" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        speakerEnrollmentStatus = event.newValue as String
                     )
                 }
             }
@@ -617,6 +636,29 @@ class VAViewModel @Inject constructor(
         }
     }
 
+    fun startSpeakerEnrollment() {
+        _vacaState.update { currentState ->
+            currentState.copy(speakerEnrollmentStatus = "Starting enrollment...")
+        }
+        config.eventBroadcaster.notifyEvent(Event("speakerEnrollmentStart", "", ""))
+    }
+
+    fun clearSpeakerEnrollment() {
+        _vacaState.update { currentState ->
+            currentState.copy(speakerEnrollmentStatus = "")
+        }
+        config.eventBroadcaster.notifyEvent(Event("speakerEnrollmentClear", "", ""))
+    }
+
+    private fun hasSpeakerEnrollment(): Boolean {
+        val configuredPath = config.speakerVerificationEmbeddingPath.trim()
+        if (configuredPath.isNotEmpty() && java.io.File(configuredPath).exists()) {
+            return true
+        }
+        val defaultPath = java.io.File(config.context.filesDir, "speaker/enrolled_embedding.txt")
+        return defaultPath.exists()
+    }
+
     fun setShowMenu(show: Boolean) {
         _vacaState.update { currentState ->
             currentState.copy(
@@ -746,4 +788,3 @@ class VAViewModel @Inject constructor(
         }
     }
 }
-
