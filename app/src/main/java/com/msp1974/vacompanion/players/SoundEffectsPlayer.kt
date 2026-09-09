@@ -6,6 +6,7 @@ import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 class SoundEffectsPlayer(val context: Context) {
     private val players = mutableMapOf<Int, ExoPlayer>()
     private val uriPlayers = mutableMapOf<Uri, ExoPlayer>()
+    private var activeAdhocPlayer: ExoPlayer? = null
     private val _state = MutableStateFlow(Player.STATE_IDLE)
     val state: StateFlow<Int> = _state
 
@@ -92,12 +94,19 @@ class SoundEffectsPlayer(val context: Context) {
                 } else {
                     // Fallback for non-prepared sounds
                     val adhocPlayer = createPlayer(uri)
+                    activeAdhocPlayer = adhocPlayer
                     adhocPlayer.addListener(object : Player.Listener {
                         override fun onPlaybackStateChanged(playbackState: Int) {
                             _state.value = playbackState
                             if (playbackState == Player.STATE_ENDED) {
                                 adhocPlayer.release()
+                                if (activeAdhocPlayer == adhocPlayer) activeAdhocPlayer = null
                             }
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            adhocPlayer.release()
+                            if (activeAdhocPlayer == adhocPlayer) activeAdhocPlayer = null
                         }
                     })
                     adhocPlayer.prepare()
@@ -128,6 +137,11 @@ class SoundEffectsPlayer(val context: Context) {
                     it.seekTo(0)
                 }
             }
+            activeAdhocPlayer?.let {
+                it.stop()
+                it.release()
+                activeAdhocPlayer = null
+            }
         }
     }
 
@@ -137,6 +151,8 @@ class SoundEffectsPlayer(val context: Context) {
             players.clear()
             uriPlayers.values.forEach { it.release() }
             uriPlayers.clear()
+            activeAdhocPlayer?.release()
+            activeAdhocPlayer = null
         }
     }
 }

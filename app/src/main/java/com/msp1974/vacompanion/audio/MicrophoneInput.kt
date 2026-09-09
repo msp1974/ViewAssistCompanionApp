@@ -1,17 +1,15 @@
 package com.msp1974.vacompanion.audio
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
-import android.os.Build
-import android.content.pm.PackageManager
 import androidx.annotation.RequiresPermission
-import com.msp1974.vacompanion.broadcasts.BroadcastSender
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.FunctionClasses
 import com.msp1974.vacompanion.device.UnsupportedFunctionsDevice
 import com.msp1974.vacompanion.settings.APPConfig
@@ -20,40 +18,22 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object AudioEnhancerSource {
-    const val UNAVAILABLE = "unavailable"
-    const val HARDWARE = "hardware"
-    const val SOFTWARE = "software"
+    const val UNAVAILABLE = "Unavailable"
+    const val ANDROID = "Operating System"
+    const val SOFTWARE = "VACA"
 }
 
 class MicrophoneInput (
-    val config: APPConfig,
-    val audioSource: Int = VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
-    val sampleRateInHz: Int = VACAAudioFormat.SAMPLE_RATE_HZ,
-    val channelConfig: Int = VACAAudioFormat.CHANNELS,
-    val audioFormat: Int = VACAAudioFormat.ENCODING,
+    val context: Context,
+    val deviceManager: DeviceManager,
 ) : AutoCloseable {
 
+    private val sampleRateInHz: Int = VACAAudioFormat.SAMPLE_RATE_HZ
+    private val channelConfig: Int = VACAAudioFormat.CHANNELS
+    private val audioFormat: Int = VACAAudioFormat.ENCODING
+    private val config: APPConfig = deviceManager.config
+
     companion object {
-        private val activeMicInputListeners = mutableListOf<() -> Unit>()
-
-        // The active mic is only re-resolved when the input device set changes (see
-        // registerDeviceCallback) or a MicrophoneInput (re)starts - there's no periodic recompute -
-        // so listeners (MicInputSensor) need an explicit nudge whenever this changes rather than
-        // polling it.
-        var activeMicInput: String = "None"
-            private set(value) {
-                field = value
-                activeMicInputListeners.forEach { it() }
-            }
-
-        fun addActiveMicInputListener(listener: () -> Unit) {
-            activeMicInputListeners.add(listener)
-        }
-
-        fun removeActiveMicInputListener(listener: () -> Unit) {
-            activeMicInputListeners.remove(listener)
-        }
-
         // Resolved AGC/noise-suppression source, updated whenever a MicrophoneInput sets up its
         // audio effects - hardware if the platform effect attached successfully, software if
         // AudioEnhancer's fallback is running instead, unavailable before any mic has started.
@@ -61,61 +41,51 @@ class MicrophoneInput (
             private set
         var nsSource: String = AudioEnhancerSource.UNAVAILABLE
             private set
-
         // AEC has no software fallback in this app (unlike AGC/NS), so it's purely a hardware
         // capability check - computed once since it can't change at runtime.
-        val aecSource: String by lazy {
-            if (UnsupportedFunctionsDevice.isIssueDevice(FunctionClasses.AUDIO_ENHANCEMENTS)) {
-                AudioEnhancerSource.UNAVAILABLE
-            } else if (AcousticEchoCanceler.isAvailable()) {
-                AudioEnhancerSource.HARDWARE
-            } else {
-                AudioEnhancerSource.UNAVAILABLE
-            }
+        var aecSource: String  = AudioEnhancerSource.UNAVAILABLE
+            private set
+
+        // Wall-clock deadline (System.currentTimeMillis()) until which captured mic frames are
+        // replaced with digital silence before they reach the AGC, the wake-word engine, or
+        // anything streamed onward. Used to blank out the device's own short, non-interactive
+        // sound effects (wake-word confirmation chime, error sound) - most devices have no
+        // hardware AEC, so without this the acoustic leak-back from speaker to mic both pollutes
+        // the AGC's envelope/noise-floor (leaving it too low to amplify the command that follows
+        // until it decays back down) and gets forwarded to HA. Never used for TTS/alarm playback,
+        // where the mic must stay live for barge-in.
+        @Volatile
+        private var suppressUntilMs: Long = 0L
+
+        /**
+         * Silences captured mic audio for [durationMs] from now. Safe to call repeatedly with a
+         * shorter, more precise duration once it's known (e.g. once actual playback is confirmed
+         * to have ended) - each call simply replaces the deadline outright.
+         */
+        fun suppressMicFor(durationMs: Long) {
+            suppressUntilMs = System.currentTimeMillis() + durationMs
         }
 
-        fun getDeviceTypeName(type: Int): String {
-            return when (type) {
-                AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Built-in Mic"
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO"
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP"
-                AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
-                AudioDeviceInfo.TYPE_USB_DEVICE -> "USB Device"
-                AudioDeviceInfo.TYPE_USB_HEADSET -> "USB Headset"
-                AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE Headset"
-                else -> "Other"
-            }
-        }
+        private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs
     }
 
     private var audioRecord: AudioRecord? = null
     private var webRtcSdkAudioProcessor: WebRtcSdkAudioProcessor? = null
-    private val context = config.context
 
     private var ns: NoiseSuppressor? = null
     private var agc: AutomaticGainControl? = null
+    private var aec: AcousticEchoCanceler? = null
 
     private val audioEnhancer = AudioEnhancer(sampleRateInHz, context)
     private var totalFramesRead = 0L
 
     private var audioDSP = AudioDSP()
 
-    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-    private val deviceCallback = object : android.media.AudioDeviceCallback() {
-        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-            if (addedDevices.any { isUsbMic(it) || isBluetoothMic(it) }) {
-                Timber.d("USB or Bluetooth microphone connected, updating preferred device")
-                updatePreferredDevice()
-            }
-        }
-
-        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-            if (removedDevices.any { isUsbMic(it) || isBluetoothMic(it) }) {
-                Timber.d("USB or Bluetooth microphone disconnected, updating preferred device")
-                updatePreferredDevice()
-            }
-        }
-    }
+    // Owns all microphone device selection, the AudioDeviceCallback, and Bluetooth SCO -
+    // MicrophoneInput is deliberately blind to any of that beyond calling
+    // getPreferredMicrophone() to learn what to capture from and applyPreferredDevice() to
+    // route to it. See AudioInRouter for details.
+    private val micController = AudioInRouter(context, deviceManager) { onPreferredMicrophoneChanged() }
 
     private val bufferSize =
         AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
@@ -127,6 +97,8 @@ class MicrophoneInput (
         } else {
             audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING
         }
+
+
 
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
@@ -162,25 +134,66 @@ class MicrophoneInput (
         }
 
         if (audioRecord == null) {
+            micController.start()
             audioRecord = createAudioRecord()
-            setupAudioEffects()
-            registerDeviceCallback()
         }
+    }
 
-        if (!isRecording) {
-            Timber.d(
-                "Starting microphone source=%d backend=%s webrtc=%s AGC=%s AEC=%s NS=%s",
-                audioSource,
-                config.experimentalAudioBackend,
-                useWebRtcApmBackend(),
-                agc != null,
-                aecSource == AudioEnhancerSource.HARDWARE,
-                ns != null
-            )
-            audioRecord?.startRecording()
+    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
+    private fun createAudioRecord(): AudioRecord {
+
+        val preferred = micController.getPreferredMicrophone()
+        val isBuiltIn = preferred.device?.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
+
+        Timber.i(
+            "Using microphone: ${preferred.device?.productName} ${AudioInRouter.getDeviceTypeName(preferred.device?.type ?: -1)}, AudioSource: ${VACAAudioFormat.getAudioSourceName(preferred.audioSource)}")
+        val record = AudioRecord(
+            preferred.audioSource,
+            sampleRateInHz,
+            channelConfig,
+            audioFormat,
+            bufferSize * 2
+        )
+        check(record.state == AudioRecord.STATE_INITIALIZED) {
+            "Failed to initialize AudioRecord"
+        }
+        micController.applyPreferredDevice(record, preferred.device)
+        setupAudioEffects(record, attachNs = !isBuiltIn)
+
+        if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+            record.startRecording()
         } else {
             Timber.w("Microphone already started")
         }
+        Timber.i("Microphone started")
+        return record
+    }
+
+    // Called by AudioInRouter whenever the preferred microphone changes - just
+    // restart the AudioRecord so createAudioRecord() picks up the new device/source.
+    private fun onPreferredMicrophoneChanged() {
+        if (audioRecord == null) return
+        Timber.d("Preferred mic changed, restarting AudioRecord")
+        recreateAudioRecord()
+    }
+
+    // Permission is guaranteed here: this is only reachable via start() or micController's
+    // preferred-mic-changed callback, both after RECORD_AUDIO was granted.
+    @SuppressLint("MissingPermission")
+    private fun recreateAudioRecord() {
+        val wasRecording = isRecording
+
+        agc?.release()
+        agc = null
+        ns?.release()
+        ns = null
+
+        audioRecord?.let {
+            if (isRecording) it.stop()
+            it.release()
+        }
+        audioRecord = null
+        audioRecord = createAudioRecord()
     }
 
     fun readBytes(): ByteBuffer {
@@ -204,6 +217,14 @@ class MicrophoneInput (
         if (readCount > 0) {
             totalFramesRead += readCount
             val frame = audioBuffer.copyOfRange(0, readCount)
+            if (isMicSuppressed()) {
+                // Return true digital silence without running it through the AGC/NS - this
+                // keeps the frame cadence the wake-word engine expects, while leaving the AGC's
+                // envelope/noise-floor exactly where they were before the suppressed sound
+                // started (rather than dragged up by it), so gain is already correct for real
+                // speech the instant suppression lifts.
+                return ShortArray(frame.size)
+            }
             if (applyEnhancement) {
                 // processFrame() internally no-ops on AGC/noise suppression when the
                 // device covers them in hardware - so it's always safe/cheap to route
@@ -212,8 +233,6 @@ class MicrophoneInput (
                 return audioEnhancer.processFrame(frame)
             }
             return frame
-        } else if (readCount < 0) {
-            Timber.e("AudioRecord read error: $readCount")
         }
         return ShortArray(0)
     }
@@ -231,136 +250,12 @@ class MicrophoneInput (
         return FloatArray(0)
     }
 
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
-    private fun createAudioRecord(): AudioRecord {
-        val audioRecord = AudioRecord(
-            audioSource,
-            sampleRateInHz,
-            channelConfig,
-            audioFormat,
-            bufferSize * 2
-        )
-        check(audioRecord.state == AudioRecord.STATE_INITIALIZED) {
-            "Failed to initialize AudioRecord"
-        }
+    private fun setupAudioEffects(record: AudioRecord, attachNs: Boolean = true, attachAgc: Boolean = true, attachAec: Boolean = true) {
+        val sessionId = record.audioSessionId
 
-        updatePreferredDevice(audioRecord)
-
-        return audioRecord
-    }
-
-    private fun registerDeviceCallback() {
-        audioManager.registerAudioDeviceCallback(deviceCallback, null)
-    }
-
-    private fun unregisterDeviceCallback() {
-        audioManager.unregisterAudioDeviceCallback(deviceCallback)
-    }
-
-    private fun isBluetoothMic(device: AudioDeviceInfo): Boolean {
-        return device.isSource && (
-            device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && device.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
-        )
-    }
-
-    private fun isUsbMic(device: AudioDeviceInfo): Boolean {
-        return device.isSource && (
-            device.type == AudioDeviceInfo.TYPE_USB_DEVICE ||
-            device.type == AudioDeviceInfo.TYPE_USB_HEADSET
-        )
-    }
-
-    // Mic selection priority: USB > Bluetooth > built-in.
-    private fun updatePreferredDevice(record: AudioRecord? = audioRecord) {
-        val currentRecord = record ?: return
-        val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        for (device in devices) {
-            Timber.d("MIC Device: ${device.productName}, type: ${getDeviceTypeName(device.type)}")
-        }
-
-        val usbDevice = devices.firstOrNull { isUsbMic(it) }
-        val bluetoothDevice = devices.firstOrNull { isBluetoothMic(it) }
-
-        when {
-            usbDevice != null -> selectUsbDevice(currentRecord, usbDevice)
-            bluetoothDevice != null -> selectBluetoothDevice(currentRecord, bluetoothDevice)
-            else -> selectBuiltInDevice(currentRecord, devices)
-        }
-    }
-
-    private fun selectUsbDevice(currentRecord: AudioRecord, device: AudioDeviceInfo) {
-        stopBluetoothScoIfActive()
-
-        Timber.d("Setting preferred microphone: ${device.productName} (${getDeviceTypeName(device.type)})")
-        val success = currentRecord.setPreferredDevice(device)
-        Timber.d("setPreferredDevice success: $success")
-
-        activeMicInput = "${device.productName} (USB)"
-    }
-
-    private fun selectBluetoothDevice(currentRecord: AudioRecord, device: AudioDeviceInfo) {
-        // Check for BLUETOOTH_CONNECT permission on Android 12+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            if (androidx.core.content.ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                Timber.w("BLUETOOTH_CONNECT permission not granted, requesting...")
-                BroadcastSender.sendBroadcast(context, BroadcastSender.OPEN_PERMISSION_SCREEN, Manifest.permission.BLUETOOTH_CONNECT)
-                return
-            }
-        }
-
-        // Explicitly handle SCO for older devices or specific headset behaviors
-        if (device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO) {
-            try {
-                // Ensure speakerphone is off for SCO to work correctly
-                if (audioManager.isSpeakerphoneOn) {
-                    audioManager.isSpeakerphoneOn = false
-                }
-
-                if (audioManager.mode != AudioManager.MODE_IN_COMMUNICATION) {
-                    audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
-                }
-
-                if (!audioManager.isBluetoothScoOn) {
-                    Timber.d("Starting Bluetooth SCO")
-                    audioManager.startBluetoothSco()
-                    audioManager.isBluetoothScoOn = true
-                }
-                Timber.d("Bluetooth SCO state: ${audioManager.isBluetoothScoOn}, mode: ${audioManager.mode}")
-            } catch (e: Exception) {
-                Timber.e(e, "Error starting Bluetooth SCO")
-            }
-        }
-
-        Timber.d("Setting preferred microphone: ${device.productName}")
-        val success = currentRecord.setPreferredDevice(device)
-        Timber.d("setPreferredDevice success: $success")
-
-        activeMicInput = "${device.productName}"
-    }
-
-    private fun selectBuiltInDevice(currentRecord: AudioRecord, devices: Array<AudioDeviceInfo>) {
-        stopBluetoothScoIfActive()
-
-        val builtInMic = devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
-        activeMicInput = builtInMic?.let { "${it.productName} (Built-in Mic)" } ?: "Built-in Mic"
-
-        // Clear any previously set preferred device (e.g. USB/Bluetooth) so recording
-        // falls back to the built-in mic.
-        currentRecord.setPreferredDevice(builtInMic)
-    }
-
-    private fun stopBluetoothScoIfActive() {
-        if (audioManager.isBluetoothScoOn || audioManager.mode == AudioManager.MODE_IN_COMMUNICATION) {
-            audioManager.isBluetoothScoOn = false
-            audioManager.stopBluetoothSco()
-            audioManager.mode = AudioManager.MODE_NORMAL
-            Timber.d("Bluetooth SCO stopped and mode set to NORMAL")
-        }
-    }
-
-    private fun setupAudioEffects(attachNs: Boolean = true, attachAgc: Boolean = true) {
-        val sessionId = audioRecord?.audioSessionId ?: return
+        agcSource = AudioEnhancerSource.UNAVAILABLE
+        nsSource = AudioEnhancerSource.UNAVAILABLE
+        aecSource = AudioEnhancerSource.UNAVAILABLE
 
         // Catch if issue with audio enhancements and do not load any platform effects -
         // the software AudioEnhancer below still covers AGC/NS on these devices.
@@ -371,7 +266,7 @@ class MicrophoneInput (
                 if (AutomaticGainControl.isAvailable()) {
                     try {
                         agc = AutomaticGainControl.create(sessionId)?.apply { enabled = true }
-                        if (agc != null) agcSource = AudioEnhancerSource.HARDWARE
+                        if (agc != null) agcSource = AudioEnhancerSource.ANDROID
                     } catch (e: Exception) {
                         Timber.w("Failed to attach hardware AGC: ${e.message}")
                     }
@@ -386,7 +281,7 @@ class MicrophoneInput (
                 if (NoiseSuppressor.isAvailable()) {
                     try {
                         ns = NoiseSuppressor.create(sessionId)?.apply { enabled = true }
-                        if (ns != null) nsSource = AudioEnhancerSource.HARDWARE
+                        if (ns != null) nsSource = AudioEnhancerSource.ANDROID
                     } catch (e: Exception) {
                         Timber.w("Failed to attach hardware noise suppressor: ${e.message}")
                     }
@@ -394,6 +289,17 @@ class MicrophoneInput (
                 if (ns == null) {
                     audioEnhancer.noiseSuppressionEnabled = true
                     nsSource = AudioEnhancerSource.SOFTWARE
+                }
+            }
+
+            if (attachAec) {
+                if (AcousticEchoCanceler.isAvailable()) {
+                    try {
+                        aec = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
+                        if (aec != null) aecSource = AudioEnhancerSource.ANDROID
+                    } catch (e: Exception) {
+                        Timber.w("Failed to attach hardware AEC: ${e.message}")
+                    }
                 }
             }
         } else {
@@ -410,20 +316,13 @@ class MicrophoneInput (
 
         audioEnhancer.reset()
         Timber.d(
-            "Audio enhancement - AGC: ${agcSource}, NS: ${nsSource}"
+            "Audio enhancement - AGC: ${agcSource}, NS: ${nsSource}, AEC: ${aecSource}"
         )
     }
 
     override fun close() {
-        unregisterDeviceCallback()
+        micController.stop()
         audioEnhancer.release()
-
-        if (audioManager.isBluetoothScoOn) {
-            audioManager.isBluetoothScoOn = false
-            audioManager.stopBluetoothSco()
-            audioManager.mode = AudioManager.MODE_NORMAL
-            Timber.d("Bluetooth SCO stopped and mode set to NORMAL in close()")
-        }
 
         agc?.release()
         agc = null

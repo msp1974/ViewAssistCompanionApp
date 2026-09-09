@@ -1,6 +1,5 @@
 package com.msp1974.vacompanion.wakeword
 
-import com.google.protobuf.ByteString
 import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -9,7 +8,7 @@ abstract class WakeWordEngineProvider {
     sealed class AudioResult {
         data class EngineStatus(val status: String): AudioResult()
         data class Audio(
-            val audio: ByteString,
+            val audio: ByteArray,
             val timestamp: Long = System.currentTimeMillis(),
             val scores: Map<String, Float> = emptyMap()
         ) : AudioResult()

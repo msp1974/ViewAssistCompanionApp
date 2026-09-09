@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -41,6 +42,19 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val density = LocalDensity.current
+
+    // WebViewScreen is only ever composed while the dashboard should actually be visible (see
+    // MainActivity's screenBlank/satelliteRunning when-block) - use that composition lifecycle to
+    // stop any WebView processing (including in-page video/WebRTC decode) as soon as it isn't,
+    // rather than relying on the view merely being detached from the window.
+    DisposableEffect(webView) {
+        webView.onResume()
+        webView.resumeTimers()
+        onDispose {
+            webView.onPause()
+            webView.pauseTimers()
+        }
+    }
 
     LaunchedEffect(webView) {
         webView.setOnGestureListener(object : WebViewGestureDetector.OnGestureListener {
@@ -122,7 +136,10 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                     !vaViewModel.config.diagnosticsEnabled
                 )},
                 isDNDEnabled = vaUiState.isDND,
-                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) }
+                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) },
+                isBluetoothMicEnabled = vaUiState.isBluetoothMicEnabled,
+                onToggleBluetoothMic = { vaViewModel.onToggleBluetoothMic(!vaUiState.isBluetoothMicEnabled) },
+                isBluetoothMicConnected = vaUiState.isBluetoothMicConnected
             )
         }
     }

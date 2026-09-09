@@ -20,16 +20,13 @@ splash ="1.2.0"
 timber = "5.0.1"
 webkit = "1.16.0"
 camerax = "1.6.1"
-accompanist = "0.37.3"
 foundation = "1.11.2"
 litert = "2.1.5"
-protobufKotlin = "4.35.0"
 appcompat = "1.7.1"
 lifecycleService = "2.10.0"
 ktor = "3.5.1"
 ksp = "2.3.6"
 hilt = "2.59.2"
-datastoreCore = "1.2.1"
 faceDetection = "16.1.7"
 webrtcSdkAndroid = "144.7559.05"
 
@@ -68,10 +65,8 @@ androidx-camera-compose = { module = "androidx.camera:camera-compose", version.r
 androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camerax" }
 androidx-camera-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
 androidx-camera-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
-accompanist-permissions = { module = "com.google.accompanist:accompanist-permissions", version.ref = "accompanist" }
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
 litert = { module = "com.google.ai.edge.litert:litert", version.ref = "litert" }
-protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin-lite", version.ref = "protobufKotlin" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 androidx-lifecycle-service = { group = "androidx.lifecycle", name = "lifecycle-service", version.ref = "lifecycleService" }
 ktor-network = { group = "io.ktor", name="ktor-network", version.ref = "ktor"}
@@ -81,7 +76,6 @@ ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
-androidx-datastore-core = { group = "androidx.datastore", name = "datastore-core", version.ref = "datastoreCore" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "faceDetection" }
 webrtc-sdk-android = { module = "io.github.webrtc-sdk:android", version.ref = "webrtcSdkAndroid" }
 

@@ -9,14 +9,13 @@ import android.os.IBinder
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
-import androidx.media3.common.C.USAGE_NOTIFICATION
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
-import com.msp1974.vacompanion.R
 import timber.log.Timber
 
 @UnstableApi
@@ -54,6 +53,12 @@ class AlarmService : Service() {
             .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
             .build()
         player.setAudioAttributes(audioAttributes, false)
+        player.addListener(object : Player.Listener {
+            override fun onPlayerError(error: PlaybackException) {
+                Timber.e("Alarm player error: $error")
+                stop()
+            }
+        })
         return player
     }
 

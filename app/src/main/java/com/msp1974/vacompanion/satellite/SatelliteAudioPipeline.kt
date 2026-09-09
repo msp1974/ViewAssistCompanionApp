@@ -260,7 +260,7 @@ abstract class SatelliteAudioPipeline(
                 while (true) {
                     if (silenceAudioBefore > 0L) {
                         val audio = audioOutQueue.receive()
-                        var audioByteArray = audio.audio.toByteArray()
+                        var audioByteArray = audio.audio
                         if (audio.timestamp < silenceAudioBefore - 100) {
                             audioByteArray = AudioDSP().reduceVolume(audioByteArray, 0.1F)
                         }

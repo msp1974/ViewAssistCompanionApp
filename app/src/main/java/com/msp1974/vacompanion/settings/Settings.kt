@@ -361,6 +361,10 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("always_ignore_ssl_errors", false)
         set(value) = this.sharedPrefs.edit { putBoolean("always_ignore_ssl_errors", value) }
 
+    var bluetoothMicEnabled: Boolean
+        get() = this.sharedPrefs.getBoolean("bluetooth_mic_enabled", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("bluetooth_mic_enabled", value) }
+
     fun processSettings(settingString: String) {
         initSettings = true
         val settings = Json.parseToJsonElement(settingString).jsonObject

@@ -55,27 +55,24 @@ class AuthenticationManager(
     }
 
     private suspend fun refreshSessionWithToken(refreshToken: String) {
-        return authenticationService.refreshToken(
-            url = getBaseUrl(),
-            refreshToken = refreshToken,
-        ).let { response ->
-            if (response.status.isSuccess()) {
-                val refreshedToken = response.body<Token>()
-                //TODO: Make this an object on DeviceManager session info
+        try {
+            return authenticationService.refreshToken(
+                url = getBaseUrl(),
+                refreshToken = refreshToken,
+            ).let { refreshedToken ->
                 config.accessToken = refreshedToken.accessToken
                 config.tokenExpiry = System.currentTimeMillis() + (refreshedToken.expiresIn * 1000)
                 return@let
             }
-
-            val errorBody = response.body<String?>()
-            if (response.status.value == 400 && errorBody?.contains("invalid_grant") == true) {
+        } catch (e: AuthenticationException) {
+            if (e.message?.contains("invalid_grant") == true) {
                 // The refresh credential is no longer usable. Clear the local session
                 // without making another request with the already-invalid token.
                 config.accessToken = ""
                 config.refreshToken = ""
                 config.tokenExpiry = 0
             }
-            throw AuthenticationException("Failed to refresh token", response.status.value, errorBody)
+            throw e
         }
     }
 
@@ -102,13 +99,15 @@ class AuthenticationManager(
     }
 
     fun getExternalAuthUrl(): String {
-        val url = getBaseUrl().toString().toUri()
+        val base = getBaseUrl()
+        val isSSL = base.protocol == IAuthenticationService.HTTPS
+        val url = base.toString().toUri()
             .buildUpon()
             .path("")
             .appendPath("auth")
             .appendPath("authorize")
-            .appendQueryParameter("client_id", IAuthenticationService.CLIENT_ID)
-            .appendQueryParameter("redirect_uri", IAuthenticationService.CLIENT_ID)
+            .appendQueryParameter("client_id", authenticationService.getClientId(isSSL))
+            .appendQueryParameter("redirect_uri", authenticationService.getClientId(isSSL))
             .appendQueryParameter("response_type", "code")
             .appendQueryParameter("scope", "homeassistant")
             .build()

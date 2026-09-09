@@ -8,6 +8,8 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hilt)
     alias(libs.plugins.ksp)
+    id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
 }
 
 tasks.register("printVersionName") {
@@ -39,7 +41,7 @@ android {
         applicationId = "com.msp1974.vacompanion"
         minSdk = 26
         targetSdk = 36
-        versionName = "0.13.0"
+        versionName = "0.13.2"
         versionCode = code
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -72,6 +74,7 @@ android {
             ndk {
                 abiFilters.add("arm64-v8a")
                 abiFilters.add("armeabi-v7a")
+                debugSymbolLevel = "FULL"
             }
         }
     }
@@ -134,17 +137,14 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.view)
-    implementation(libs.accompanist.permissions)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.litert)
-    implementation(libs.protobuf.kotlin)
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.ktor.network)
     implementation(libs.ktor.client.core) // Ktor-Core
     implementation(libs.ktor.client.cio) // Ktor-Engine
     implementation(libs.ktor.serialization.kotlinx.json) // Ktor- To work with Serialization
     implementation(libs.ktor.client.content.negotiation) // Serialization
-    implementation(libs.androidx.datastore.core)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

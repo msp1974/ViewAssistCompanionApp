@@ -1,7 +1,6 @@
 package com.msp1974.vacompanion
 
 import android.Manifest
-import android.Manifest.permission
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.app.NotificationManager
@@ -14,7 +13,6 @@ import android.content.Context
 import android.content.DialogInterface
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.media.AudioManager
 import android.os.Build
@@ -45,8 +43,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
@@ -72,7 +68,6 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
-import com.msp1974.vacompanion.utils.Logger
 import com.msp1974.vacompanion.utils.Permissions
 import com.msp1974.vacompanion.utils.SoundControl
 import com.msp1974.vacompanion.utils.Updater
@@ -93,8 +88,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     val viewModel: VAViewModel by viewModels()
 
     private val config get() = deviceManager.config
-
-    private val log = Logger()
+    
     private var firebaseManager: FirebaseManager? = null
 
     private lateinit var webView: CustomWebView
@@ -126,14 +120,14 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         screen = ScreenUtils(this, config)
         updater = Updater(this)
-        permissions = Permissions(this, deviceManager)
+        permissions = Permissions(this, deviceManager, this)
 
         var keepSplashScreen = true
 
         firebaseManager = try {
             FirebaseManager.getInstance(this)
         } catch (e: Exception) {
-            log.w("Firebase unavailable: ${e.message}")
+            Timber.w("Firebase unavailable: ${e.message}")
             null
         }
         enableEdgeToEdge()
@@ -219,16 +213,16 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
 
         // Check and get required user permissions
-        log.d("Checking permissions")
+        Timber.d("Checking permissions")
         updatePermissionStatus()
         if (!viewModel.vacaState.value.permissions.hasCorePermissions || !viewModel.vacaState.value.permissions.hasOptionalPermissions) {
             // Turn on screen for startup to show permission request
             screenOffStartUp = false
 
             setScreenSettings()
-            checkAndRequestPermissions()
+            permissions.requestCorePermissions { checkAndRequestWriteSettingsPermission() }
         } else {
-            log.d("All permissions already granted")
+            Timber.d("All permissions already granted")
             initialise()
         }
 
@@ -319,14 +313,14 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         while (!hasNetwork) {
             setStatus(getString(R.string.status_waiting_for_network))
             Timber.w("No Network...")
-            delay(2000)
+            delay(2.seconds)
             hasNetwork = Helpers.isNetworkAvailable(this)
         }
         Timber.d("Network active")
 
         while (!screen.isScreenOn()) {
             Timber.d("Waiting for screen on...")
-            delay(1000)
+            delay(1.seconds)
         }
         Timber.d("Screen on")
 
@@ -401,13 +395,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     if (specificPermission != null) {
                         openPermissionScreen(specificPermission)
                     } else {
-                        checkAndRequestPermissions()
+                        permissions.requestCorePermissions { checkAndRequestWriteSettingsPermission() }
                     }
                 }
                 BroadcastSender.WEBVIEW_CRASH -> {
                     initWebView()
                     val url = deviceManager.authenticationManager.getHAUrl()
-                    log.d("Webview crash -> loading URL: $url")
+                    Timber.d("Webview crash -> loading URL: $url")
                     webView.loadUrl(url)
                 }
                 BroadcastSender.CLOSE_APP -> {
@@ -463,17 +457,25 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (newConfig.orientation != screenOrientation) {
-            log.d("Orientation changed to ${newConfig.orientation}")
+            Timber.d("Orientation changed to ${newConfig.orientation}")
         }
     }
 
     override fun onResume() {
         super.onResume()
-        log.d("Main Activity resumed")
+        Timber.d("Main Activity resumed")
+
+        // Only resume the webview if it should currently be visible - not while intentionally
+        // blanked (screensaver/screenSaver flag), otherwise this would wake up any autoplaying
+        // dashboard video (e.g. a live camera card) and drive media.codec CPU while blanked.
+        if (::webView.isInitialized && !viewModel.vacaState.value.screenBlank) {
+            webView.onResume()
+            webView.resumeTimers()
+        }
 
         // Catch if background tasks not running
         if (initialised && Helpers.isNetworkAvailable(this) && config.backgroundTaskStatus == BackgroundTaskStatus.NOT_STARTED ) {
-            log.e("Background task starting on resume as is is not running")
+            Timber.e("Background task starting on resume as is is not running")
             lifecycleScope.launch {
                 runBackgroundTasks()
             }
@@ -481,8 +483,19 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         setScreenSettings()
     }
 
+    override fun onPause() {
+        Timber.d("Main Activity paused")
+        // Stop any WebView processing (including in-page video/WebRTC decode) while not visible,
+        // rather than relying on the view merely being detached from the window.
+        if (::webView.isInitialized) {
+            webView.onPause()
+            webView.pauseTimers()
+        }
+        super.onPause()
+    }
+
     override fun onDestroy() {
-        log.d("Main Activity destroyed")
+        Timber.d("Main Activity destroyed")
         try {
             screen.setScreenTimeout(config.screenTimeout)
             config.eventBroadcaster.removeListener(this)
@@ -508,12 +521,12 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     private suspend fun runBackgroundTasks() {
         if ( config.backgroundTaskStatus != BackgroundTaskStatus.NOT_STARTED ) {
-            log.w("Background task already running.  Not starting from MainActivity")
+            Timber.w("Background task already running.  Not starting from MainActivity")
             firebaseManager?.logEvent(FirebaseManager.MAIN_ACTIVITY_BACKGROUND_TASK_ALREADY_RUNNING, mapOf())
             if (viewModel.vacaState.value.satelliteRunning) {
                 webView.setZoomLevel(config.zoomLevel)
                 val url = deviceManager.authenticationManager.getHAUrl()
-                log.d("Run background tasks -> loading URL: $url")
+                Timber.d("Run background tasks -> loading URL: $url")
                 webView.loadUrl(url)
             } else {
                 setStatus(getString(R.string.status_waiting_for_connection))
@@ -523,11 +536,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         config.backgroundTaskStatus = BackgroundTaskStatus.STARTING
 
         if (!updateProcessComplete) {
-            delay(1000)
+            delay(1.seconds)
             runUpdateRoutine()
             return
         }
-        log.d("Starting background tasks")
+        Timber.d("Starting background tasks")
         setStatus(getString(R.string.status_waiting_for_connection))
         try {
             Intent(this.applicationContext, VAForegroundService::class.java).also {
@@ -535,13 +548,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 startService(it)
             }
         } catch (ex: Exception) {
-            log.w("Error starting background tasks - ${ex.message}")
+            Timber.w("Error starting background tasks - ${ex.message}")
             config.backgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
         }
 
         if (screenOffStartUp) {
             Timber.d("Screen off startup.  Reverting to screen off")
-            delay(2000)
+            delay(2.seconds)
             applyScreenMode(ScreenOnMode.OFF)
             screenOffStartUp = false
         }
@@ -574,10 +587,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     "hideSystemUI" -> screen.hideSystemUI(window)
                     else -> consumed = false
                 }
+                if (consumed) {
+                    Timber.d("MainActivity - Setting: ${event.eventName} - ${event.newValue}")
+                }
             }
-            if (consumed) {
-                log.d("MainActivity - Setting: ${event.eventName} - ${event.newValue}")
-            }
+
 
             consumed = true
 
@@ -601,7 +615,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 else -> consumed = false
             }
             if (consumed) {
-                log.d("MainActivity - Event: ${event.eventName} - ${event.newValue}")
+                Timber.d("MainActivity - Event: ${event.eventName} - ${event.newValue}")
             }
         }
     }
@@ -646,7 +660,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     }
 
     fun setDarkMode(isDark: Boolean) {
-        log.d("Setting dark mode: $isDark")
+        Timber.d("Setting dark mode: $isDark")
         try {
             if (isDark) {
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
@@ -663,7 +677,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     if (isDark) UiModeManager.MODE_NIGHT_YES else UiModeManager.MODE_NIGHT_NO
             }
         } catch (e: Exception) {
-            log.w("Error setting dark mode: ${e.message}")
+            Timber.w("Error setting dark mode: ${e.message}")
         }
 
         webView.refreshDarkMode(isDark)
@@ -687,14 +701,26 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         viewModel.setPermissionsStatus(corePermissions, optionalPermissions)
     }
 
+    // Runtime permissions go through Permissions.requestPermission(), which uses its own
+    // dedicated ActivityResultLauncher/callback per request - so requesting one permission here
+    // (e.g. BLUETOOTH_CONNECT for a Bluetooth mic, requested well after startup) can't trigger
+    // logic meant for a different request, unlike the old shared onRequestPermissionsResult()
+    // override this replaced.
     private fun openPermissionScreen(permission: String) {
         Timber.d("Opening permission screen: $permission")
         when (permission) {
-            Manifest.permission.RECORD_AUDIO -> ActivityCompat.requestPermissions(this, arrayOf(permission), RECORD_AUDIO_PERMISSIONS_REQUEST)
-            Manifest.permission.CAMERA -> ActivityCompat.requestPermissions(this, arrayOf(permission), CAMERA_PERMISSIONS_REQUEST)
-            Manifest.permission.POST_NOTIFICATIONS -> ActivityCompat.requestPermissions(this, arrayOf(permission), NOTIFICATION_PERMISSIONS_REQUEST)
-            Manifest.permission.WRITE_EXTERNAL_STORAGE -> ActivityCompat.requestPermissions(this, arrayOf(permission), WRITE_EXTERNAL_STORAGE_PERMISSIONS_REQUEST)
-            Manifest.permission.BLUETOOTH_CONNECT -> ActivityCompat.requestPermissions(this, arrayOf(permission), BLUETOOTH_PERMISSIONS_REQUEST)
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.CAMERA,
+            Manifest.permission.POST_NOTIFICATIONS,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE,
+            Manifest.permission.BLUETOOTH_CONNECT -> {
+                permissions.requestPermission(permission) { granted ->
+                    updatePermissionStatus()
+                    if (granted) {
+                        BroadcastSender.sendBroadcast(this, BroadcastSender.PERMISSION_GRANTED, permission)
+                    }
+                }
+            }
             "WRITE_SETTINGS" -> {
                 val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, "package:$packageName".toUri())
                 onWriteSettingsPermissionActivityResult.launch(intent)
@@ -712,112 +738,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
-    private fun checkAndRequestPermissions() {
-        var requiredPermissions: Array<String> = arrayOf()
-        var requestID: Int = 0
-
-        log.d("Checking main permissions")
-
-        if (ContextCompat.checkSelfPermission(this, permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requiredPermissions += permission.RECORD_AUDIO
-            requestID += RECORD_AUDIO_PERMISSIONS_REQUEST
-        } else {
-            config.hasRecordAudioPermission = true
-        }
-
-        if (deviceInfo.hardware.hasFrontCamera) {
-            if (ContextCompat.checkSelfPermission(this, permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                requiredPermissions += permission.CAMERA
-                requestID += CAMERA_PERMISSIONS_REQUEST
-            } else {
-                config.hasCameraPermission = true
-            }
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                requiredPermissions += permission.POST_NOTIFICATIONS
-                requestID += NOTIFICATION_PERMISSIONS_REQUEST
-            } else {
-                config.hasPostNotificationPermission = true
-            }
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                requiredPermissions += permission.WRITE_EXTERNAL_STORAGE
-                requestID += WRITE_EXTERNAL_STORAGE_PERMISSIONS_REQUEST
-            } else {
-                config.hasWriteExternalStoragePermission = true
-            }
-        }
-
-        if (requiredPermissions.isNotEmpty()) {
-            log.d("Requesting main permissions")
-            log.d("Permissions: ${requiredPermissions.map { it }}")
-            ActivityCompat.requestPermissions(
-                this, requiredPermissions, requestID
-            )
-        } else {
-            log.d("Main permissions already granted")
-            checkAndRequestWriteSettingsPermission()
-        }
-    }
-
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        appPermissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        super.onRequestPermissionsResult(requestCode, appPermissions, grantResults)
-        if (appPermissions.isNotEmpty()) {
-            for (i in appPermissions.indices) {
-                if (appPermissions[i] == permission.RECORD_AUDIO && grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    log.d("Permission granted: ${appPermissions[i]}")
-                    //config.hasRecordAudioPermission = true
-                }
-                if (appPermissions[i] == permission.POST_NOTIFICATIONS && grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    log.d("Permission granted: ${appPermissions[i]}")
-                    //config.hasPostNotificationPermission = true
-                }
-                if (appPermissions[i] == permission.WRITE_EXTERNAL_STORAGE && grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    log.d("Permission granted: ${appPermissions[i]}")
-                    //config.hasWriteExternalStoragePermission = true
-                }
-                if (appPermissions[i] == permission.CAMERA && grantResults[i] == PackageManager.PERMISSION_GRANTED) {
-                    log.d("Permission granted: ${appPermissions[i]}")
-                    //config.hasCameraPermission = true
-                }
-            }
-        }
-        updatePermissionStatus()
-        if (permissions.hasCorePermissions()) {
-            log.d("Main permissions granted")
-        }
-        checkAndRequestWriteSettingsPermission()
-        /*
-        } else {
-            log.d("Main permissions not granted will not run background tasks")
-            if (!p.hasPermission(Permissions.RECORD_AUDIO)) {
-                log.d("Record audio permission not granted")
-            }
-            if (!p.hasPermission(Permissions.POST_NOTIFICATIONS)) {
-                log.d("Post notification permission not granted")
-            }
-            initialise()
-        }
-
-         */
-    }
-
-    companion object {
-        private const val RECORD_AUDIO_PERMISSIONS_REQUEST = 200
-        private const val CAMERA_PERMISSIONS_REQUEST = 250
-        private const val NOTIFICATION_PERMISSIONS_REQUEST = 300
-        private const val WRITE_EXTERNAL_STORAGE_PERMISSIONS_REQUEST = 400
-        private const val BLUETOOTH_PERMISSIONS_REQUEST = 500
-    }
-
     private val onWriteSettingsPermissionActivityResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         updatePermissionStatus()
         checkAndRequestNotificationAccessPolicyPermission()
@@ -826,7 +746,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private fun checkAndRequestWriteSettingsPermission() {
         if (config.canSetScreenWritePermission && !Settings.System.canWrite(applicationContext)) {
             val alertDialog = AlertDialog.Builder(this)
-            log.d("Requesting write settings permission")
+            Timber.d("Requesting write settings permission")
             alertDialog.apply {
                 setTitle("Write Settings Permission Required")
                 setMessage("This application needs this permission to control the Auto brightness setting.  If your device requires explicit permission, the screen will launch for you to enable it.")
@@ -834,21 +754,21 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     try {
                         val intent = Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS)
                         onWriteSettingsPermissionActivityResult.launch(intent)
-                    } catch (e: Exception) {
-                        log.i("Device does not require explicit permission")
+                    } catch (_: Exception) {
+                        Timber.i("Device does not require explicit permission")
                         config.canSetScreenWritePermission = false
                         checkAndRequestNotificationAccessPolicyPermission()
                     }
                 }
             }.create().show()
         } else {
-            log.d("Write settings permission ${if (!config.canSetScreenWritePermission) "not required" else "already granted"}")
+            Timber.d("Write settings permission ${if (!config.canSetScreenWritePermission) "not required" else "granted"}")
             checkAndRequestNotificationAccessPolicyPermission()
         }
     }
 
     private val onNotificationAccessPolicyPermissionActivityResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        log.i("Notification access policy permission result -> ${it.resultCode}")
+        Timber.i("Notification access policy permission result -> ${it.resultCode}")
         if (it.resultCode == RESULT_CANCELED) {
             config.canSetNotificationPolicyAccess = false
         }
@@ -861,7 +781,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         if (config.canSetNotificationPolicyAccess && !notificationManager.isNotificationPolicyAccessGranted) {
             // If not granted, prompt the user to give permission.
             val alertDialog = AlertDialog.Builder(this)
-            log.d("Requesting notification access policy permission")
+            Timber.d("Requesting notification access policy permission")
             alertDialog.apply {
                 setTitle("Notification Policy Access Permission Required")
                 setMessage("This application needs this permission to control the Do Not Disturb setting.  If your device has this capability and requires explicit permission, the screen will launch for you to enable it.")
@@ -869,21 +789,21 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     try {
                         val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
                         onNotificationAccessPolicyPermissionActivityResult.launch(intent)
-                    } catch (e: Exception) {
-                        log.i("Device does not require explicit permission")
+                    } catch (_: Exception) {
+                        Timber.i("Device does not require explicit permission")
                         checkAndRequestDeviceAdminPermission()
                     }
                 }
             }.create().show()
         } else {
-            log.d("Notification access policy permission already granted or not supported")
+            Timber.d("Notification access policy permission already granted or not supported")
             config.hasPostNotificationPermission = true
             checkAndRequestDeviceAdminPermission()
         }
     }
 
     private val onDeviceAdminPermissionActivityResult = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        log.i("Device Admin permission result -> ${it.resultCode}")
+        Timber.i("Device Admin permission result -> ${it.resultCode}")
         updatePermissionStatus()
         initialise()
     }
@@ -895,6 +815,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "This application requires Device Admin rights to be able to control the screen.")
             onDeviceAdminPermissionActivityResult.launch(intent)
         } else {
+            Timber.d("Device admin permission already granted or not supported")
             initialise()
         }
     }
@@ -903,7 +824,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         try {
             Timber.d("Checking for update")
             if (updater.isUpdateAvailable(config.minRequiredApkVersion)) {
-                log.d("Update available - ${updater.latestRelease.downloadURL}")
+                Timber.d("Update available - ${updater.latestRelease.downloadURL}")
 
                 val a = VADialog(
                     title = "Update Required",
@@ -934,11 +855,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
+    @SuppressLint("RequestInstallPackagesPolicy")
+    @Suppress("DEPRECATION")
     private fun downloadAndInstallUpdate() {
         setStatus(getString(R.string.status_downloading_update))
         updater.requestDownload { uri ->
             if (uri != "") {
-                log.d("Download complete = $uri")
+                Timber.d("Download complete = $uri")
                 setStatus(getString(R.string.status_installing_update))
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val intent = Intent(Intent.ACTION_INSTALL_PACKAGE)

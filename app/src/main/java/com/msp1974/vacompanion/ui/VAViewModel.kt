@@ -6,7 +6,7 @@ import android.content.Context
 import android.content.res.Configuration
 import android.content.res.Resources
 import androidx.core.content.ContextCompat.getString
-import androidx.datastore.core.Closeable
+import java.io.Closeable
 import androidx.lifecycle.application
 import androidx.lifecycle.viewModelScope
 import com.msp1974.vacompanion.R
@@ -126,6 +126,8 @@ data class State(
     var satelliteRunning: Boolean = false,
     var darkMode: Boolean = false,
     var isDND: Boolean = false,
+    var isBluetoothMicEnabled: Boolean = false,
+    var isBluetoothMicConnected: Boolean = false,
     var screenBlank: Boolean = true,
 
     var appInfo: Map<String, String> = mapOf(),
@@ -190,6 +192,7 @@ class VAViewModel @Inject constructor(
                         webViewPageLoadingStage = status.webViewPageLoadingStage,
                         cameraStreamActive = status.cameraStreamActive,
                         screenBlank = status.screenBlank,
+                        isBluetoothMicConnected = status.bluetoothMicConnected,
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             muted = status.isMuted
                         ),
@@ -217,6 +220,7 @@ class VAViewModel @Inject constructor(
                 launchOnBoot = config.startOnBoot,
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
+                isBluetoothMicEnabled = config.bluetoothMicEnabled,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -305,6 +309,14 @@ class VAViewModel @Inject constructor(
             }
             "doNotDisturb" -> {
                 deviceManager.updateDNDStatus(event.newValue as Boolean)
+            }
+            "bluetooth_mic_enabled" -> {
+                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        isBluetoothMicEnabled = config.bluetoothMicEnabled
+                    )
+                }
             }
             "diagnosticsEnabled" -> {
                 _vacaState.update { currentState ->
@@ -420,6 +432,10 @@ class VAViewModel @Inject constructor(
 
     fun onShowDiagnostics(show: Boolean) {
         config.diagnosticsEnabled = show
+    }
+
+    fun onToggleBluetoothMic(enabled: Boolean) {
+        config.bluetoothMicEnabled = enabled
     }
 
     fun onToggleDND(enabled: Boolean) {
