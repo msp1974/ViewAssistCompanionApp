@@ -109,7 +109,7 @@ class MicrophoneInput (
                     context = config.context,
                     sampleRateHz = sampleRateInHz,
                     channels = 1,
-                    audioSource = audioSource,
+                    audioSource = VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
                     audioFormat = audioFormat,
                     manualGainMultiplierProvider = {
                         // Map micGain (-10..10) to a stronger dB-scale gain curve.
@@ -123,7 +123,7 @@ class MicrophoneInput (
             if (!isRecording) {
                 Timber.d(
                     "Starting microphone source=%d backend=%s webrtc_sdk=true",
-                    audioSource,
+                    VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
                     config.experimentalAudioBackend
                 )
                 webRtcSdkAudioProcessor?.start()

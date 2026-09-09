@@ -308,7 +308,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                         }
 
                         is WakeWordEngineProvider.AudioResult.Audio -> {
-                            val frame = audioDsp.byteArrayToFloatArray(it.audio.toByteArray())
+                            val frame = audioDsp.byteArrayToFloatArray(it.audio)
                             if (frame.isNotEmpty()) {
                                 addVerificationAudio(frame, it.timestamp, it.scores)
                                 processEnrollmentAudio(frame)
