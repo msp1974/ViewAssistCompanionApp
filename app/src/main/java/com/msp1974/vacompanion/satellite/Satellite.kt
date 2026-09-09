@@ -228,26 +228,40 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         )
     }
 
-    suspend fun handleSatelliteTakeover(clientId: String) {
+    fun prepareSatelliteTakeover(clientId: String) {
+        // This must run before WyomingTCPServer resumes reading the new connection.
+        // Otherwise its settings event can arrive before initSettings is reset.
+        this.clientId = clientId
         config.initSettings = false
+    }
+
+    suspend fun handleSatelliteTakeover(clientId: String) {
+        if (this.clientId != clientId) return
+
         val loadedSettings = waitForSettings(5000)
         if (!loadedSettings) {
-            // Try 1 more time in case of timing issue
+            if (this.clientId != clientId) return
+
+            // Explicitly request settings from the reconnected client
             sendSatelliteMessage(clientId, WyomingEvent.CUSTOM_EVENT, buildJsonObject {
                 put(EVENT_TYPE, WyomingCustomEventType.SETTINGS)
             })
             if (!waitForSettings(2000)) {
-                state = SatelliteState.ERROR
-                return
+                if (this.clientId != clientId) return
+
+                // Connection is live; continue with cached settings rather than
+                // wedging the satellite into ERROR just because the refresh was slow.
+                Timber.w("Settings not received after reconnect; continuing with cached settings")
             }
         }
+
+        if (this.clientId != clientId) return
 
         // Verify app version
         if (!validateAppVersion()) {
             stop()
             start()
         } else {
-            this.clientId = clientId
             BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_CLIENT_UPDATED)
         }
     }
