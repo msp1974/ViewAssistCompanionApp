@@ -323,8 +323,13 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
         if (config.pairedDeviceID.isEmpty()) {
             config.pairedDeviceID = serverIP
         } else if (!isValidServer(serverIP)) {
-            Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceID}, attempting server: $serverIP")
-            return
+            if (config.enableNetworkRecovery && !isOldPairedServerStillConnected()) {
+                Timber.i("Network recovery: accepting new server IP %s (was paired to %s)", serverIP, config.pairedDeviceID)
+                config.pairedDeviceID = serverIP
+            } else {
+                Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceID}, attempting server: $serverIP")
+                return
+            }
         }
 
         if (satellite != null) {
@@ -390,6 +395,10 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
 
     private fun isValidServer(ipAddr: String): Boolean {
         return config.pairedDeviceID == "" || config.pairedDeviceID == ipAddr
+    }
+
+    private fun isOldPairedServerStillConnected(): Boolean {
+        return clients.values.any { it.handler.clientIP == config.pairedDeviceID }
     }
 
     private suspend fun stopSatellite() {
