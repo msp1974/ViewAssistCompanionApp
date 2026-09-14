@@ -15,6 +15,7 @@ import com.msp1974.vacompanion.jsinterface.ViewAssistCallback
 import com.msp1974.vacompanion.jsinterface.WebAppInterface
 import com.msp1974.vacompanion.jsinterface.WebViewJavascriptInterface
 import com.msp1974.vacompanion.settings.PageLoadingStage
+import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.authentication.AuthenticationException
 import com.msp1974.vacompanion.jsinterface.ExternalAuthCallback
@@ -138,6 +139,11 @@ class CustomWebView @JvmOverloads constructor(
             }
         } catch (ex: AuthenticationException) {
             Timber.e(ex, "AuthenticationException: Error authenticating with HA")
+            BroadcastSender.sendBroadcast(
+                config.context,
+                BroadcastSender.TOAST_MESSAGE,
+                "Error: Unable to authenticate with HomeAssistant - ${ex.message}"
+            )
             withContext(Dispatchers.Main) {
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.

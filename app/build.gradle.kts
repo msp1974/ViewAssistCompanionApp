@@ -41,7 +41,7 @@ android {
         applicationId = "com.msp1974.vacompanion"
         minSdk = 26
         targetSdk = 36
-        versionName = "0.13.2"
+        versionName = "0.13.3"
         versionCode = code
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -142,7 +142,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.ktor.network)
     implementation(libs.ktor.client.core) // Ktor-Core
-    implementation(libs.ktor.client.cio) // Ktor-Engine
+    implementation(libs.ktor.client.android) // Ktor-Engine
     implementation(libs.ktor.serialization.kotlinx.json) // Ktor- To work with Serialization
     implementation(libs.ktor.client.content.negotiation) // Serialization
     testImplementation(libs.junit)

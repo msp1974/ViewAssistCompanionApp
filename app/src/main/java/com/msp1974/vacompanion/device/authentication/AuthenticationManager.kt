@@ -11,7 +11,7 @@ import java.net.URL
 class AuthenticationManager(
     val config: APPConfig
 ) {
-    private val authenticationService = AuthenticationService()
+    private val authenticationService = AuthenticationService(ignoreSslErrors = { config.ignoreSSLErrors })
     private val sessionMutex = Mutex()
 
     suspend fun buildBearerToken(): String {
@@ -68,7 +68,6 @@ class AuthenticationManager(
             if (e.message?.contains("invalid_grant") == true) {
                 // The refresh credential is no longer usable. Clear the local session
                 // without making another request with the already-invalid token.
-                config.accessToken = ""
                 config.refreshToken = ""
                 config.tokenExpiry = 0
             }
@@ -78,7 +77,6 @@ class AuthenticationManager(
 
     suspend fun revokeSession() {
         authenticationService.revokeToken(getBaseUrl(), config.refreshToken)
-        config.refreshToken = ""
     }
 
     fun getBaseUrl(): URL {

@@ -56,9 +56,9 @@ interface IAuthenticationService {
 }
 
 
-class AuthenticationService() : IAuthenticationService {
+class AuthenticationService(ignoreSslErrors: () -> Boolean = { false }) : IAuthenticationService {
 
-    val client = HttpClientProvider().get()
+    val client = HttpClientProvider(ignoreSslErrors).get()
 
     override suspend fun getToken(
         url: URL,

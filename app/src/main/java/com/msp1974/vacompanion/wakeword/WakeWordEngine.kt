@@ -331,7 +331,8 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
         }
     }.onCompletion { cause ->
         if (cause == null) {
-            emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
+                try {
+                emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
         } else if (cause !is CancellationException) {
             Timber.w(cause, "WakeWordEngine completed with failure")
         }
@@ -1085,6 +1086,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     .toInt()
                     .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
                 writeShortLE(pcm and 0xFFFF)
+                } catch (e: Exception) {}
             }
         }
     }

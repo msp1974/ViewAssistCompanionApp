@@ -624,6 +624,7 @@ class VAViewModel @Inject constructor(
         config.accessToken = ""
         config.refreshToken = ""
         config.tokenExpiry = 0
+        config.alwaysIgnoreSSLErrors = false
     }
 
     fun setUUID(uuid: String = "") {
