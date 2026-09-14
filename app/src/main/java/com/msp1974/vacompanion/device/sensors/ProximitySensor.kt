@@ -7,11 +7,14 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.SensorManager.SENSOR_DELAY_NORMAL
+import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.Event
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
 class ProximitySensor(
     context: Context,
+    private val config: APPConfig,
     private val isRaw: Boolean = false,
     private val threshold: Float = 5f
 ) : Sensor, SensorEventListener {
@@ -69,7 +72,9 @@ class ProximitySensor(
         }
 
         if (value != lastCalculatedProximity) {
+            val oldValue = lastCalculatedProximity
             lastCalculatedProximity = value
+            config.eventBroadcaster.notifyEvent(Event("proximity", oldValue, value))
             Sensor.sensorWorkerScope.launch {
                 onSensorUpdated(basicSensor.id, value)
             }

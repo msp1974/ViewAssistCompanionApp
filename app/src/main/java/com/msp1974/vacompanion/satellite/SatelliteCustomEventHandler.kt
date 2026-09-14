@@ -204,6 +204,17 @@ class SatelliteCustomEventHandler(
                     )
                 }
             }
+            "proximity" -> {
+                val value = event.newValue as? Float
+                if (value != null) {
+                    satellite.sendCustomEvent("proximity",
+                        buildJsonObject {
+                            put("proximity", value)
+                            put("near", value == 0f)
+                        }
+                    )
+                }
+            }
             else -> consumed = false
         }
         if (consumed) {
