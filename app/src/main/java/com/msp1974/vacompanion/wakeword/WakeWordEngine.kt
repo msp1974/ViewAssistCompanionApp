@@ -151,7 +151,9 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     }
                 }
             } finally {
-                emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
+                try {
+                    emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
+                } catch (e: Exception) {}
             }
         }
     }
