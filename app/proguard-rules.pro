@@ -27,3 +27,7 @@
 -dontwarn org.conscrypt.OpenSSLProvider
 
 -keep class ai.onnxruntime.** { *; }
+
+# WorkManager opens its Room database implementation by name at startup. R8 must
+# retain the generated implementation and its constructor for this reflection.
+-keep class * extends androidx.room.RoomDatabase { *; }

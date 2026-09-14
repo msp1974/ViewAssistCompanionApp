@@ -12,6 +12,8 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
+val requestedAbi = providers.gradleProperty("targetAbi").orNull
+
 tasks.register("printVersionName") {
     group = "custom"
     description = "Output version name for use in env vars"
@@ -59,8 +61,9 @@ android {
         debug {
             isMinifyEnabled = false
             ndk {
-                abiFilters.add("arm64-v8a")
-                abiFilters.add("armeabi-v7a")
+                abiFilters.clear()
+                abiFilters.add(requestedAbi ?: "arm64-v8a")
+                if (requestedAbi == null) abiFilters.add("armeabi-v7a")
             }
         }
         release {
@@ -72,8 +75,9 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
             ndk {
-                abiFilters.add("arm64-v8a")
-                abiFilters.add("armeabi-v7a")
+                abiFilters.clear()
+                abiFilters.add(requestedAbi ?: "arm64-v8a")
+                if (requestedAbi == null) abiFilters.add("armeabi-v7a")
                 debugSymbolLevel = "FULL"
             }
         }
