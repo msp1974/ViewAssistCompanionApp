@@ -397,7 +397,18 @@ abstract class SatelliteAudioPipeline(
         }
     }
 
+    private val startedByRunPipeline
+        get() = pipelineStartMode == PipelineStartMode.WAKE_WORD_DETECTED || isContinuation
+
     internal fun handlePipelineEnded() {
+        // Wyoming events carry no pipeline id. When a new run-pipeline makes Home Assistant cancel a
+        // run it still had open, its pipeline-ended arrives before this run's transcribe. Ending on
+        // it would leave HA's new run waiting for audio forever, and repeat on every wake word.
+        // A genuinely stuck run is still ended by the watchdog.
+        if (startedByRunPipeline && pipelineStage.ordinal < PipelineStage.LISTENING.ordinal) {
+            Timber.d("Ignoring stale pipeline-ended received before this pipeline started [$pipelineId]")
+            return
+        }
         if (pipelineStage == PipelineStage.AWAITING_TTS || pipelineStage == PipelineStage.STREAMING_TTS) {
             Timber.d("Pipeline ended but TTS is in stage $pipelineStage. Waiting for TTS audio to complete")
         } else {
