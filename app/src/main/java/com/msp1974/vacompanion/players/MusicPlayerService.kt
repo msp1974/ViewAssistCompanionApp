@@ -19,6 +19,7 @@ import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -52,6 +53,10 @@ class MusicPlayerService : Service() {
     // only place that should ever assign mediaPlayer?.volume) instead of read from the player.
     @Volatile
     private var currentOutputVolume: Float = 1f
+
+    // The in-flight un-duck animation. It must be cancelled whenever the volume is ducked again,
+    // otherwise its remaining steps raise the volume back up over the duck.
+    private var unDuckJob: Job? = null
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Default + job)
@@ -175,6 +180,7 @@ class MusicPlayerService : Service() {
 
     fun stop() {
         Timber.d("Music player: Stopping music")
+        cancelUnDuckAnimation()
         mediaPlayer?.let { player ->
             try {
                 player.removeListener(mediaPlayerListener)
@@ -245,7 +251,13 @@ class MusicPlayerService : Service() {
         return min(config.duckingVolume / 50f, musicVolume)
     }
 
+    private fun cancelUnDuckAnimation() {
+        unDuckJob?.cancel()
+        unDuckJob = null
+    }
+
     private fun duckVolume(silence: Boolean = false) {
+        cancelUnDuckAnimation()
         val duckVolume = if (silence) 0f else getDuckingVolume()
         Timber.d("Music player: Ducking volume to $duckVolume")
         setPlayerVolume(duckVolume)
@@ -253,6 +265,7 @@ class MusicPlayerService : Service() {
     }
 
     private fun unDuckVolume(animate: Boolean = true) {
+        cancelUnDuckAnimation()
         if (currentOutputVolume == musicVolume) return
         if (animate) {
             animateUnDuckingVolume()
@@ -270,7 +283,7 @@ class MusicPlayerService : Service() {
         val delay = durationMs / steps
         val currentVolume = currentOutputVolume
         val increment = (musicVolume - currentVolume) / steps
-        scope.launch {
+        unDuckJob = scope.launch {
             if (increment > 0) {
                 for (i in 1..steps) {
                     val vol = currentVolume + (i * increment)
