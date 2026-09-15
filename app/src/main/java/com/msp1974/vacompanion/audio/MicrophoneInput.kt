@@ -70,6 +70,7 @@ class MicrophoneInput (
     }
 
     private var audioRecord: AudioRecord? = null
+    private var webRtcSdkAudioProcessor: WebRtcSdkAudioProcessor? = null
 
     private var ns: NoiseSuppressor? = null
     private var agc: AutomaticGainControl? = null
@@ -90,12 +91,48 @@ class MicrophoneInput (
         AudioRecord.getMinBufferSize(sampleRateInHz, channelConfig, audioFormat)
 
     val isRecording
-        get() = audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING
+       
+        get() = if (useWebRtcApmBackend()) {
+            webRtcSdkAudioProcessor?.isRunning() == true
+        } else {
+            audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING
+        }
+
 
 
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
+        if (useWebRtcApmBackend()) {
+            if (webRtcSdkAudioProcessor == null) {
+                webRtcSdkAudioProcessor = WebRtcSdkAudioProcessor(
+                    context = config.context,
+                    sampleRateHz = sampleRateInHz,
+                    channels = 1,
+                    audioSource = VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
+                    audioFormat = audioFormat,
+                    manualGainMultiplierProvider = {
+                        // Map micGain (-10..10) to a stronger dB-scale gain curve.
+                        // ~1.8 dB per step gives significantly more lift in noisy rooms.
+                        val gainDb = config.micGain * 1.8f
+                        Math.pow(10.0, (gainDb / 20.0).toDouble()).toFloat().coerceIn(0.1f, 6.0f)
+                    }
+                )
+            }
+
+            if (!isRecording) {
+                Timber.d(
+                    "Starting microphone source=%d backend=%s webrtc_sdk=true",
+                    VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
+                    config.experimentalAudioBackend
+                )
+                webRtcSdkAudioProcessor?.start()
+            } else {
+                Timber.w("Microphone already started")
+            }
+            return
+        }
+
         if (audioRecord == null) {
             micController.start()
             audioRecord = createAudioRecord()
@@ -170,6 +207,11 @@ class MicrophoneInput (
 
     fun readShort(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS, applyEnhancement: Boolean = true): ShortArray {
         val audioBuffer = ShortArray(bufferSize)
+        if (useWebRtcApmBackend()) {
+            val sdkSamples = webRtcSdkAudioProcessor?.readSamples(bufferSize) ?: ShortArray(0)
+            return if (sdkSamples.isNotEmpty()) sdkSamples else ShortArray(0)
+        }
+
         val audioRecord = this.audioRecord ?: error("Microphone not started")
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
@@ -193,6 +235,10 @@ class MicrophoneInput (
             return frame
         }
         return ShortArray(0)
+    }
+
+    private fun useWebRtcApmBackend(): Boolean {
+        return config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
     }
 
     fun readFloat(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS): FloatArray {
@@ -283,6 +329,9 @@ class MicrophoneInput (
 
         ns?.release()
         ns = null
+
+        webRtcSdkAudioProcessor?.close()
+        webRtcSdkAudioProcessor = null
 
         audioRecord?.let {
             if (isRecording) {

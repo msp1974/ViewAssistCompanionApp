@@ -17,9 +17,16 @@ import com.msp1974.vacompanion.wakeword.openwakeword.audio.AudioProcessor
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.ModelRunner
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.OnnxModelRunner
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.TfliteModelRunner
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
 import timber.log.Timber
+import kotlinx.coroutines.yield
 
 
 /**
@@ -42,14 +49,19 @@ class OpenWakeWordEngine(
 
     private val assetManager: AssetManager = context.assets
     private val modelProcessors = mutableMapOf<WakeWordWithId, ModelProcessor>()
-    private val detectionCooldowns = mutableMapOf<String, Long>()
+    private val scoreWindows = mutableMapOf<String, ArrayDeque<Float>>()
+    private val detectionStates = mutableMapOf<String, OwwDetectionState>()
 
     private val config: APPConfig = deviceManager.config
     var isEnabled = true
 
     private var _audioProcessor: AudioProcessor = AudioProcessor(assetManager)
-    private val slidingWindowSize = 3
-    private val probabilities = ArrayDeque<Float>(slidingWindowSize)
+    @Volatile private var latestFrameScores: Map<String, Float> = emptyMap()
+
+    private data class OwwDetectionState(
+        var consecutiveHits: Int = 0,
+        var lastTriggeredAtMs: Long = 0L
+    )
 
     private val lastScores = mutableMapOf<String, Float>()
     private val audioDSP = AudioDSP()
@@ -123,6 +135,8 @@ class OpenWakeWordEngine(
         getWakeWord(wakeWordId)?.let { wakeWord ->
             val processor = ModelProcessor(engine, wakeWord)
             modelProcessors[wakeWord] = processor
+            scoreWindows.remove(wakeWord.id)
+            detectionStates.remove(wakeWord.id)
         }
     }
 
@@ -135,6 +149,8 @@ class OpenWakeWordEngine(
             if (wakeWordWithId.id == modelName) {
                 processor.close()
                 modelProcessors.remove(wakeWordWithId)
+                scoreWindows.remove(modelName)
+                detectionStates.remove(modelName)
                 return
             }
         }
@@ -166,28 +182,34 @@ class OpenWakeWordEngine(
                     val frameTimestamp = System.currentTimeMillis()
 
                     if (audio.isNotEmpty()) {
-
                         if (config.diagnosticsEnabled) {
                             val normalisedAudio = audioDSP.normaliseAudioBuffer(audio)
                             emit(AudioResult.AudioLevel(AudioDSP().audioLevel(normalisedAudio)))
                         }
 
-                        if (isStreaming || config.recordingWakewordEnabled) {
-                            val audioBytes = AudioDSP().shortArrayToByteBuffer(audio)
-                            emit(
-                                AudioResult.Audio(
-                                    audioBytes,
-                                    timestamp = frameTimestamp
-                                )
+                        // Always emit audio frames so shared speaker verification/enrollment has
+                        // a live buffer source, even when not streaming to HA.
+                        val audioBytes = AudioDSP().shortArrayToByteBuffer(audio)
+                        emit(
+                            AudioResult.Audio(
+                                audioBytes,
+                                timestamp = frameTimestamp,
+                                scores = latestFrameScores
                             )
-                        }
+                        )
 
                         val detections = processAudio(audioDSP.shortArrayTo16BitPCMFloat(audio), frameTimestamp)
                         for (detection in detections) {
                             val lastScore = lastScores[detection.wakeWordId] ?: 0f
                             if (detection.score > 0.1f || lastScore > 0.1f) {
                                 if (detection.wakeWordId in wakeWords) {
-                                    emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
+                                    Timber.i(
+                                    "OWW trigger detected wake='%s' score=%.4f ts=%d",
+                                    detection.wakeWord,
+                                    detection.score,
+                                    detection.timestamp
+                                )
+                                emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
                                 }
                             }
                             lastScores[detection.wakeWordId] = detection.score
@@ -201,7 +223,11 @@ class OpenWakeWordEngine(
                 Timber.e("Runtime exception thrown by wake word engine: $e")
             } finally {
                 microphoneInput.close()
-                emit(AudioResult.EngineStatus("Stopped"))
+                Timber.i("OpenWakeWordEngine stopped")
+            }
+        }.onCompletion { cause ->
+            if (cause != null && cause !is CancellationException) {
+                Timber.w(cause, "OpenWakeWordEngine completed with failure")
             }
         }
     }
@@ -209,21 +235,38 @@ class OpenWakeWordEngine(
     @SuppressLint("DefaultLocale")
     fun processAudio(audioBuffer: FloatArray, timestamp: Long = System.currentTimeMillis()): List<WakeWordDetection> {
         val detections = mutableListOf<WakeWordDetection>()
+        val frameScores = mutableMapOf<String, Float>()
 
         if (isEnabled) {
             val audioFeatures = _audioProcessor.getAudioFeatures(audioBuffer)
             modelProcessors.map { (wakeWordWithId, processor) ->
                 try {
                     val score = processor.process(audioFeatures)
-                    detections.add(
-                        WakeWordDetection(
-                            wakeWordWithId.id,
-                            wakeWordWithId.wakeWord.wake_word,
-                            isWakeWordDetected(score),
-                            score,
-                            timestamp = timestamp
-                        )
+                    frameScores[wakeWordWithId.id] = score
+                    val smoothedScore = updateSmoothedScore(
+                        modelName = wakeWordWithId.id,
+                        score = score,
+                        windowSize = config.experimentalMwwSmoothingWindow
                     )
+                    val shouldTrigger = evaluateTrigger(
+                        modelName = wakeWordWithId.id,
+                        smoothedScore = smoothedScore,
+                        threshold = config.wakeWordThreshold,
+                        requiredHits = config.experimentalMwwConsecutiveHits,
+                        cooldownMs = resolveOwwCooldownMs(),
+                        nowMs = timestamp
+                    )
+                    if (shouldTrigger) {
+                        detections.add(
+                            WakeWordDetection(
+                                wakeWordWithId.id,
+                                wakeWordWithId.wakeWord.wake_word,
+                                detected = true,
+                                score = smoothedScore,
+                                timestamp = timestamp
+                            )
+                        )
+                    }
                 } catch (e: RuntimeException) {
                     throw e
                 } catch (e: Exception) {
@@ -232,15 +275,59 @@ class OpenWakeWordEngine(
                 }
             }
         }
+        latestFrameScores = HashMap(frameScores)
         return detections
     }
 
-    private fun isWakeWordDetected(probability: Float): Boolean {
-        if (probabilities.size == slidingWindowSize)
-            probabilities.removeFirst()
-        probabilities.add(probability)
+    private fun updateSmoothedScore(modelName: String, score: Float, windowSize: Int): Float {
+        val size = windowSize.coerceAtLeast(1)
+        val window = scoreWindows.getOrPut(modelName) { ArrayDeque(size) }
+        if (window.size == size) {
+            window.removeFirst()
+        }
+        window.addLast(score)
+        return window.average().toFloat()
+    }
 
-        return probabilities.size == slidingWindowSize && probabilities.average() > config.wakeWordThreshold
+    private fun evaluateTrigger(
+        modelName: String,
+        smoothedScore: Float,
+        threshold: Float,
+        requiredHits: Int,
+        cooldownMs: Long,
+        nowMs: Long
+    ): Boolean {
+        return shouldTrigger(
+            modelName = modelName,
+            smoothedScore = smoothedScore,
+            threshold = threshold,
+            requiredHits = requiredHits.coerceAtLeast(1),
+            cooldownMs = cooldownMs.coerceAtLeast(0L),
+            nowMs = nowMs
+        )
+    }
+
+    private fun resolveOwwCooldownMs(): Long {
+        return maxOf(detectionCooldownMs, config.experimentalMwwCooldownMs.toLong())
+    }
+
+    private fun shouldTrigger(
+        modelName: String,
+        smoothedScore: Float,
+        threshold: Float,
+        requiredHits: Int,
+        cooldownMs: Long,
+        nowMs: Long
+    ): Boolean {
+        val state = detectionStates.getOrPut(modelName) { OwwDetectionState() }
+        state.consecutiveHits = if (smoothedScore >= threshold) state.consecutiveHits + 1 else 0
+        val onCooldown = nowMs - state.lastTriggeredAtMs < cooldownMs
+        if (state.consecutiveHits >= requiredHits && !onCooldown) {
+            state.lastTriggeredAtMs = nowMs
+            state.consecutiveHits = 0
+            return true
+        }
+        return false
     }
 
     fun enable() {
@@ -253,6 +340,8 @@ class OpenWakeWordEngine(
 
     fun reset() {
         _audioProcessor.reset()
+        scoreWindows.clear()
+        detectionStates.clear()
     }
 
     /**

@@ -367,6 +367,14 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         startWakeWordDetection()
     }
 
+    fun startSpeakerEnrollment() {
+        wakeWordHandler?.startSpeakerEnrollment()
+    }
+
+    fun clearSpeakerEnrollment() {
+        wakeWordHandler?.clearSpeakerEnrollment()
+    }
+
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
         if (clientId.isEmpty()) {
             Timber.e("Unable to run audio pipeline. Satellite not connected to HA")
@@ -409,6 +417,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     suspend fun playWakeWordDetectionSound() {
         if (config.wakeWordSound != "none") {
             try {
+                // Guard against rare cases where wake-sound completion callbacks stall:
+                // allow mic uplink immediately, with initial ducking until this deadline.
+                val fallbackSilenceReleaseAt = System.currentTimeMillis() + 1200L
+                audioPipeline?.silenceAudioBefore = fallbackSilenceReleaseAt
+
                 val soundUri = currentWakeWordSoundUri ?: resolveWakeSoundUri(config.wakeWordSound)
 
                 if (soundUri != null) {
@@ -530,6 +543,12 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             }
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
+                if (reason != PipelineEndReason.END_OF_PIPELINE || !continueConversation) {
+                    if (audioPipeline === this) {
+                        audioPipeline = null
+                    }
+                }
+
                 if (reason == PipelineEndReason.END_OF_PIPELINE) {
                     Timber.i("Pipeline ended.  Restarting: $continueConversation")
                     if (continueConversation) {
@@ -539,8 +558,6 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                             }
                             startAudioPipeline(PipelineStartMode.CONTINUE_CONVERSATION)
                         }
-                    } else {
-                        audioPipeline = null
                     }
                 } else {
                     audioPipeline = null

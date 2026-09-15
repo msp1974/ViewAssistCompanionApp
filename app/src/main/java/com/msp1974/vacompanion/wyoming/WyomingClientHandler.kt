@@ -18,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.readByteArray
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -40,7 +41,8 @@ abstract class WyomingClientHandler (
     val socket: Socket
 ): IClientHandler {
     var runClient: Boolean = true
-    val socketId = socket.remoteAddress.port().toString()
+    val socketId = runCatching { socket.remoteAddress.port().toString() }
+        .getOrElse { "unknown-${System.nanoTime()}" }
     val clientId = socketId
     var lastMessage: Long = System.currentTimeMillis()
     private lateinit var watchDogJob: Job
@@ -176,9 +178,31 @@ abstract class WyomingClientHandler (
     }
 
     fun writeMessage(packet: WyomingPacket) {
+        if (!runClient) {
+            Timber.w("Dropping packet while client is stopping: type=${packet.type}, client=$clientId")
+            return
+        }
+
         val result = writeBuffer.trySend(packet)
         if (!result.isSuccess) {
-            Timber.e("Error writing packet to output buffer")
+            // Audio chunks can be dropped under pressure, but control messages must be delivered
+            // or the HA side can miss state transitions (e.g. wake detected/run pipeline).
+            if (packet.type == "audio-chunk") {
+                Timber.w("Dropping audio-chunk due to full output buffer: client=$clientId")
+                return
+            }
+
+            Timber.w("Output buffer full for control packet type=${packet.type}, retrying with timeout")
+            scope.launch {
+                val sent = withTimeoutOrNull(500L) {
+                    writeBuffer.send(packet)
+                    true
+                } ?: false
+                if (!sent) {
+                    Timber.e("Failed to enqueue control packet type=${packet.type}; forcing reconnect for client=$clientId")
+                    runClient = false
+                }
+            }
         }
 
     }
@@ -215,10 +239,10 @@ abstract class WyomingClientHandler (
                 sendChannel.flush()
             } catch (ex: SocketException) {
                 Timber.e("Socket error sending message: $ex")
-                //throw ex
+                runClient = false
             } catch (ex: Exception) {
                 Timber.e("Unknown error sending message: $jsonLine - $ex")
-                //throw ex
+                runClient = false
             }
         }
     }

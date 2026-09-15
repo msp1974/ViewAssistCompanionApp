@@ -180,13 +180,16 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
                             }
                         }
 
-                        clients[id] = Connection(id, client)
-                        Timber.d("Client connected: ${socket.remoteAddress}.  Total: ${clients.size}")
+                            clients[id] = Connection(id, client)
+                            Timber.d("Client connected: $remoteAddress.  Total: ${clients.size}")
                         updateStatus()
-                        onEvent("client_connected", data)
+                            onEvent("client_connected", data)
+                    } catch (e: ClosedChannelException) {
+                        Timber.w("Client socket closed during connection setup; skipping")
+                        runCatching { socket.close() }
+                        continue
                     } catch (e: Throwable) {
-                        ensureActive()
-                        Timber.w("Discarding client connection that failed during setup: $e")
+                        Timber.e(e, "Client setup failed; continuing")
                         runCatching { socket.close() }
                         continue
                     }

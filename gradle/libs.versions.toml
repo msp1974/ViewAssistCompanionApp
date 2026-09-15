@@ -13,7 +13,7 @@ activityCompose = "1.13.0"
 composeBom = "2026.05.01"
 materialIconsExtended = "1.7.8"
 media3Exoplayer = "1.10.1"
-onnxruntimeAndroid = "1.26.0"
+onnxruntimeAndroid = "1.29.0"
 preferenceKtx = "1.2.1"
 semver = "3.1.0"
 splash ="1.2.0"
@@ -28,6 +28,8 @@ ktor = "3.5.1"
 ksp = "2.3.6"
 hilt = "2.59.2"
 faceDetection = "16.1.7"
+webrtcSdkAndroid = "144.7559.05"
+
 
 
 [libraries]
@@ -75,6 +77,8 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "faceDetection" }
+webrtc-sdk-android = { module = "io.github.webrtc-sdk:android", version.ref = "webrtcSdkAndroid" }
+
 
 
 [plugins]
@@ -84,6 +88,3 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-
-
-

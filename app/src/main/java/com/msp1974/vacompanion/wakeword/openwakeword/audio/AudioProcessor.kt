@@ -52,7 +52,6 @@ internal class AudioProcessor(
 
     private fun streamingFeatures(audioBuffer: FloatArray): Int {
         var processedSamples = 0
-        accumulatedSamples = 0
         var buffer = audioBuffer
 
         // Handle remainder from previous processing

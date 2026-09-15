@@ -99,6 +99,41 @@ fun SettingsLayout(
 
                     menuOptions.add(
                         MenuOption(
+                            title = "Voice Enrollment",
+                            subtitle = if (vaUiState.diagnosticInfo.hasSpeakerEnrollment) {
+                                "Enabled"
+                            } else {
+                                "Disabled"
+                            },
+                            icon = Icons.Default.Security,
+                            onClick = {}
+                        )
+                    )
+
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Enroll Speaker",
+                            subtitle = vaUiState.speakerEnrollmentStatus.ifBlank {
+                                "Capture voice profile for Sherpa speaker verification"
+                            },
+                            icon = Icons.Default.Security,
+                            onClick = { viewModel.startSpeakerEnrollment() }
+                        )
+                    )
+
+                    if (vaUiState.diagnosticInfo.hasSpeakerEnrollment) {
+                        menuOptions.add(
+                            MenuOption(
+                                title = "Remove Speaker Enrollment",
+                                subtitle = "Delete saved speaker embedding",
+                                icon = Icons.Default.DisabledByDefault,
+                                onClick = { viewModel.clearSpeakerEnrollment() }
+                            )
+                        )
+                    }
+
+                    menuOptions.add(
+                        MenuOption(
                             title = "Manage Custom Files",
                             subtitle = "Manage custom wake words, sounds and alarms",
                             icon = Icons.Default.FileCopy,
@@ -189,4 +224,3 @@ fun SettingsLayout(
         }
     }
 }
-

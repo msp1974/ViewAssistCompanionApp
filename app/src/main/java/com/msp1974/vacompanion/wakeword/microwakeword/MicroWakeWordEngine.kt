@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.yield
 import timber.log.Timber
 import kotlin.collections.plus
@@ -85,6 +86,20 @@ open class MicroWakeWordEngine (
 
                     val audio = microphoneInput.readBytes()
                     val frameTimestamp = System.currentTimeMillis()
+                        val detections = detector.detect(audio)
+                        val frameScores = mutableMapOf<String, Float>()
+                        detections.forEach { detection ->
+                            val currentWakeWordScore = frameScores[detection.wakeWord]
+                            if (currentWakeWordScore == null || detection.score > currentWakeWordScore) {
+                                frameScores[detection.wakeWord] = detection.score
+                            }
+
+                            val currentWakeWordIdScore = frameScores[detection.wakeWordId]
+                            if (currentWakeWordIdScore == null || detection.score > currentWakeWordIdScore) {
+                                frameScores[detection.wakeWordId] = detection.score
+                            }
+                        }
+                        audio.rewind()
 
                     if (config.diagnosticsEnabled) {
                         val audioBytes = ByteArray(audio.remaining())
@@ -100,18 +115,19 @@ open class MicroWakeWordEngine (
                         emit(
                             AudioResult.Audio(
                                 audioBytes,
-                                timestamp = frameTimestamp
+                                timestamp = frameTimestamp,
+                                scores = frameScores
                             )
                         )
                         audio.rewind()
                     }
 
                     // Always run audio through the models, even if not currently streaming, to keep
-                    // their internal state up to date
-                    val detections = detector.detect(audio)
+                    // their internal state up to date.
+                    // Detection for this frame has already been computed above.
                     for (detection in detections) {
                         val lastScore = lastScores[detection.wakeWordId] ?: 0f
-                        if (detection.score > 0.1f || lastScore > 0.1f) {
+                        if (detection.detected && (detection.score > 0.1f || lastScore > 0.1f)) {
                             if (detection.wakeWordId in wakeWords) {
                                 emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
                             } else if (detection.wakeWordId in stopWords) {
@@ -129,7 +145,11 @@ open class MicroWakeWordEngine (
                 Timber.i("Stopping MicroWakeWordEngine")
                 microphoneInput.close()
                 detector?.close()
-                //emit(AudioResult.EngineStatus("Stopped"))
+                Timber.i("MicroWakeWordEngine stopped")
+            }
+        }.onCompletion { cause ->
+            if (cause != null && cause !is kotlinx.coroutines.CancellationException) {
+                Timber.w(cause, "MicroWakeWordEngine completed with failure")
             }
         }
     }
