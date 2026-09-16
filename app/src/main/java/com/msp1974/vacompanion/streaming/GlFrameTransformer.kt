@@ -35,8 +35,10 @@ import java.util.concurrent.CountDownLatch
  * output surface, one rotation+mirror transform).
  *
  * GL/EGL contexts are thread-affine, so this owns a dedicated HandlerThread for the whole
- * lifecycle: CameraX renders onto [inputSurface] (backed by an OES SurfaceTexture); each
- * new frame is drawn onto [outputSurface] with the requested transform applied and the
+ * lifecycle: CameraX renders onto [inputSurface] (backed by an OES SurfaceTexture, sized to
+ * the camera's own unrotated capture resolution); each new frame is drawn onto
+ * [outputSurface] (sized to the post-rotation canvas, which swaps width/height relative to
+ * the input whenever rotation requires it) with the requested transform applied, and the
  * frame's original presentation time carried over so encoder timestamps/RTP timing stay
  * correct.
  *
@@ -52,6 +54,8 @@ import java.util.concurrent.CountDownLatch
  */
 class GlFrameTransformer(
     private val outputSurface: Surface,
+    inputWidth: Int,
+    inputHeight: Int,
     outputWidth: Int,
     outputHeight: Int,
     rotationDegrees: Int,
@@ -108,7 +112,16 @@ class GlFrameTransformer(
             setupTexture()
             setupProgram()
             val st = SurfaceTexture(textureId)
-            st.setDefaultBufferSize(outputWidth, outputHeight)
+            // Deliberately NOT outputWidth/outputHeight: this is the buffer size the camera
+            // HAL will actually produce into (before any of our rotation/mirror is applied),
+            // which CameraX/Camera2 negotiate against SurfaceRequest.resolution - unrelated
+            // to, and often a different aspect ratio than, the post-rotation output canvas.
+            // Setting this to the (possibly swapped) output size instead caused the camera
+            // stream to be configured against a mismatched buffer size, which the HAL
+            // resolved by center-cropping/scaling - visible as an unwanted zoom and quality
+            // loss whenever rotation swapped width/height (the common case: most tablets'
+            // front camera reports SENSOR_ORIENTATION 90/270).
+            st.setDefaultBufferSize(inputWidth, inputHeight)
             inputSurfaceTexture = st
             inputSurface = Surface(st)
             st.setOnFrameAvailableListener({ onFrameAvailable() }, handler)
