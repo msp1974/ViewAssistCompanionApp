@@ -4,6 +4,7 @@ import android.content.Context
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
 import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.streaming.RtspCameraStreamer
 import com.msp1974.vacompanion.wakeword.AvailableWakeWords
 import com.msp1974.vacompanion.wyoming.ServerState
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
@@ -18,10 +19,18 @@ internal class BackgroundTaskController (private val context: Context, val devic
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.Default + job)
     private var server: WyomingTCPServer? = null
+    private var rtspStreamer: RtspCameraStreamer? = null
     private val config = deviceManager.config
 
 
     fun start() {
+        if (rtspStreamer == null) {
+            // RTSP streaming has its own lifecycle (only touches the camera between a
+            // viewer's PLAY and TEARDOWN/disconnect - see RtspCameraStreamer's docs) so
+            // it is created once here, alongside the Wyoming server, rather than tied to
+            // satellite pairing state.
+            rtspStreamer = RtspCameraStreamer(context, config).also { it.init() }
+        }
 
         server = object: WyomingTCPServer(context, deviceManager) {
             override fun onEvent(event: String, data: JsonObject) {
@@ -79,5 +88,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
     fun shutdown() {
         Timber.i("Shutting down")
         server?.stopServer()
+        rtspStreamer?.release()
+        rtspStreamer = null
     }
 }

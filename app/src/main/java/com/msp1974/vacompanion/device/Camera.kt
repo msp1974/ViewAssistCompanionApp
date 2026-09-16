@@ -145,7 +145,7 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
             cameraProvider.unbindAll()
 
             // Check if we should actually be running
-            if (config.motionDetectionMode == "none" || config.cameraStreamActive) {
+            if (config.motionDetectionMode == "none" || config.cameraStreamActive || config.rtspStreamActive) {
                 Timber.w("Camera about to bind but motion detection disabled or stream active, skipping")
                 isRunning = false
                 isStarting = false
@@ -361,13 +361,24 @@ class Camera(val context: Context, val config: APPConfig) : EventListener {
                 }
             }
             "cameraStreamActive" -> {
-                if (event.newValue == false && !isRunning && config.enableMotionDetection) {
+                if (event.newValue == false && !isRunning && config.enableMotionDetection && !config.rtspStreamActive) {
                     // Stream closed, background motion detection can resume
                     Timber.i("Camera: Resuming background motion detection")
                     startCamera()
                 } else if (event.newValue == true && isRunning) {
                     // Stream opened, stop background motion detection to free camera
                     Timber.i("Camera: Stopping background motion detection for stream")
+                    scope.launch { stopCamera() }
+                }
+            }
+            "rtspStreamActive" -> {
+                if (event.newValue == false && !isRunning && config.enableMotionDetection && !config.cameraStreamActive) {
+                    // RTSP viewer disconnected, background motion detection can resume
+                    Timber.i("Camera: Resuming background motion detection after RTSP stream ended")
+                    startCamera()
+                } else if (event.newValue == true && isRunning) {
+                    // RTSP viewer connected, stop background motion detection to free camera
+                    Timber.i("Camera: Stopping background motion detection for RTSP stream")
                     scope.launch { stopCamera() }
                 }
             }
