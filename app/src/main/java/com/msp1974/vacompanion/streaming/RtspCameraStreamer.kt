@@ -275,7 +275,15 @@ class RtspCameraStreamer(
         // pre-rotated (verified empirically against a physical device). So CameraX renders
         // onto the transformer's input surface instead, and the transformer applies the
         // rotation/mirror itself via a small GL pass before handing frames to the encoder.
-        val transformer = GlFrameTransformer(encoderSurface, encWidth, encHeight, rotation, mirror)
+        val transformer = GlFrameTransformer(
+            encoderSurface,
+            resolution.width,
+            resolution.height,
+            encWidth,
+            encHeight,
+            rotation,
+            mirror,
+        )
         glFrameTransformer = transformer
 
         request.provideSurface(transformer.inputSurface!!, ContextCompat.getMainExecutor(context)) { result ->
