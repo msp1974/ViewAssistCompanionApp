@@ -91,7 +91,11 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
                                 }
                             } catch (e: AuthenticationException) {
                                 Timber.e("Failed to get access token: $e")
-                                BroadcastSender.sendBroadcast(config.context, BroadcastSender.TOAST_MESSAGE, "Error: Unable to authenticate with HomeAssistant")
+                                BroadcastSender.sendBroadcast(
+                                    config.context,
+                                    BroadcastSender.TOAST_MESSAGE,
+                                    "Error: Unable to authenticate with HomeAssistant - ${e.message}"
+                                )
                             }
                         }
                     }

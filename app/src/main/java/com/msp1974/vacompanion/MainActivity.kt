@@ -428,7 +428,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 BroadcastSender.TOAST_MESSAGE -> {
                     val msg = intent.getStringExtra("extra") ?: ""
                     if (msg.isNotEmpty()) {
-                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
                     }
                 }
             }
@@ -816,6 +816,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             onDeviceAdminPermissionActivityResult.launch(intent)
         } else {
             Timber.d("Device admin permission already granted or not supported")
+            updatePermissionStatus()
             initialise()
         }
     }

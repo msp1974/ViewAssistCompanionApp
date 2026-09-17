@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
+import timber.log.Timber
 
 class SoundEffectsPlayer(val context: Context) {
     private val players = mutableMapOf<Int, ExoPlayer>()
@@ -63,6 +64,14 @@ class SoundEffectsPlayer(val context: Context) {
                 override fun onPlaybackStateChanged(playbackState: Int) {
                     _state.value = playbackState
                 }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    // Cached players (uriPlayers/players) are reused across many play() calls -
+                    // ExoPlayer stays stuck in the error state until prepare() is called again,
+                    // so without this the sound effect would silently stop playing forever after
+                    // one transient error. See the recovery check in play().
+                    Timber.w(error, "Sound effect player error for $uri - will recover on next play()")
+                }
             })
             return player
         } catch (ex: Exception) {
@@ -89,6 +98,13 @@ class SoundEffectsPlayer(val context: Context) {
                 }
 
                 if (player != null) {
+                    if (player.playerError != null) {
+                        // A previous playback error leaves ExoPlayer parked in STATE_IDLE with
+                        // playerError set - play()/seekTo() are then no-ops until prepare() is
+                        // called again to retry loading the same media item.
+                        Timber.w("Recovering sound effect player for $uri after previous playback error")
+                        player.prepare()
+                    }
                     player.seekTo(0)
                     player.play()
                 } else {
@@ -105,6 +121,7 @@ class SoundEffectsPlayer(val context: Context) {
                         }
 
                         override fun onPlayerError(error: PlaybackException) {
+                            Timber.w(error, "Ad-hoc sound effect playback error for $uri")
                             adhocPlayer.release()
                             if (activeAdhocPlayer == adhocPlayer) activeAdhocPlayer = null
                         }
@@ -113,6 +130,7 @@ class SoundEffectsPlayer(val context: Context) {
                     adhocPlayer.play()
                 }
             } catch (ex: Exception) {
+                Timber.e("Error playing sound effect: ${ex.message}")
                 ex.printStackTrace()
             }
         }

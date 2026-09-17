@@ -43,7 +43,7 @@ class SensorManager(
         val sensors = mapOf<String, Sensor>(
             "light" to LightSensor(context),
             "temperature" to TemperatureSensor(context),
-            "proximity" to ProximitySensor(context, deviceInfo.hardware.proximitySensorType == "raw", config.rawProximitySensorThreshold.toFloat()),
+            "proximity" to ProximitySensor(context, config, deviceInfo.hardware.proximitySensorType == "raw", config.rawProximitySensorThreshold.toFloat()),
             "accelerometer" to AccelerometerSensor(context, config),
             "battery" to BatterySensor(context),
             "orientation" to OrientationSensor(context),

@@ -42,7 +42,7 @@ sealed class DownloadStatus {
  */
 class CustomFileDownloader(private val context: Context, val deviceManager: DeviceManager) {
 
-    private val client = HttpClientProvider().get()
+    private val client = HttpClientProvider(ignoreSslErrors = { true }).get()
 
     companion object {
         const val CUSTOM_DIR = "custom"
