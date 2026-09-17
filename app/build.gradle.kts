@@ -12,6 +12,8 @@ plugins {
     id("com.google.firebase.crashlytics")
 }
 
+val requestedAbi = providers.gradleProperty("targetAbi").orNull
+
 tasks.register("printVersionName") {
     group = "custom"
     description = "Output version name for use in env vars"
@@ -39,7 +41,7 @@ android {
 
     defaultConfig {
         applicationId = "com.msp1974.vacompanion"
-        minSdk = 26
+        minSdk = 24
         targetSdk = 36
         versionName = "0.13.3"
         versionCode = code
@@ -59,8 +61,9 @@ android {
         debug {
             isMinifyEnabled = false
             ndk {
-                abiFilters.add("arm64-v8a")
-                abiFilters.add("armeabi-v7a")
+                abiFilters.clear()
+                abiFilters.add(requestedAbi ?: "arm64-v8a")
+                if (requestedAbi == null) abiFilters.add("armeabi-v7a")
             }
         }
         release {
@@ -72,13 +75,15 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
             ndk {
-                abiFilters.add("arm64-v8a")
-                abiFilters.add("armeabi-v7a")
+                abiFilters.clear()
+                abiFilters.add(requestedAbi ?: "arm64-v8a")
+                if (requestedAbi == null) abiFilters.add("armeabi-v7a")
                 debugSymbolLevel = "FULL"
             }
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -98,7 +103,7 @@ androidComponents {
 
 
 dependencies {
-
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.1.2")
     implementation(project(":microfeatures"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

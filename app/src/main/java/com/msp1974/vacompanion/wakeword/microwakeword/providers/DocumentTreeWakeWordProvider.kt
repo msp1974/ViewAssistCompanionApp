@@ -86,7 +86,7 @@ class DocumentTreeWakeWordProvider(
             }
 
             // If not a local file, try and query the size and copy to a direct byte buffer
-            return query(uri, null, null, null)?.use {
+            return query(uri, null, null, null, null)?.use {
                 if (it.moveToFirst()) {
                     val sizeIndex: Int = it.getColumnIndex(OpenableColumns.SIZE)
                     val size = if (it.isNull(sizeIndex)) 0 else it.getLong(sizeIndex)

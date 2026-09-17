@@ -11,7 +11,7 @@ import com.msp1974.vacompanion.wakeword.openwakeword.providers.OpenWakeWordCusto
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.io.path.Path
+import java.io.File
 
 typealias AvailableWakeWordsType = MutableMap<String, List<WakeWordWithId>>
 interface AvailableWakeWordProvider{
@@ -28,11 +28,9 @@ class AvailableWakeWords(
             mutableMapOf()
 
         for (wakeWordType in WakeWordEngineModel.entries) {
-            val targetDir = Path(
+            val targetDir = File(
                 context.filesDir.absolutePath,
-                CUSTOM_DIR,
-                WAKEWORDS_DIR,
-                wakeWordType.toString().lowercase()
+                "$CUSTOM_DIR/$WAKEWORDS_DIR/${wakeWordType.toString().lowercase()}"
             )
 
             when (wakeWordType) {

@@ -10,7 +10,6 @@ import org.tensorflow.lite.Interpreter
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.io.path.Path
 
 /**
  * Handles LiteRT (TFLite) model loading and inference for wake word detection.
