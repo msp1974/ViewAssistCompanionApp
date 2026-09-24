@@ -148,9 +148,11 @@ class CustomWebView @JvmOverloads constructor(
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.
                 callAuthJS(view, false)
-                if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
-                    safeRevokeSession()
-                    reload()
+                // A connected network does not mean HA is reachable. Preserve the
+                // refresh token on transient failures and let the frontend retry.
+                // AuthenticationManager clears it if HA returns invalid_grant.
+                if (config.refreshToken.isBlank()) {
+                    view.loadUrl(deviceManager.authenticationManager.getExternalAuthUrl())
                 }
             }
         } catch (ex: Exception) {
