@@ -474,7 +474,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     fun muteMicrophone(muted: Boolean) {
         runCatching {
-            wakeWordHandler?.engine!!.setMuted(muted)
+            wakeWordHandler?.engine?.setMuted(muted)
         }
     }
 
@@ -505,12 +505,12 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 audioPipelineLastStateChange = System.currentTimeMillis()
                 when (state) {
                     PipelineStage.LISTENING -> {
-                        wakeWordHandler?.engine!!.setStreaming(true)
+                        wakeWordHandler?.engine?.setStreaming(true)
                     }
-                    PipelineStage.VOICE_STOPPED -> { wakeWordHandler?.engine!!.setStreaming(false) }
+                    PipelineStage.VOICE_STOPPED -> { wakeWordHandler?.engine?.setStreaming(false) }
                     PipelineStage.ENDED -> {
-                        if (wakeWordHandler?.engine!!.isStreaming()) {
-                            wakeWordHandler?.engine!!.setStreaming(false)
+                        if (wakeWordHandler?.engine?.isStreaming() == true) {
+                            wakeWordHandler?.engine?.setStreaming(false)
                         }
                     }
                     else -> {}
