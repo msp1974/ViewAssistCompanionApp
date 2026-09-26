@@ -175,19 +175,12 @@ class MicrophoneInput (
         if (readCount > 0) {
             totalFramesRead += readCount
             val frame = audioBuffer.copyOfRange(0, readCount)
-            if (isMicSuppressed()) {
-                // Return true digital silence without running it through the AGC/NS - this
-                // keeps the frame cadence the wake-word engine expects, while leaving the AGC's
-                // envelope/noise-floor exactly where they were before the suppressed sound
-                // started (rather than dragged up by it), so gain is already correct for real
-                // speech the instant suppression lifts.
-                return ShortArray(frame.size)
-            }
+            val micGain = if (isMicSuppressed()) -10 else config.micGain
             if (applyEnhancement) {
                 // processFrame() internally no-ops on AGC/noise suppression when the
                 // device covers them in hardware - so it's always safe/cheap to route
                 // through here rather than tracking which sub-feature(s) are actually active.
-                audioEnhancer.setMicGainDb(config.micGain.toFloat())
+                audioEnhancer.setMicGainDb(micGain.toFloat())
                 return audioEnhancer.processFrame(frame)
             }
             return frame
