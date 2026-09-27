@@ -116,6 +116,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
             } catch (e: Exception) {
                 Timber.e("Error waiting for wake word detection to stop: ${e.message.toString()}")
             } finally {
+                engine?.release()
                 engine = null
                 wakeWordJob = null
                 state = WakeWordHandlerState.STOPPED

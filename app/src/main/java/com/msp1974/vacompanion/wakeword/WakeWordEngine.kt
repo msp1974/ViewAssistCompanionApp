@@ -111,6 +111,13 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
         return false
     }
 
+    @Synchronized
+    fun release() {
+        val instance = engineInstance
+        engineInstance = null
+        instance?.release()
+    }
+
     fun start() = flow {
         engineInstance = get()
         if (engineInstance != null) {
@@ -153,7 +160,11 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
             } finally {
                 try {
                     emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
-                } catch (e: Exception) {}
+                } catch (_: Exception) {
+                    // Cancellation can prevent the final status emission.
+                } finally {
+                    release()
+                }
             }
         }
     }
