@@ -127,7 +127,7 @@ class CustomWebView @JvmOverloads constructor(
 
     suspend fun requestAuthorisation(forceRefresh: Boolean = false, view: WebView = this) {
         try {
-            if (config.refreshToken != "") {
+            if (config.refreshToken.isNotBlank()) {
                 deviceManager.authenticationManager.ensureValidSession(forceRefresh)
                 withContext(Dispatchers.Main) {
                     callAuthJS(view, true)
@@ -148,10 +148,6 @@ class CustomWebView @JvmOverloads constructor(
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.
                 callAuthJS(view, false)
-                if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
-                    safeRevokeSession()
-                    reload()
-                }
             }
         } catch (ex: Exception) {
             Timber.e(ex, "Exception: Error authenticating -> $ex")
