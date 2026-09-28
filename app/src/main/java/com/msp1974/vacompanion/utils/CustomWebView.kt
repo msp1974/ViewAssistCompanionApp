@@ -127,7 +127,7 @@ class CustomWebView @JvmOverloads constructor(
 
     suspend fun requestAuthorisation(forceRefresh: Boolean = false, view: WebView = this) {
         try {
-            if (config.refreshToken != "") {
+            if (config.refreshToken.isNotBlank()) {
                 deviceManager.authenticationManager.ensureValidSession(forceRefresh)
                 withContext(Dispatchers.Main) {
                     callAuthJS(view, true)
@@ -148,10 +148,6 @@ class CustomWebView @JvmOverloads constructor(
                 // Home Assistant's external-auth contract requires an explicit failure.
                 // Never inject the previous token after a failed refresh.
                 callAuthJS(view, false)
-                if (deviceManager.networkStatus.value.status == NetworkStatus.Available) {
-                    safeRevokeSession()
-                    reload()
-                }
             }
         } catch (ex: Exception) {
             Timber.e(ex, "Exception: Error authenticating -> $ex")
@@ -204,15 +200,11 @@ class CustomWebView @JvmOverloads constructor(
     private fun callAuthJS(view: WebView, success: Boolean) {
         val script = if (success) {
             val tokenExpiry = ((config.tokenExpiry - System.currentTimeMillis()) / 1000).toInt().coerceAtLeast(0)
-            val obfuscatedOutput = "{'access_token': ${if (config.accessToken.isNotBlank()) config.accessToken.subSequence(0,10) else "None"}..., 'expires_in': $tokenExpiry"
-            Timber.d("Calling authJS: success: $success -> $obfuscatedOutput")
-
             "window.externalAuthSetToken(true, {\n" +
                 "\"access_token\": \"${config.accessToken}\",\n" +
                 "\"expires_in\": $tokenExpiry\n" +
                 "});"
         } else {
-            Timber.d("Calling authJS: success: $success")
             "window.externalAuthSetToken(false);"
         }
         view.evaluateJavascript(script, null)

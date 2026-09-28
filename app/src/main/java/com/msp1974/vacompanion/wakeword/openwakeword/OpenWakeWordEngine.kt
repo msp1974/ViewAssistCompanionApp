@@ -391,6 +391,7 @@ class OpenWakeWordEngine(
         stop()
         modelProcessors.values.forEach { it.close() }
         modelProcessors.clear()
+        _audioProcessor.close()
     }
 
     /**

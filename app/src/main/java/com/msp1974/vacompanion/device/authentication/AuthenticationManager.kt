@@ -68,7 +68,6 @@ class AuthenticationManager(
             if (e.message?.contains("invalid_grant") == true) {
                 // The refresh credential is no longer usable. Clear the local session
                 // without making another request with the already-invalid token.
-                config.refreshToken = ""
                 config.tokenExpiry = 0
             }
             throw e

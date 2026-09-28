@@ -21,7 +21,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.launch
 import timber.log.Timber
 import java.io.File
@@ -35,6 +34,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
     private var activeWakeWords: List<String> = listOf()
     private var activeStopWords: List<String> = listOf()
     private var engineInstance: WakeWordEngineProvider? = null
+    private var collectorActive = false
     private val audioDsp = AudioDSP()
 
     // Shared speaker verification runtime path (applies to OWW + MWW)
@@ -143,31 +143,21 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
         activeStopWords = value
     }
 
+    @Synchronized
     fun setStreaming(stream: Boolean) {
-        if (engineInstance != null) {
-            engineInstance!!.isStreaming = stream
-        }
+        engineInstance?.isStreaming = stream
     }
 
-    fun isStreaming(): Boolean {
-        if (engineInstance != null) {
-            return engineInstance!!.isStreaming
-        }
-        return false
-    }
+    @Synchronized
+    fun isStreaming(): Boolean = engineInstance?.isStreaming ?: false
 
+    @Synchronized
     fun setMuted(value: Boolean) {
-        if (engineInstance != null) {
-            engineInstance!!.setMuted(value)
-        }
+        engineInstance?.setMuted(value)
     }
 
-    fun isMuted(): Boolean {
-        if (engineInstance != null) {
-            return engineInstance!!.isMuted()
-        }
-        return false
-    }
+    @Synchronized
+    fun isMuted(): Boolean = engineInstance?.isMuted() ?: false
 
     fun startSpeakerEnrollment() {
         speakerEnrollmentRequested = true
@@ -206,19 +196,37 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
         postEnrollmentStatus(message, toast = true)
     }
 
-    fun start() = flow {
-        maybeEnableSpeakerVerificationFromExistingEnrollment()
-        engineInstance = get()
-        synchronized(verificationRingBufferLock) {
-            verificationRingBuffer.clear()
-        }
-        enrollmentState = null
-        wakeTriggerHistory.clear()
-        var sharedVerifier: SherpaSpeakerVerifier? = createSharedVerifierIfEnabled()
+    @Synchronized
+    fun release() {
+        // The stop handler may time out while the collector is still unwinding.
+        // Let the flow's finally block release the provider after collection ends.
+        if (collectorActive) return
+        val instance = engineInstance
+        engineInstance = null
+        instance?.release()
+    }
 
-        if (engineInstance != null) {
-            try {
-                engineInstance!!.start()!!.collect {
+    fun start() = flow {
+        synchronized(this@WakeWordEngine) {
+            check(!collectorActive) { "Wake word engine is already collecting" }
+            collectorActive = true
+        }
+        var sharedVerifier: SherpaSpeakerVerifier? = null
+        try {
+            maybeEnableSpeakerVerificationFromExistingEnrollment()
+            val instance = get()
+            synchronized(this@WakeWordEngine) {
+                engineInstance = instance
+            }
+            synchronized(verificationRingBufferLock) {
+                verificationRingBuffer.clear()
+            }
+            enrollmentState = null
+            wakeTriggerHistory.clear()
+            sharedVerifier = createSharedVerifierIfEnabled()
+
+            if (instance != null) {
+                instance.start()!!.collect {
                     when (it) {
                         is WakeWordEngineProvider.AudioResult.WakeDetected -> {
                             val rawDetected = WakeWordEngineProvider.WakeWordDetection(
@@ -325,17 +333,27 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                         }
                     }
                 }
-            } finally {
+            }
+        } catch (cause: Throwable) {
+            if (cause !is CancellationException) {
+                Timber.w(cause, "WakeWordEngine completed with failure")
+            }
+            throw cause
+        } finally {
+            try {
                 sharedVerifier?.close()
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to close shared speaker verifier")
             }
-        }
-    }.onCompletion { cause ->
-        if (cause == null) {
-            runCatching {
+            try {
                 emit(WakeWordEngineProvider.AudioResult.EngineStatus("Stopped"))
+            } catch (_: Exception) {
+                // Cancellation can prevent the final status emission.
             }
-        } else if (cause !is CancellationException) {
-            Timber.w(cause, "WakeWordEngine completed with failure")
+            synchronized(this@WakeWordEngine) {
+                collectorActive = false
+            }
+            release()
         }
     }
 
