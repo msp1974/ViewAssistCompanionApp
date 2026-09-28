@@ -51,8 +51,8 @@ class HttpClientProvider(private val ignoreSslErrors: () -> Boolean = { false })
             exponentialDelay()
         }
         install(HttpTimeout) {
-            connectTimeoutMillis = 5000
-            socketTimeoutMillis = 5000
+            connectTimeoutMillis = 10000
+            socketTimeoutMillis = 10000
         }
         engine {
             sslManager = { connection ->
