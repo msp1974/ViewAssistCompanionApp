@@ -28,7 +28,7 @@ ktor = "3.5.1"
 ksp = "2.3.6"
 hilt = "2.59.2"
 faceDetection = "16.1.7"
-webrtcSdkAndroid = "144.7559.05"
+webrtcSdkAndroid = "150.7871.01"
 
 
 
