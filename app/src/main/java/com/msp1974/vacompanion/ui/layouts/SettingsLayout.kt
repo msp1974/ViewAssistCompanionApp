@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
@@ -131,6 +132,16 @@ fun SettingsLayout(
                             )
                         )
                     }
+
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Experimental WebRTC Audio",
+                            subtitle = if (vaUiState.webRtcAudioEnabled) "Enabled" else "Disabled (platform audio)",
+                            icon = Icons.Default.Mic,
+                            checked = vaUiState.webRtcAudioEnabled,
+                            onClick = { viewModel.toggleWebRtcAudio() }
+                        )
+                    )
 
                     menuOptions.add(
                         MenuOption(

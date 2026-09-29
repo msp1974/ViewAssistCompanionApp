@@ -13,7 +13,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
@@ -54,6 +56,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     var streamAudio: Boolean = false
 
+    private var handlerJob: Job? = null
     private var wakeWordJob: Job? = null
     var engine: WakeWordEngine? = null
     private var holdDetectionLevelJob: Job? = null
@@ -64,7 +67,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     suspend fun run() {
         val startTime = System.currentTimeMillis()
-        scope.launch (context = Dispatchers.Default) {
+        handlerJob = scope.launch (context = Dispatchers.Default) {
             start()
         }
         withTimeout(5000.milliseconds) {
@@ -102,23 +105,21 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
     }
 
     suspend fun stop() {
-        if (wakeWordJob != null && wakeWordJob!!.isActive) {
+        withContext(NonCancellable) {
+            if (handlerJob == null && wakeWordJob == null && engine == null) return@withContext
             state = WakeWordHandlerState.STOPPING
 
             try {
-                withTimeout(200.milliseconds) {
-                    withContext(Dispatchers.Default) {
-                        wakeWordJob?.cancel()
-                        while (wakeWordJob!!.isActive) {
-                            delay(10.milliseconds)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Timber.e("Error waiting for wake word detection to stop: ${e.message.toString()}")
+                // The collector owns MicrophoneInput. Wait for its finally block to close the
+                // old capture source before a replacement handler can start another one.
+                handlerJob?.cancel()
+                wakeWordJob?.cancel()
+                handlerJob?.join()
+                wakeWordJob?.cancelAndJoin()
             } finally {
                 engine?.release()
                 engine = null
+                handlerJob = null
                 wakeWordJob = null
                 state = WakeWordHandlerState.STOPPED
                 onDiagnostics(0f, 0f)

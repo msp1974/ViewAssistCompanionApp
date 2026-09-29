@@ -32,6 +32,8 @@ class MicrophoneInput (
     private val channelConfig: Int = VACAAudioFormat.CHANNELS
     private val audioFormat: Int = VACAAudioFormat.ENCODING
     private val config: APPConfig = deviceManager.config
+    private val audioBackend = config.experimentalAudioBackend
+    private val useWebRtcApmBackend = audioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
 
     companion object {
         // Resolved AGC/noise-suppression source, updated whenever a MicrophoneInput sets up its
@@ -92,7 +94,7 @@ class MicrophoneInput (
 
     val isRecording
        
-        get() = if (useWebRtcApmBackend()) {
+        get() = if (useWebRtcApmBackend) {
             webRtcSdkAudioProcessor?.isRunning() == true
         } else {
             audioRecord?.recordingState == AudioRecord.RECORDSTATE_RECORDING
@@ -103,7 +105,7 @@ class MicrophoneInput (
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
-        if (useWebRtcApmBackend()) {
+        if (useWebRtcApmBackend) {
             if (webRtcSdkAudioProcessor == null) {
                 webRtcSdkAudioProcessor = WebRtcSdkAudioProcessor(
                     context = config.context,
@@ -124,7 +126,7 @@ class MicrophoneInput (
                 Timber.d(
                     "Starting microphone source=%d backend=%s webrtc_sdk=true",
                     VACAAudioFormat.DEFAULT_AUDIO_SOURCE,
-                    config.experimentalAudioBackend
+                    audioBackend
                 )
                 webRtcSdkAudioProcessor?.start()
             } else {
@@ -207,7 +209,7 @@ class MicrophoneInput (
 
     fun readShort(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS, applyEnhancement: Boolean = true): ShortArray {
         val audioBuffer = ShortArray(bufferSize)
-        if (useWebRtcApmBackend()) {
+        if (useWebRtcApmBackend) {
             val sdkSamples = webRtcSdkAudioProcessor?.readSamples(bufferSize) ?: ShortArray(0)
             return if (sdkSamples.isNotEmpty()) sdkSamples else ShortArray(0)
         }
@@ -228,10 +230,6 @@ class MicrophoneInput (
             return frame
         }
         return ShortArray(0)
-    }
-
-    private fun useWebRtcApmBackend(): Boolean {
-        return config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
     }
 
     fun readFloat(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS): FloatArray {

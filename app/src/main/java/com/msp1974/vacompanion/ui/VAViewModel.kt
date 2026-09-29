@@ -128,6 +128,7 @@ data class State(
     var isDND: Boolean = false,
     var isBluetoothMicEnabled: Boolean = false,
     var isBluetoothMicConnected: Boolean = false,
+    var webRtcAudioEnabled: Boolean = false,
     var screenBlank: Boolean = true,
 
     var appInfo: Map<String, String> = mapOf(),
@@ -221,6 +222,7 @@ class VAViewModel @Inject constructor(
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
                 isBluetoothMicEnabled = config.bluetoothMicEnabled,
+                webRtcAudioEnabled = config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true),
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -299,6 +301,13 @@ class VAViewModel @Inject constructor(
                 _vacaState.update { currentState ->
                     currentState.copy(
                         speakerEnrollmentStatus = event.newValue as String
+                    )
+                }
+            }
+            "experimentalAudioBackend" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        webRtcAudioEnabled = (event.newValue as String).equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
                     )
                 }
             }
@@ -649,6 +658,11 @@ class VAViewModel @Inject constructor(
             currentState.copy(speakerEnrollmentStatus = "")
         }
         config.eventBroadcaster.notifyEvent(Event("speakerEnrollmentClear", "", ""))
+    }
+
+    fun toggleWebRtcAudio() {
+        val enabled = config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
+        config.setWebRtcAudioEnabled(!enabled)
     }
 
     private fun hasSpeakerEnrollment(): Boolean {

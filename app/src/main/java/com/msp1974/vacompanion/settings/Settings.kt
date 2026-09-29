@@ -163,8 +163,23 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var experimentalAudioBackend: String by Delegates.observable(DEFAULT_AUDIO_BACKEND) { property, oldValue, newValue ->
+    var experimentalAudioBackend: String by Delegates.observable(
+        if (sharedPrefs.contains(LOCAL_WEBRTC_AUDIO_ENABLED_KEY)) {
+            if (sharedPrefs.getBoolean(LOCAL_WEBRTC_AUDIO_ENABLED_KEY, true)) {
+                AUDIO_BACKEND_WEBRTC_APM
+            } else {
+                AUDIO_BACKEND_PLATFORM_DSP
+            }
+        } else {
+            DEFAULT_AUDIO_BACKEND
+        }
+    ) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
+    }
+
+    fun setWebRtcAudioEnabled(enabled: Boolean) {
+        sharedPrefs.edit { putBoolean(LOCAL_WEBRTC_AUDIO_ENABLED_KEY, enabled) }
+        experimentalAudioBackend = if (enabled) AUDIO_BACKEND_WEBRTC_APM else AUDIO_BACKEND_PLATFORM_DSP
     }
 
     var notificationVolume: Int by Delegates.observable(DEFAULT_NOTIFICATION_VOLUME) { property, oldValue, newValue ->
@@ -366,7 +381,6 @@ class APPConfig @Inject constructor(val context: Context) {
         set(value) = this.sharedPrefs.edit { putBoolean("bluetooth_mic_enabled", value) }
 
     fun processSettings(settingString: String) {
-        initSettings = true
         val settings = Json.parseToJsonElement(settingString).jsonObject
 
         settings["ha_port"]?.jsonPrimitive?.intOrNull?.let { homeAssistantHTTPPort = it }
@@ -421,10 +435,15 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["experimental_mww_smoothing_window"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwSmoothingWindow = it }
         settings["experimental_mww_consecutive_hits"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwConsecutiveHits = it }
         settings["experimental_mww_cooldown_ms"]?.jsonPrimitive?.intOrNull?.let { experimentalMwwCooldownMs = it }
-        settings["experimental_audio_backend"]?.jsonPrimitive?.contentOrNull?.let { experimentalAudioBackend = it }
-        settings["experimental_webrtc_apm"]?.jsonPrimitive?.booleanOrNull?.let { enabled ->
-            if (enabled) {
-                experimentalAudioBackend = AUDIO_BACKEND_WEBRTC_APM
+        // Use HA's value until this device has been changed from its Settings page.
+        if (!sharedPrefs.contains(LOCAL_WEBRTC_AUDIO_ENABLED_KEY)) {
+            val serverAudioBackend = settings["experimental_audio_backend"]?.jsonPrimitive?.contentOrNull
+            if (serverAudioBackend != null) {
+                experimentalAudioBackend = serverAudioBackend
+            } else {
+                settings["experimental_webrtc_apm"]?.jsonPrimitive?.booleanOrNull?.let { enabled ->
+                    experimentalAudioBackend = if (enabled) AUDIO_BACKEND_WEBRTC_APM else AUDIO_BACKEND_PLATFORM_DSP
+                }
             }
         }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
@@ -488,6 +507,7 @@ class APPConfig @Inject constructor(val context: Context) {
         const val AUDIO_BACKEND_PLATFORM_DSP = "platform_dsp"
         const val AUDIO_BACKEND_WEBRTC_APM = "webrtc_apm"
         const val DEFAULT_AUDIO_BACKEND = AUDIO_BACKEND_WEBRTC_APM
+        private const val LOCAL_WEBRTC_AUDIO_ENABLED_KEY = "local_webrtc_audio_enabled"
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }

@@ -198,8 +198,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
 
     @Synchronized
     fun release() {
-        // The stop handler may time out while the collector is still unwinding.
-        // Let the flow's finally block release the provider after collection ends.
+        // The flow's finally block owns provider release while collection is active.
         if (collectorActive) return
         val instance = engineInstance
         engineInstance = null

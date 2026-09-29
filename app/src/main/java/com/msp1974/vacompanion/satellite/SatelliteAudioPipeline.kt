@@ -111,6 +111,7 @@ abstract class SatelliteAudioPipeline(
         get() = pipelineStartMode == PipelineStartMode.CONTINUE_CONVERSATION
 
     fun run(startStage: PipelineStartMode = PipelineStartMode.WAKE_WORD_DETECTED) {
+        pipelineStartMode = startStage
         scope.launch {
             start(startStage)
         }
