@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
@@ -96,6 +97,55 @@ fun SettingsLayout(
                             )
                         )
                     }
+
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Voice Enrollment",
+                            subtitle = if (vaUiState.diagnosticInfo.hasSpeakerEnrollment) {
+                                "Enabled"
+                            } else {
+                                "Disabled"
+                            },
+                            icon = Icons.Default.Security,
+                            onClick = {}
+                        )
+                    )
+
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Enroll Speaker",
+                            subtitle = vaUiState.speakerEnrollmentStatus.ifBlank {
+                                "Capture voice profile for Sherpa speaker verification"
+                            },
+                            icon = Icons.Default.Security,
+                            onClick = { viewModel.startSpeakerEnrollment() }
+                        )
+                    )
+
+                    if (vaUiState.diagnosticInfo.hasSpeakerEnrollment) {
+                        menuOptions.add(
+                            MenuOption(
+                                title = "Remove Speaker Enrollment",
+                                subtitle = "Delete saved speaker embedding",
+                                icon = Icons.Default.DisabledByDefault,
+                                onClick = { viewModel.clearSpeakerEnrollment() }
+                            )
+                        )
+                    }
+
+                    menuOptions.add(
+                        MenuOption(
+                            title = "WebRTC Audio",
+                            subtitle = if (vaUiState.webRtcAudioEnabled) {
+                                "WebRTC microphone processing"
+                            } else {
+                                "Standard microphone processing"
+                            },
+                            icon = Icons.Default.Mic,
+                            checked = vaUiState.webRtcAudioEnabled,
+                            onClick = { viewModel.toggleWebRtcAudio() }
+                        )
+                    )
 
                     menuOptions.add(
                         MenuOption(
@@ -189,4 +239,3 @@ fun SettingsLayout(
         }
     }
 }
-

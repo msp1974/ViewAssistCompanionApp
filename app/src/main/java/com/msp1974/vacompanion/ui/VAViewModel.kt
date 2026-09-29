@@ -92,6 +92,7 @@ data class DiagnosticInfo(
     var vadDetection: Boolean = false,
     var motionDetected: Boolean = false,
     var hasCamera: Boolean = false,
+    var hasSpeakerEnrollment: Boolean = false,
     var lastMotionTimestamp: Long = 0,
     var motionInterval: Int = 10000,
     var motionDetectionMode: String = "motion",
@@ -127,6 +128,7 @@ data class State(
     var isDND: Boolean = false,
     var isBluetoothMicEnabled: Boolean = false,
     var isBluetoothMicConnected: Boolean = false,
+    var webRtcAudioEnabled: Boolean = false,
     var screenBlank: Boolean = true,
 
     var appInfo: Map<String, String> = mapOf(),
@@ -146,6 +148,7 @@ data class State(
     var cameraStreamActive: Boolean = false,
     var motionDetectionSensitivity: Int = 0,
     var motionDetectionMode: String = "motion",
+    var speakerEnrollmentStatus: String = "",
     var sensorState: SensorState = SensorState()
     )
 
@@ -219,12 +222,14 @@ class VAViewModel @Inject constructor(
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
                 isBluetoothMicEnabled = config.bluetoothMicEnabled,
+                webRtcAudioEnabled = config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true),
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
                     engine = config.wakeWordEngine,
                     muted = config.isMuted,
                     hasCamera = deviceInfo.hardware.hasFrontCamera,
+                    hasSpeakerEnrollment = hasSpeakerEnrollment(),
                     motionDetectionMode = config.motionDetectionMode
                 )
             )
@@ -280,6 +285,29 @@ class VAViewModel @Inject constructor(
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             engine = event.newValue as String
                         )
+                    )
+                }
+            }
+            "speakerVerificationEmbeddingPath", "speakerVerificationEnabled" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        diagnosticInfo = currentState.diagnosticInfo.copy(
+                            hasSpeakerEnrollment = hasSpeakerEnrollment()
+                        )
+                    )
+                }
+            }
+            "speakerEnrollmentStatus" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        speakerEnrollmentStatus = event.newValue as String
+                    )
+                }
+            }
+            "experimentalAudioBackend" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        webRtcAudioEnabled = (event.newValue as String).equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
                     )
                 }
             }
@@ -618,6 +646,34 @@ class VAViewModel @Inject constructor(
         }
     }
 
+    fun startSpeakerEnrollment() {
+        _vacaState.update { currentState ->
+            currentState.copy(speakerEnrollmentStatus = "Starting enrollment...")
+        }
+        config.eventBroadcaster.notifyEvent(Event("speakerEnrollmentStart", "", ""))
+    }
+
+    fun clearSpeakerEnrollment() {
+        _vacaState.update { currentState ->
+            currentState.copy(speakerEnrollmentStatus = "")
+        }
+        config.eventBroadcaster.notifyEvent(Event("speakerEnrollmentClear", "", ""))
+    }
+
+    fun toggleWebRtcAudio() {
+        val enabled = config.experimentalAudioBackend.equals(APPConfig.AUDIO_BACKEND_WEBRTC_APM, ignoreCase = true)
+        config.setWebRtcAudioEnabled(!enabled)
+    }
+
+    private fun hasSpeakerEnrollment(): Boolean {
+        val configuredPath = config.speakerVerificationEmbeddingPath.trim()
+        if (configuredPath.isNotEmpty() && java.io.File(configuredPath).exists()) {
+            return true
+        }
+        val defaultPath = java.io.File(config.context.filesDir, "speaker/enrolled_embedding.txt")
+        return defaultPath.exists()
+    }
+
     fun setShowMenu(show: Boolean) {
         _vacaState.update { currentState ->
             currentState.copy(
@@ -747,4 +803,3 @@ class VAViewModel @Inject constructor(
         }
     }
 }
-

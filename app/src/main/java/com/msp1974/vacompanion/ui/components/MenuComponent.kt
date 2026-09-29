@@ -31,6 +31,7 @@ import com.msp1974.vacompanion.ui.theme.AppTheme
  * @param title The main text to display.
  * @param subtitle Optional secondary text to display below the title.
  * @param icon Optional icon to display to the left of the text.
+ * @param checked When set, show the current value as a switch.
  * @param onClick Callback function to execute when the item is clicked.
  */
 data class MenuOption(
@@ -38,6 +39,7 @@ data class MenuOption(
     val subtitle: String? = null,
     val icon: ImageVector? = null,
     val iconColor: androidx.compose.ui.graphics.Color? = null,
+    val checked: Boolean? = null,
     val onClick: () -> Unit
 )
 
@@ -160,6 +162,12 @@ fun MenuListItem(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+            }
+            option.checked?.let { checked ->
+                Switch(
+                    checked = checked,
+                    onCheckedChange = { option.onClick() }
+                )
             }
         }
     }

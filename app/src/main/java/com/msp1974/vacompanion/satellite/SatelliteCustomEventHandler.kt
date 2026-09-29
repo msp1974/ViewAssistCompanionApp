@@ -9,13 +9,13 @@ import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.SoundControl
 import com.msp1974.vacompanion.utils.WebViewGestureDetector
 import com.msp1974.vacompanion.wyoming.WyomingInfoBuilder
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -35,35 +35,25 @@ class SatelliteCustomEventHandler(
     val volumeManager = VolumeManager(context)
     val config = deviceManager.config
 
-    private val serviceStarted = CompletableDeferred<Int>()
+    private var listenerJob: Job? = null
 
     fun run() {
-        scope.launch {
-            start()
+        if (listenerJob?.isActive == true) return
+        config.eventBroadcaster.addListener(this)
+        listenerJob = scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                awaitCancellation()
+            } finally {
+                config.eventBroadcaster.removeListener(this@SatelliteCustomEventHandler)
+            }
         }
         Timber.d("Satellite custom event handler started")
     }
 
-    suspend fun start() {
-        withContext(Dispatchers.Default) {
-            val job = launch {
-                try {
-                    config.eventBroadcaster.addListener(this@SatelliteCustomEventHandler)
-                    awaitCancellation()
-                } finally {
-                    config.eventBroadcaster.removeListener(this@SatelliteCustomEventHandler)
-                }
-            }
-
-
-            serviceStarted.await()
-            job.cancel()
-            Timber.d("Satellite custom event handler stopped")
-        }
-    }
-
-    fun stop() {
-        serviceStarted.complete(0)
+    suspend fun stop() {
+        listenerJob?.cancelAndJoin()
+        listenerJob = null
+        Timber.d("Satellite custom event handler stopped")
     }
 
     override fun onEventTriggered(event: Event) {
@@ -92,14 +82,25 @@ class SatelliteCustomEventHandler(
                     satellite.restartWakeWordDetection()
                 }
             }
+            "experimentalAudioBackend" -> {
+                scope.launch {
+                    satellite.restartAudioInput()
+                }
+            }
+            "speakerEnrollmentStart" -> {
+                scope.launch {
+                    satellite.startSpeakerEnrollment()
+                }
+            }
+            "speakerEnrollmentClear" -> {
+                scope.launch {
+                    satellite.clearSpeakerEnrollment()
+                }
+            }
             "recognitionError" -> {
                 val errorText = event.oldValue as? String ?: ""
                 if (errorText.isNotEmpty()) {
                     config.eventBroadcaster.notifyEvent(Event("showToastError", "", errorText))
-                }
-
-                if (config.wakeWordSound != "none") {
-                    satellite.playErrorSound()
                 }
                 //audioRoute = AudioRouteOption.DETECT
                 satellite.sendDiagnostics(0f, 0f)

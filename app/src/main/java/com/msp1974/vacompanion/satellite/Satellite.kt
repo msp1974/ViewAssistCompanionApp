@@ -39,6 +39,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
@@ -84,6 +86,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     private val eventHandler = SatelliteCustomEventHandler(context, deviceManager, scope, this)
 
     private var wakeWordHandler: SatelliteWakeWorkHandler? = null
+    private val wakeWordLifecycleMutex = Mutex()
     private var audioPipeline: SatelliteAudioPipeline? = null
     private var audioPipelineLastStateChange = System.currentTimeMillis()
 
@@ -161,9 +164,14 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
         scope.launch {
             warmUpAudioResources()
-            startSensorMonitor()
-            startWakeWordDetection()
-            eventHandler.run()
+            wakeWordLifecycleMutex.withLock {
+                val startupState = satelliteState.value
+                if (startupState == SatelliteState.STARTING || startupState == SatelliteState.RUNNING) {
+                    startSensorMonitor()
+                    eventHandler.run()
+                    startWakeWordDetection()
+                }
+            }
         }
 
         sendDeviceStates()
@@ -277,8 +285,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         volumeObserver?.unregister()
 
         scope.launch {
-            eventHandler.stop()
-            wakeWordHandler?.stop()
+            wakeWordLifecycleMutex.withLock {
+                eventHandler.stop()
+                stopWakeWordDetection()
+            }
             motionTask.stopCamera()
             motionTask.release()
         }.join()
@@ -376,9 +386,36 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
 
     suspend fun restartWakeWordDetection() {
-        stopWakeWordDetection()
-        warmUpAudioResources()
-        startWakeWordDetection()
+        wakeWordLifecycleMutex.withLock {
+            if (satelliteState.value != SatelliteState.RUNNING) return@withLock
+            stopWakeWordDetection()
+            if (satelliteState.value != SatelliteState.RUNNING) return@withLock
+            warmUpAudioResources()
+            if (satelliteState.value == SatelliteState.RUNNING) startWakeWordDetection()
+        }
+    }
+
+    suspend fun restartAudioInput() {
+        wakeWordLifecycleMutex.withLock {
+            if (satelliteState.value != SatelliteState.RUNNING) return@withLock
+            val currentPipeline = audioPipeline
+            if (currentPipeline != null &&
+                currentPipeline.pipelineStartMode != PipelineStartMode.START_STREAM_TTS &&
+                currentPipeline.pipelineStage.ordinal <= PipelineStage.VOICE_STARTED.ordinal
+            ) {
+                stopAudioPipeline()
+            }
+            stopWakeWordDetection()
+            if (satelliteState.value == SatelliteState.RUNNING) startWakeWordDetection()
+        }
+    }
+
+    fun startSpeakerEnrollment() {
+        wakeWordHandler?.startSpeakerEnrollment()
+    }
+
+    fun clearSpeakerEnrollment() {
+        wakeWordHandler?.clearSpeakerEnrollment()
     }
 
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
@@ -423,6 +460,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     suspend fun playWakeWordDetectionSound() {
         if (config.wakeWordSound != "none") {
             try {
+                // Guard against rare cases where wake-sound completion callbacks stall:
+                // allow mic uplink immediately, with initial ducking until this deadline.
+                val fallbackSilenceReleaseAt = System.currentTimeMillis() + 1200L
+                audioPipeline?.silenceAudioBefore = fallbackSilenceReleaseAt
+
                 val soundUri = currentWakeWordSoundUri ?: resolveWakeSoundUri(config.wakeWordSound)
 
                 if (soundUri != null) {
@@ -544,6 +586,12 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             }
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
+                if (reason != PipelineEndReason.END_OF_PIPELINE || !continueConversation) {
+                    if (audioPipeline === this) {
+                        audioPipeline = null
+                    }
+                }
+
                 if (reason == PipelineEndReason.END_OF_PIPELINE) {
                     Timber.i("Pipeline ended.  Restarting: $continueConversation")
                     if (continueConversation) {
@@ -553,11 +601,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                             }
                             startAudioPipeline(PipelineStartMode.CONTINUE_CONVERSATION)
                         }
-                    } else {
-                        audioPipeline = null
                     }
-                } else {
-                    audioPipeline = null
                 }
 
                 if (reason == PipelineEndReason.ERRORED && config.wakeWordSound != "none") {
