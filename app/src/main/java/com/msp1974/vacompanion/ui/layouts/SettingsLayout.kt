@@ -135,8 +135,12 @@ fun SettingsLayout(
 
                     menuOptions.add(
                         MenuOption(
-                            title = "Experimental WebRTC Audio",
-                            subtitle = if (vaUiState.webRtcAudioEnabled) "Enabled" else "Disabled (platform audio)",
+                            title = "WebRTC Audio",
+                            subtitle = if (vaUiState.webRtcAudioEnabled) {
+                                "WebRTC microphone processing"
+                            } else {
+                                "Standard microphone processing"
+                            },
                             icon = Icons.Default.Mic,
                             checked = vaUiState.webRtcAudioEnabled,
                             onClick = { viewModel.toggleWebRtcAudio() }
