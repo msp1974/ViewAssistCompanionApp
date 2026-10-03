@@ -525,6 +525,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     fun muteMicrophone(muted: Boolean) {
         runCatching {
             wakeWordHandler?.engine?.setMuted(muted)
+        }.onFailure { e ->
+            Timber.e(e, "Error setting wake word engine muted=$muted")
         }
     }
 

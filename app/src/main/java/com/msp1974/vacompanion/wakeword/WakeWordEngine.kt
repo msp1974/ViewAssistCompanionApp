@@ -19,6 +19,15 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
 
     private val config: APPConfig = deviceManager.config
 
+    // Latest mute state requested via setMuted(), tracked independently of engineInstance.
+    // engineInstance stays null for the ~1s the engine takes to start (ONNX/TFLite model
+    // loading) - without this, a setMuted() call landing in that window was a silent no-op,
+    // and since config.isMuted only re-broadcasts on an actual value *change*, an identical
+    // mute arriving later would never be redelivered, losing it until the app restarted
+    // (see issue #57). Seeded from config.isMuted so a fresh engine still starts correct.
+    @Volatile
+    private var requestedMuted: Boolean = config.isMuted
+
     private suspend fun get(): WakeWordEngineProvider? {
         Timber.i("Starting $engine wake word engine")
 
@@ -45,7 +54,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     activeStopWords=activeStopWords,
                     availableWakeWords=availableWakeWords,
                     availableStopWords=availableStopWords,
-                    muted = config.isMuted)
+                    muted = requestedMuted)
             }
             WakeWordEngineModel.OPENWAKEWORD -> {
                 return OpenWakeWordEngine(
@@ -55,7 +64,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
                     detectionCooldownMs = 1500L,
-                    muted = config.isMuted
+                    muted = requestedMuted
                 )
             }
             WakeWordEngineModel.OPENWAKEWORD_RT -> {
@@ -66,7 +75,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
                     detectionCooldownMs = 1500L,
-                    muted = config.isMuted
+                    muted = requestedMuted
                 )
             }
         }
@@ -99,16 +108,16 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
     }
 
     fun setMuted(value: Boolean) {
+        requestedMuted = value
         if (engineInstance != null) {
             engineInstance!!.setMuted(value)
+        } else {
+            Timber.w("Wake word engine not started yet - deferring mute=$value until it starts")
         }
     }
 
     fun isMuted(): Boolean {
-        if (engineInstance != null) {
-            return engineInstance!!.isMuted()
-        }
-        return false
+        return engineInstance?.isMuted() ?: requestedMuted
     }
 
     @Synchronized
@@ -121,6 +130,14 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
     fun start() = flow {
         engineInstance = get()
         if (engineInstance != null) {
+            // Re-apply here rather than trusting the muted= constructor argument above: a
+            // setMuted() call can land after get() captured requestedMuted into that argument
+            // but before engineInstance was assigned on the line above, and would otherwise be
+            // lost the same way (see issue #57).
+            if (engineInstance!!.isMuted() != requestedMuted) {
+                Timber.w("Applying mute=$requestedMuted deferred while wake word engine was starting")
+                engineInstance!!.setMuted(requestedMuted)
+            }
             try {
                 engineInstance!!.start()!!.collect {
                     when (it) {
