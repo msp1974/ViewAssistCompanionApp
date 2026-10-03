@@ -33,7 +33,7 @@ private const val SCO_RECONNECT_MIN_INTERVAL_MS = 3000L
 data class PreferredMicrophone(val device: AudioDeviceInfo?, val audioSource: Int)
 
 /**
- * Owns microphone device selection (USB > Bluetooth > built-in), the AudioDeviceCallback that
+ * Owns microphone device selection (USB > Bluetooth > Wired > built-in), the AudioDeviceCallback that
  * tracks mic connect/disconnect, permission handling, and Bluetooth SCO start/stop/recovery.
  *
  * The preferred mic is tracked as internal state ([preferredDevice]), not recomputed on demand:
@@ -108,15 +108,15 @@ class AudioInRouter(
 
     private val deviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) {
-            if (addedDevices.any { isUsbMic(it) || isBluetoothMic(it) }) {
-                Timber.d("USB or Bluetooth microphone connected, re-evaluating preferred device")
+            if (addedDevices.any { isUsbMic(it) || isBluetoothMic(it) || isWiredMic(it) }) {
+                Timber.d("USB, Bluetooth or wired microphone connected, re-evaluating preferred device")
                 scheduleEvaluate()
             }
         }
 
         override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) {
-            if (removedDevices.any { isUsbMic(it) || isBluetoothMic(it) }) {
-                Timber.d("USB or Bluetooth microphone disconnected, stopping SCO and re-evaluating preferred device")
+            if (removedDevices.any { isUsbMic(it) || isBluetoothMic(it) || isWiredMic(it) }) {
+                Timber.d("USB, Bluetooth or wired microphone disconnected, stopping SCO and re-evaluating preferred device")
                 stopSco()
                 scheduleEvaluate()
             }
@@ -159,6 +159,10 @@ class AudioInRouter(
         )
     }
 
+    private fun isWiredMic(device: AudioDeviceInfo): Boolean {
+        return device.isSource && device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET
+    }
+
     // Built-in/USB mic uses VOICE_RECOGNITION, except on AndroidThings devices where that source
     // isn't supported and MIC is used instead. Bluetooth needs VOICE_COMMUNICATION as the
     // AudioSource for SCO routing to engage correctly.
@@ -177,7 +181,7 @@ class AudioInRouter(
     private var preferredDevice: AudioDeviceInfo? = null
 
     // Live scan of what's actually connected right now, in priority order: USB > Bluetooth >
-    // built-in. This is a candidate to evaluate, not necessarily what's preferred yet.
+    // Wired > built-in. This is a candidate to evaluate, not necessarily what's preferred yet.
     private fun resolveBestAvailableDevice(): AudioDeviceInfo? {
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         for (device in devices) {
@@ -186,6 +190,7 @@ class AudioInRouter(
 
         return devices.firstOrNull { isUsbMic(it) }
             ?: devices.firstOrNull { deviceManager.config.bluetoothMicEnabled && isBluetoothMic(it) }
+            ?: devices.firstOrNull { isWiredMic(it) }
             ?: devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC }
     }
 
@@ -284,6 +289,7 @@ class AudioInRouter(
             device == null -> "Built-in Mic"
             isUsbMic(device) -> "${device.productName} (USB)"
             isBluetoothMic(device) -> device.productName.toString()
+            isWiredMic(device) -> "${device.productName} (Wired)"
             else -> "${device.productName} (Built-in Mic)"
         }
     }
