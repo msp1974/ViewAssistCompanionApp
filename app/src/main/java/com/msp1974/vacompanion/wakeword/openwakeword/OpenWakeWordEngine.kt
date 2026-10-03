@@ -198,7 +198,12 @@ class OpenWakeWordEngine(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: RuntimeException) {
+                // Rethrow after logging rather than swallowing - letting the flow complete
+                // normally here is indistinguishable from an intentional stop, which left
+                // wake-word capture permanently dead with nothing to notice or restart it
+                // (see issue #65). SatelliteWakeWorkHandler now catches this to trigger recovery.
                 Timber.e("Runtime exception thrown by wake word engine: $e")
+                throw e
             } finally {
                 microphoneInput.close()
                 emit(AudioResult.EngineStatus("Stopped"))

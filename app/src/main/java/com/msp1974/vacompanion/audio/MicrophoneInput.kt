@@ -69,6 +69,11 @@ class MicrophoneInput (
         private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs
     }
 
+    // Guards reads/writes of audioRecord: recreateAudioRecord() runs on the main thread (via
+    // AudioInRouter's device/route-change callback) while readShort() runs on the wake-word
+    // engine's background coroutine - without this, readShort() could observe audioRecord as
+    // null mid-swap and throw, permanently killing wake-word capture (see issue #65).
+    private val audioRecordLock = Any()
     private var audioRecord: AudioRecord? = null
 
     private var ns: NoiseSuppressor? = null
@@ -96,9 +101,11 @@ class MicrophoneInput (
 
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
-        if (audioRecord == null) {
-            micController.start()
-            audioRecord = createAudioRecord()
+        synchronized(audioRecordLock) {
+            if (audioRecord == null) {
+                micController.start()
+                audioRecord = createAudioRecord()
+            }
         }
     }
 
@@ -144,19 +151,19 @@ class MicrophoneInput (
     // preferred-mic-changed callback, both after RECORD_AUDIO was granted.
     @SuppressLint("MissingPermission")
     private fun recreateAudioRecord() {
-        val wasRecording = isRecording
+        synchronized(audioRecordLock) {
+            agc?.release()
+            agc = null
+            ns?.release()
+            ns = null
 
-        agc?.release()
-        agc = null
-        ns?.release()
-        ns = null
-
-        audioRecord?.let {
-            if (isRecording) it.stop()
-            it.release()
+            audioRecord?.let {
+                if (isRecording) it.stop()
+                it.release()
+            }
+            audioRecord = null
+            audioRecord = createAudioRecord()
         }
-        audioRecord = null
-        audioRecord = createAudioRecord()
     }
 
     fun readBytes(): ByteBuffer {
@@ -170,7 +177,11 @@ class MicrophoneInput (
 
     fun readShort(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS, applyEnhancement: Boolean = true): ShortArray {
         val audioBuffer = ShortArray(bufferSize)
-        val audioRecord = this.audioRecord ?: error("Microphone not started")
+        // Snapshot the current record under the lock rather than null-checking then reading -
+        // otherwise a concurrent recreateAudioRecord() swap could be observed as null right
+        // after the check, throwing and permanently ending the caller's read loop. A mid-swap
+        // read now just yields no audio for this frame, same as any other short read.
+        val audioRecord = synchronized(audioRecordLock) { this.audioRecord } ?: return ShortArray(0)
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
             totalFramesRead += readCount
@@ -271,18 +282,20 @@ class MicrophoneInput (
         micController.stop()
         audioEnhancer.release()
 
-        agc?.release()
-        agc = null
+        synchronized(audioRecordLock) {
+            agc?.release()
+            agc = null
 
-        ns?.release()
-        ns = null
+            ns?.release()
+            ns = null
 
-        audioRecord?.let {
-            if (isRecording) {
-                it.stop()
+            audioRecord?.let {
+                if (isRecording) {
+                    it.stop()
+                }
+                it.release()
+                audioRecord = null
             }
-            it.release()
-            audioRecord = null
         }
     }
 }

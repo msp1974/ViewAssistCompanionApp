@@ -15,6 +15,7 @@ import com.msp1974.vacompanion.device.VolumeObserver
 import com.msp1974.vacompanion.ui.DiagnosticInfo
 import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
 import com.msp1974.vacompanion.wakeword.AvailableWakeWords
 import com.msp1974.vacompanion.utils.EventListener
@@ -83,9 +84,16 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     private val eventHandler = SatelliteCustomEventHandler(context, deviceManager, scope, this)
 
+    private val firebase = FirebaseManager.getInstance(context)
+
     private var wakeWordHandler: SatelliteWakeWorkHandler? = null
     private var audioPipeline: SatelliteAudioPipeline? = null
     private var audioPipelineLastStateChange = System.currentTimeMillis()
+
+    // Consecutive automatic restarts attempted after the wake word engine failed on its own
+    // (see onEngineFailure below). Reset once the engine reports RUNNING again, so a transient
+    // fault gets a fresh budget next time rather than exhausting it permanently.
+    private var wakeWordEngineRestartAttempts = 0
 
     private var soundEffectFinishTime: Long = 0
     private var currentWakeWordSoundUri: android.net.Uri? = null
@@ -325,6 +333,13 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             wakeWordHandler = object : SatelliteWakeWorkHandler(context, deviceManager, scope) {
                 override fun onStateChange(state: WakeWordHandlerState) {
                     Timber.d("Wake word handler state: $state")
+                    if (state == WakeWordHandlerState.RUNNING) {
+                        wakeWordEngineRestartAttempts = 0
+                    }
+                }
+
+                override fun onEngineFailure(error: Throwable) {
+                    scope.launch { handleWakeWordEngineFailure(error) }
                 }
 
                 override suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio, streamAudio: Boolean) {
@@ -379,6 +394,27 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         stopWakeWordDetection()
         warmUpAudioResources()
         startWakeWordDetection()
+    }
+
+    // Reacts to SatelliteWakeWorkHandler.onEngineFailure - the wake word engine's audio/
+    // detection loop ending on its own rather than via a deliberate stop(). Previously nothing
+    // restarted it in this case, leaving wake-word capture permanently dead until the app was
+    // restarted (see issue #65). Bounded with a short backoff so a persistently broken engine
+    // (e.g. a corrupt custom model) doesn't spin in a tight restart loop.
+    private suspend fun handleWakeWordEngineFailure(error: Throwable) {
+        if (wakeWordEngineRestartAttempts >= MAX_WAKE_WORD_ENGINE_RESTART_ATTEMPTS) {
+            Timber.e("Wake word engine failed $wakeWordEngineRestartAttempts times in a row, giving up automatic restart: ${error.message}")
+            firebase.logEvent(FirebaseManager.WAKE_WORD_ENGINE_RESTART_GIVEN_UP, mapOf("engine" to config.wakeWordEngine))
+            return
+        }
+        wakeWordEngineRestartAttempts++
+        Timber.w("Restarting wake word engine after unexpected failure (attempt $wakeWordEngineRestartAttempts/$MAX_WAKE_WORD_ENGINE_RESTART_ATTEMPTS): ${error.message}")
+        firebase.logEvent(
+            FirebaseManager.WAKE_WORD_ENGINE_RESTART,
+            mapOf("engine" to config.wakeWordEngine, "attempt" to wakeWordEngineRestartAttempts.toString())
+        )
+        delay(WAKE_WORD_ENGINE_RESTART_DELAY_MS)
+        restartWakeWordDetection()
     }
 
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
@@ -848,5 +884,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         // buffering latency, so the tail of the sound can't still be sitting in a buffer that
         // reads out just after suppression would otherwise have lifted.
         private const val NOTIFICATION_SOUND_TRAILING_MARGIN_MS = 200L
+
+        // Bounds on automatic recovery after the wake word engine fails on its own - see
+        // handleWakeWordEngineFailure().
+        private const val MAX_WAKE_WORD_ENGINE_RESTART_ATTEMPTS = 3
+        private const val WAKE_WORD_ENGINE_RESTART_DELAY_MS = 2000L
     }
 }

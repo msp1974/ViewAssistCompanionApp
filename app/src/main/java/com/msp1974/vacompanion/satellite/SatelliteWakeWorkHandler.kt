@@ -9,6 +9,7 @@ import com.msp1974.vacompanion.utils.Permissions
 import com.msp1974.vacompanion.wakeword.WakeWordEngine
 import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,7 +17,6 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.cancellable
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 import kotlin.collections.set
@@ -37,9 +37,22 @@ interface IWakeWordHandler {
     suspend fun onStopWordDetected(detection: WakeWordEngineProvider.WakeWordDetection)
 
     fun onDiagnostics(level: Float, lastDetectionLevel: Float)
+
+    // Called when the wake word engine's audio/detection loop ends on its own (an uncancelled
+    // exception), as opposed to being stopped deliberately via stop(). The caller decides
+    // whether/how to recover (see issue #65 - previously nothing did, leaving capture dead).
+    fun onEngineFailure(error: Throwable)
 }
 
 abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager: DeviceManager, val scope: CoroutineScope): IWakeWordHandler {
+
+    companion object {
+        // Safety-net ceiling for stop() to actually observe the old engine's native teardown
+        // (AudioRecord/detector/JNI microfrontend release) completing before returning. Should
+        // comfortably cover normal teardown time; if it's hit, that's a real problem worth
+        // surfacing (see stop()), not silently ignoring.
+        private const val STOP_TIMEOUT_MS = 1000L
+    }
 
     val config = deviceManager.config
     val deviceInfo = deviceManager.deviceInfo
@@ -53,6 +66,9 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     var streamAudio: Boolean = false
 
+    // The coroutine running start()/awaitCancellation() - the handler's overall lifetime.
+    private var handlerJob: Job? = null
+    // The coroutine collecting the engine's audio/detection flow, launched from within handlerJob.
     private var wakeWordJob: Job? = null
     var engine: WakeWordEngine? = null
     private var holdDetectionLevelJob: Job? = null
@@ -63,7 +79,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     suspend fun run() {
         val startTime = System.currentTimeMillis()
-        scope.launch (context = Dispatchers.Default) {
+        handlerJob = scope.launch (context = Dispatchers.Default) {
             start()
         }
         withTimeout(5000.milliseconds) {
@@ -101,24 +117,35 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
     }
 
     suspend fun stop() {
-        if (wakeWordJob != null && wakeWordJob!!.isActive) {
+        if (handlerJob != null && handlerJob!!.isActive) {
             state = WakeWordHandlerState.STOPPING
 
             try {
-                withTimeout(200.milliseconds) {
-                    withContext(Dispatchers.Default) {
-                        wakeWordJob?.cancel()
-                        while (wakeWordJob!!.isActive) {
-                            delay(10.milliseconds)
-                        }
-                    }
+                withTimeout(STOP_TIMEOUT_MS.milliseconds) {
+                    // Signal both jobs to cancel, then join() - join() suspends until each job
+                    // has actually reached a terminal state, i.e. until its finally blocks
+                    // (MicrophoneInput/detector close, WakeWordEngine.release()) have run.
+                    // isActive is NOT a substitute for this: it flips false the instant cancel()
+                    // is called (job enters the Cancelling state), long before cleanup finishes -
+                    // polling on it let a new engine start while the old one's native audio
+                    // resources were still being torn down on another thread, causing crashes.
+                    wakeWordJob?.cancel()
+                    handlerJob?.cancel()
+                    wakeWordJob?.join()
+                    handlerJob?.join()
                 }
             } catch (e: Exception) {
-                Timber.e("Error waiting for wake word detection to stop: ${e.message.toString()}")
+                // The old engine's native teardown (AudioRecord/detector/JNI microfrontend) may
+                // still be in flight - starting a new engine now risks the same race this timeout
+                // exists to prevent, so this is flagged loudly rather than silently swallowed.
+                Timber.e("Wake word engine did not stop within ${STOP_TIMEOUT_MS}ms - old engine resources may still be releasing: ${e.message}")
+                firebase.logException(IllegalStateException("Wake word engine stop timed out (engine=${config.wakeWordEngine})", e))
+                firebase.logEvent(FirebaseManager.WAKE_WORD_ENGINE_STOP_TIMEOUT, mapOf("engine" to config.wakeWordEngine))
             } finally {
                 engine?.release()
                 engine = null
                 wakeWordJob = null
+                handlerJob = null
                 state = WakeWordHandlerState.STOPPED
                 onDiagnostics(0f, 0f)
                 Timber.d("Wake word detection stopped")
@@ -135,63 +162,77 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
         //sendDiagnostics(0f, 0f)
         val flow = engine!!.start()
-        wakeWordJob = scope.launch { flow.cancellable().collect {
-            when (it) {
-                is WakeWordEngineProvider.AudioResult.WakeDetected -> {
-                    holdLastDetectionLevel(it.detection.score)
-                    if (it.detection.score >= config.wakeWordThreshold) {
-                        val now = System.currentTimeMillis()
-                        val lastDetection = detectionCooldowns[it.detection.wakeWordId]
+        wakeWordJob = scope.launch {
+            try {
+                flow.cancellable().collect {
+                    when (it) {
+                        is WakeWordEngineProvider.AudioResult.WakeDetected -> {
+                            holdLastDetectionLevel(it.detection.score)
+                            if (it.detection.score >= config.wakeWordThreshold) {
+                                val now = System.currentTimeMillis()
+                                val lastDetection = detectionCooldowns[it.detection.wakeWordId]
 
-                        if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
-                            Timber.i("Wake word detected: ${it.detection.wakeWord}")
-                            wakeWordDetected(it.detection, engine!!.isStreaming())
-                            detectionCooldowns[it.detection.wakeWordId] = now
-                        }
-                    }
-                }
-
-                is WakeWordEngineProvider.AudioResult.StopDetected -> {
-                    if (it.detection.detected) {
-                        Timber.d("Stop word detected: score: ${it.detection.score}")
-                        if (it.detection.score > 0.5) {
-                            val now = System.currentTimeMillis()
-                            val lastDetection = detectionCooldowns[it.detection.wakeWordId]
-
-                            if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
-                                onStopWordDetected(it.detection)
-                                BroadcastSender.sendBroadcast(
-                                    context,
-                                    BroadcastSender.STOP_WORD_DETECTED
-                                )
-                                detectionCooldowns[it.detection.wakeWordId] = now
+                                if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
+                                    Timber.i("Wake word detected: ${it.detection.wakeWord}")
+                                    wakeWordDetected(it.detection, engine!!.isStreaming())
+                                    detectionCooldowns[it.detection.wakeWordId] = now
+                                }
                             }
                         }
-                    }
-                }
 
-                is WakeWordEngineProvider.AudioResult.Audio -> {
-                    if (it.audio.isNotEmpty()) {
-                        onAudio(it, engine!!.isStreaming())
-                    }
-                }
+                        is WakeWordEngineProvider.AudioResult.StopDetected -> {
+                            if (it.detection.score > 0.6) {
+                                Timber.d("Stop word detected: score: ${it.detection.score}")
+                                val now = System.currentTimeMillis()
+                                val lastDetection = detectionCooldowns[it.detection.wakeWordId]
 
-                is WakeWordEngineProvider.AudioResult.AudioLevel -> {
-                    if (config.diagnosticsEnabled) {
-                        onDiagnostics(it.level, lastWakeWordDetectionScore)
-                    }
-                }
-                is WakeWordEngineProvider.AudioResult.EngineStatus -> {
-                    Timber.i("Engine status: ${it.status}")
-                    if (it.status == "Started") {
-                        state = WakeWordHandlerState.RUNNING
-                    } else if (it.status == "Stopped") {
-                        state = WakeWordHandlerState.STOPPED
-                    }
-                }
+                                if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
+                                    onStopWordDetected(it.detection)
+                                    BroadcastSender.sendBroadcast(
+                                        context,
+                                        BroadcastSender.STOP_WORD_DETECTED
+                                    )
+                                    detectionCooldowns[it.detection.wakeWordId] = now
+                                }
+                            }
+                        }
 
+                        is WakeWordEngineProvider.AudioResult.Audio -> {
+                            if (it.audio.isNotEmpty()) {
+                                onAudio(it, engine!!.isStreaming())
+                            }
+                        }
+
+                        is WakeWordEngineProvider.AudioResult.AudioLevel -> {
+                            if (config.diagnosticsEnabled) {
+                                onDiagnostics(it.level, lastWakeWordDetectionScore)
+                            }
+                        }
+                        is WakeWordEngineProvider.AudioResult.EngineStatus -> {
+                            Timber.i("Engine status: ${it.status}")
+                            if (it.status == "Started") {
+                                state = WakeWordHandlerState.RUNNING
+                            } else if (it.status == "Stopped") {
+                                state = WakeWordHandlerState.STOPPED
+                            }
+                        }
+
+                    }
+                }
+            } catch (e: CancellationException) {
+                // Expected - stop() cancelled this job deliberately.
+                throw e
+            } catch (e: Exception) {
+                // The engine's own loop ended on an uncaught exception rather than being
+                // stopped deliberately - without this, capture died silently and permanently
+                // until the app was restarted (see issue #65).
+                Timber.e(e, "Wake word engine terminated unexpectedly")
+                firebase.logException(e)
+                state = WakeWordHandlerState.STOPPED
+                onDiagnostics(0f, 0f)
+                onEngineFailure(e)
             }
-        }}
+        }
     }
 
     fun terminateWakeWordDetection() {

@@ -12,6 +12,7 @@ import com.msp1974.vacompanion.audio.VACAAudioFormat
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -125,6 +126,14 @@ open class MicroWakeWordEngine (
                     // cancellation have a chance to occur
                     yield()
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: RuntimeException) {
+                // Rethrow after logging rather than letting it propagate unannounced -
+                // SatelliteWakeWorkHandler now catches this to log it and trigger recovery
+                // (see issue #65).
+                Timber.e("Runtime exception thrown by wake word engine: $e")
+                throw e
             } finally {
                 Timber.i("Stopping MicroWakeWordEngine")
                 microphoneInput.close()

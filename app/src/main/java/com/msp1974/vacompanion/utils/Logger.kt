@@ -91,6 +91,9 @@ class FirebaseManager private constructor(context: Context? = null) {
 
         const val DIAGNOSTIC_POPUP_SHOWN = "diagnostic_popup_shown"
         const val WAKE_WORD_DETECTED = "wake_word_detected"
+        const val WAKE_WORD_ENGINE_STOP_TIMEOUT = "wake_word_engine_stop_timeout"
+        const val WAKE_WORD_ENGINE_RESTART = "wake_word_engine_restart"
+        const val WAKE_WORD_ENGINE_RESTART_GIVEN_UP = "wake_word_engine_restart_given_up"
         const val SATELLITE_ALREADY_RUNNING_MAIN = "satellite_already_running_main"
         const val RENDER_PROCESS_KILLED = "render_process_killed"
         const val RENDER_PROCESS_CRASHED = "render_process_crashed"
