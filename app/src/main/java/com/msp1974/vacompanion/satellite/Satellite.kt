@@ -666,7 +666,14 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     val payload = Json.parseToJsonElement(payloadStr).jsonObject
                     val url = payload["url"]?.jsonPrimitive?.contentOrNull ?: ""
                     val volume = payload["volume"]?.jsonPrimitive?.floatOrNull ?: 90f
-                    mediaManager.musicPlayer.play(url, volume)
+                    val announce = payload["announce"]?.jsonPrimitive?.booleanOrNull ?: false
+                    Timber.d("play-media received: announce=$announce, url=$url")
+                    if (announce) {
+                        // Separate player so the music source, position and play state are kept
+                        mediaManager.announcementPlayer.play(url)
+                    } else {
+                        mediaManager.musicPlayer.play(url, volume)
+                    }
                 }
                 "play" -> mediaManager.musicPlayer.resume()
                 "pause" -> mediaManager.musicPlayer.pause()
