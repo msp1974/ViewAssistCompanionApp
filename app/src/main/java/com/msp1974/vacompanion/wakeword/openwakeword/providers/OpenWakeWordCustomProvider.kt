@@ -15,14 +15,10 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import timber.log.Timber
 import java.io.File
 import java.nio.ByteBuffer
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.forEachDirectoryEntry
-import kotlin.io.path.name
 
 class OpenWakeWordCustomProvider(
     val context: Context,
-    val path: Path,
+    val path: File,
     private val extension: String = OpenWakeWordAssetProvider.ONNX_EXT,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
 ) : WakeWordProvider {
@@ -31,7 +27,7 @@ class OpenWakeWordCustomProvider(
     override suspend fun get(): List<WakeWordWithId> = withContext(dispatcher) {
         if (!path.exists()) return@withContext emptyList()
         val wakeWords = buildList {
-            path.forEachDirectoryEntry("*$extension") { file ->
+            path.listFiles { file -> file.name.endsWith(extension) }?.forEach { file ->
                 val model = file.name
                 runCatching {
                     val id = model.substring(0, model.lastIndexOf(extension))
@@ -51,7 +47,7 @@ class OpenWakeWordCustomProvider(
     }
 
     private suspend fun loadModel(model: String): ByteBuffer = withContext(dispatcher) {
-        val file = File(path.toAbsolutePath().toString() , model)
+        val file = File(path, model)
         val buffer = context.contentResolver.getModelBufferOrNull(Uri.fromFile(file))
             ?: error("Could not load model $model")
         return@withContext buffer

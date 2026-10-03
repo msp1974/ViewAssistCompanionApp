@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.http.SslError
+import android.os.Build
+import androidx.annotation.RequiresApi
 import android.os.Handler
 import android.os.Looper
 import android.webkit.RenderProcessGoneDetail
@@ -42,6 +44,7 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
         private const val ERROR_URL = "file:///android_asset/web/error.html"
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     override fun onRenderProcessGone(
         view: WebView,
         detail: RenderProcessGoneDetail?

@@ -51,15 +51,17 @@ class VACAApplication: Application(), CameraXConfig.Provider {
         activityManager = ActivityManager(this)
 
         // Create the notification channel (required for Android 8.0 and above)
-        val channel = NotificationChannel(
-            "VACAForegroundServiceChannelId",
-            "VACA Foreground Service Channel",
-            NotificationManager.IMPORTANCE_LOW
-        )
-        // service provided by Android Operating system to show notification outside of our app
-        val notificationManager =
-            getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.createNotificationChannel(channel)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "VACAForegroundServiceChannelId",
+                "VACA Foreground Service Channel",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            // service provided by Android Operating system to show notification outside of our app
+            val notificationManager =
+                getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
 
     }
 

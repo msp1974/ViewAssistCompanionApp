@@ -8,6 +8,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import android.os.Build
 import android.os.IBinder
 import androidx.media3.common.util.UnstableApi
 import timber.log.Timber
@@ -19,6 +20,7 @@ class VoicePlayerService : Service() {
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: AudioTrack? = null
     private var focusRequest: AudioFocusRequest? = null
+    private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
     var hasAudioFocus = false
 
     var isReady = false
@@ -124,35 +126,41 @@ class VoicePlayerService : Service() {
 
     @SuppressLint("UnsafeOptInUsageError")
     fun requestAudioFocus(): Boolean {
-        @SuppressLint("UnsafeOptInUsageError")
-        focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
-            .setAudioAttributes(audioAttributes)
-            .setAcceptsDelayedFocusGain(true)
-            .setWillPauseWhenDucked(false)
-            .setOnAudioFocusChangeListener { focusChange ->
-                Timber.d("Voice onAudioFocusChanged: $focusChange")
-                when (focusChange) {
-                    AudioManager.AUDIOFOCUS_GAIN -> {
-                        hasAudioFocus = true
-                    }
-
-                    AudioManager.AUDIOFOCUS_LOSS -> {
-                        hasAudioFocus = false
-                    }
-
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                        hasAudioFocus = false
-                    }
-
-                    AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
-                        hasAudioFocus = false
-                        mediaPlayer?.setVolume(0.2f)
-                    }
+        audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+            Timber.d("Voice onAudioFocusChanged: $focusChange")
+            when (focusChange) {
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    hasAudioFocus = true
+                }
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    hasAudioFocus = false
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    hasAudioFocus = false
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    hasAudioFocus = false
+                    mediaPlayer?.setVolume(0.2f)
                 }
             }
-            .build()
+        }
 
-        val result = audioManager.requestAudioFocus(focusRequest!!)
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                .setAudioAttributes(audioAttributes)
+                .setAcceptsDelayedFocusGain(true)
+                .setWillPauseWhenDucked(false)
+                .setOnAudioFocusChangeListener(audioFocusChangeListener!!)
+                .build()
+            audioManager.requestAudioFocus(focusRequest!!)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                audioFocusChangeListener,
+                AudioManager.STREAM_NOTIFICATION,
+                AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK
+            )
+        }
 
         hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
         Timber.d("Voice requestAudioFocus: $result")
@@ -161,7 +169,14 @@ class VoicePlayerService : Service() {
 
     @SuppressLint("UnsafeOptInUsageError")
     fun abandonAudioFocus() {
-        if (hasAudioFocus) audioManager.abandonAudioFocusRequest(focusRequest!!)
+        if (hasAudioFocus) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioManager.abandonAudioFocus(audioFocusChangeListener)
+            }
+        }
         hasAudioFocus = false
         Timber.d("Voice abandonAudioFocus")
     }
