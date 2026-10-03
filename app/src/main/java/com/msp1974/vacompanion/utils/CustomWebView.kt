@@ -49,6 +49,7 @@ class CustomWebView @JvmOverloads constructor(
     private val gestureDetector = WebViewGestureDetector()
     private val log = Logger()
     private var requestDisallow = false
+    private var gestureCancelSent = false
     private val androidInterface: Any = object : Any() {
         @JavascriptInterface
         fun requestScrollEvents() {
@@ -231,8 +232,22 @@ class CustomWebView @JvmOverloads constructor(
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> requestDisallow = false
         }
 
-        //Prevent scrolling if more than 1 finger is used
-        if (event.pointerCount > 1 || gestureHandled) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            gestureCancelSent = false
+        }
+
+        // Once a native gesture (L-gesture / 2-finger bottom swipe) has been recognised, stop
+        // feeding the page and send it a single ACTION_CANCEL so it does not keep a dangling
+        // touch/pinch in progress. Multi-pointer events are otherwise passed through untouched
+        // (incl. ACTION_POINTER_DOWN/UP) so pages can use pinch-zoom and other multi-touch.
+        if (gestureHandled) {
+            if (!gestureCancelSent) {
+                gestureCancelSent = true
+                val cancel = MotionEvent.obtain(event)
+                cancel.action = MotionEvent.ACTION_CANCEL
+                super.onTouchEvent(cancel)
+                cancel.recycle()
+            }
             return true
         }
 
