@@ -189,10 +189,11 @@ class MusicPlayerService : Service() {
     }
 
     fun setVolume(volume: Float) {
-        if (!ducked) {
-            musicVolume = volume / 100f
-            setPlayerVolume(musicVolume)
-        }
+        // Always keep the requested volume so un-ducking restores the latest value rather than
+        // the one from before the duck (e.g. a volume restore sent while speech is playing)
+        musicVolume = volume / 100f
+        Timber.d("Music player: Set volume to $musicVolume (ducked=$ducked)")
+        setPlayerVolume(if (ducked) getDuckingVolume() else musicVolume)
     }
 
     /** The only place that should assign [ExoPlayer.volume] - keeps [currentOutputVolume] in sync. */
@@ -253,13 +254,17 @@ class MusicPlayerService : Service() {
     }
 
     private fun unDuckVolume(animate: Boolean = true) {
-        if (currentOutputVolume == musicVolume) return
+        if (currentOutputVolume == musicVolume) {
+            ducked = false
+            return
+        }
+        // Clear before animating so the animation isn't mistaken for a new duck
+        ducked = false
         if (animate) {
             animateUnDuckingVolume()
         } else {
             setPlayerVolume(musicVolume)
         }
-        ducked = false
     }
 
     private fun animateUnDuckingVolume (
@@ -273,6 +278,7 @@ class MusicPlayerService : Service() {
         scope.launch {
             if (increment > 0) {
                 for (i in 1..steps) {
+                    if (ducked) return@launch
                     val vol = currentVolume + (i * increment)
                     Timber.d("Music player: setting volume to $vol")
                     withContext(Dispatchers.Main) {
@@ -281,8 +287,10 @@ class MusicPlayerService : Service() {
                     delay(delay.milliseconds)
                 }
             }
-            delay(2000.milliseconds)
-            ducked = false
+            // Land on the current target in case the volume was changed during the animation
+            withContext(Dispatchers.Main) {
+                if (!ducked) setPlayerVolume(musicVolume)
+            }
         }
     }
 

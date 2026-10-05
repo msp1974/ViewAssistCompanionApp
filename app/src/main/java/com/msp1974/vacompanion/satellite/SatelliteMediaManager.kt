@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import com.msp1974.vacompanion.players.AlarmService
+import com.msp1974.vacompanion.players.AnnouncementPlayer
 import com.msp1974.vacompanion.players.SoundEffectsPlayer
 import com.msp1974.vacompanion.players.MusicPlayerService
 import com.msp1974.vacompanion.players.VoicePlayerService
@@ -16,12 +17,14 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
     val voicePlayer = VoiceManager(context)
     val musicPlayer = MusicManager(context)
     val alarmPlayer = AlarmManager(context)
+    val announcementPlayer = AnnouncementPlayer(context)
 
     suspend fun stopAll() {
         Timber.d("Stopping media manager")
         soundPlayer.stop()
         voicePlayer.stop()
         musicPlayer.stop()
+        announcementPlayer.stop()
         alarmPlayer.stop()
     }
 
