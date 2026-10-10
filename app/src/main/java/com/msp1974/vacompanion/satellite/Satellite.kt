@@ -461,7 +461,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 val soundUri = currentWakeWordSoundUri ?: resolveWakeSoundUri(config.wakeWordSound)
 
                 if (soundUri != null) {
-                    // Gate the mic before the chime starts, not after - most devices have no
+                    // Gate the mic before the chime starts, not after - many devices have no
                     // hardware AEC, so without this the chime's acoustic leak-back would pollute
                     // the AGC's envelope and get forwarded to HA. The capped duration is a safety
                     // net in case ENDED is never observed below.
@@ -481,14 +481,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     // Now that actual playback end is known, shrink the gate down to just the
                     // acoustic/capture-latency margin instead of the full safety-net duration.
                     MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_TRAILING_MARGIN_MS)
-                    audioPipeline?.silenceAudioBefore = System.currentTimeMillis() + NOTIFICATION_SOUND_TRAILING_MARGIN_MS
                     Timber.i("Ended wake word sound")
                 }
             } catch (e: Exception) {
                 Timber.e("Error playing wake word sound: ${e.message.toString()}")
             }
-        } else {
-            audioPipeline?.silenceAudioBefore = 1L
         }
     }
 

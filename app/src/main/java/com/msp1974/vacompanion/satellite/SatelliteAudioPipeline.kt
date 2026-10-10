@@ -1,7 +1,6 @@
 package com.msp1974.vacompanion.satellite
 
 import android.content.Context
-import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.satellite.Satellite.Companion.isoNow
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
@@ -13,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -105,8 +105,6 @@ abstract class SatelliteAudioPipeline(
             }
         }
 
-    var silenceAudioBefore: Long = 0L
-
     private val isContinuation
         get() = pipelineStartMode == PipelineStartMode.CONTINUE_CONVERSATION
 
@@ -139,7 +137,7 @@ abstract class SatelliteAudioPipeline(
 
         return when(pipelineStage) {
             PipelineStage.STARTED -> timeInStage >  5
-            PipelineStage.LISTENING -> timeInStage > if (isContinuation) 5 else 10
+            PipelineStage.LISTENING -> timeInStage > if (isContinuation) 5 else 5
             PipelineStage.VOICE_STARTED -> timeInStage > 20
             PipelineStage.AWAITING_TTS -> timeInStage > 5
             else -> false
@@ -166,7 +164,6 @@ abstract class SatelliteAudioPipeline(
                         sendMessage(buildRunPipelineMessage(pipelineStartMode))
                     }
                     PipelineStartMode.CONTINUE_CONVERSATION -> {
-                        silenceAudioBefore = 1L
                         sendMessage(buildRunPipelineMessage(pipelineStartMode))
                     }
                     PipelineStartMode.START_STREAM_TTS -> {
@@ -174,7 +171,6 @@ abstract class SatelliteAudioPipeline(
                     }
 
                     PipelineStartMode.REQUESTED_BY_SERVER -> {
-                        silenceAudioBefore = 1L
                         shouldContinueConversation = false
                     }
                 }
@@ -258,15 +254,10 @@ abstract class SatelliteAudioPipeline(
             Timber.d("AudioOut handler started.")
             try {
                 while (true) {
-                    if (silenceAudioBefore > 0L) {
-                        val audio = audioOutQueue.receive()
-                        var audioByteArray = audio.audio
-                        if (audio.timestamp < silenceAudioBefore - 100) {
-                            audioByteArray = AudioDSP().reduceVolume(audioByteArray, 0.1F)
-                        }
-                        val packet = buildAudioPacketMessage(audioByteArray)
-                        sendMessage(packet)
-                    }
+                    val audio = audioOutQueue.receive()
+                    val audioByteArray = audio.audio
+                    val packet = buildAudioPacketMessage(audioByteArray)
+                    sendMessage(packet)
                     yield()
                 }
             } finally {
@@ -277,7 +268,7 @@ abstract class SatelliteAudioPipeline(
             }
         }
         result = pipelineRunning.await()
-        job.cancel()
+        job.cancelAndJoin()
         Timber.d("AudioOut handler stopped.")
     }
 

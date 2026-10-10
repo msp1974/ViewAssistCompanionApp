@@ -186,7 +186,7 @@ class MicrophoneInput (
         if (readCount > 0) {
             totalFramesRead += readCount
             val frame = audioBuffer.copyOfRange(0, readCount)
-            val micGain = if (isMicSuppressed()) -10 else config.micGain
+            val micGain = if (isMicSuppressed()) -5 else config.micGain
             if (applyEnhancement) {
                 // processFrame() internally no-ops on AGC/noise suppression when the
                 // device covers them in hardware - so it's always safe/cheap to route
