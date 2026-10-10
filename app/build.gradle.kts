@@ -141,6 +141,7 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.mlkit.face.detection)
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
