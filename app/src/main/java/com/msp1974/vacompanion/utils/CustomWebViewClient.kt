@@ -123,9 +123,10 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
                         activityContext.startActivity(intent)
                     }
                     return true
-                } else if (!it.contains(it)) {
+                } else if (!it.startsWith(viewModel.deviceManager.authenticationManager.getBaseUrl().toString(), ignoreCase = true)) {
                     Timber.d("Launching browser")
                     val browserIntent = Intent(Intent.ACTION_VIEW, it.toUri())
+                    browserIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     activityContext.startActivity(browserIntent)
                     return true
                 } else {
