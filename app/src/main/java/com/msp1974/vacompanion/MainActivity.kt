@@ -46,6 +46,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.net.toUri
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewModelScope
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
@@ -73,10 +74,13 @@ import com.msp1974.vacompanion.utils.SoundControl
 import com.msp1974.vacompanion.utils.Updater
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import timber.log.Timber
 import javax.inject.Inject
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @AndroidEntryPoint
@@ -108,6 +112,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     private var lastScreenStateEvent: Long = 0
     private var motionDetected: Boolean = false
     private val snackbarHostState = SnackbarHostState()
+
+    companion object {
+        // Safety-net ceiling for waitForWebViewLoadStarted() - see its own doc comment.
+        private const val SCREEN_OFF_STARTUP_WAIT_TIMEOUT_SECS = 30
+    }
 
 
 
@@ -242,6 +251,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
     private fun applyScreenMode(mode: ScreenOnMode) {
         Timber.d("MainActivity - Applying screen mode: $mode")
+        val s = Thread.currentThread().getStackTrace()
+        Timber.i("StackTrace: ${s.contentToString()}")
+
         screenModeJob?.cancel()
         screenModeJob = lifecycleScope.launch {
             if (mode == ScreenOnMode.OFF) screenOffInProgress = true
@@ -553,13 +565,40 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
 
         if (screenOffStartUp) {
-            Timber.d("Screen off startup.  Reverting to screen off")
-            delay(2.seconds)
+            Timber.d("Screen off startup.  Waiting for satellite + page load before reverting to screen off")
+            waitForWebViewLoadStarted()
             applyScreenMode(ScreenOnMode.OFF)
             screenOffStartUp = false
         }
         initialised = true
         Timber.d("Initialised")
+    }
+
+    // startService() above is fire-and-forget - it says nothing about whether the satellite
+    // has actually started or the WebView has begun loading. The satellite only starts once HA
+    // connects and sends run-satellite, which is also what triggers webView.loadUrl() (see
+    // BroadcastSender.SATELLITE_STARTED handling). A fixed delay before applyScreenMode(OFF)
+    // was racing that: if it fired first, the WebView - now invisible/not interactive - could
+    // get throttled by Android mid-load, so the page was still not fully loaded whenever the
+    // screen was later turned back on. Polling both conditions instead of guessing a duration
+    // means screen-off only happens once loading has genuinely begun. Capped at
+    // SCREEN_OFF_STARTUP_WAIT_TIMEOUT_SECS as a safety net - if the satellite never starts (auth
+    // failure, HA never connects), the screen stays in the dim/overlay-blanked ON_DARK state
+    // rather than waiting forever, same fallback intent the old fixed delay had.
+    private suspend fun waitForWebViewLoadStarted() {
+        val ready = withTimeoutOrNull(SCREEN_OFF_STARTUP_WAIT_TIMEOUT_SECS.seconds) {
+            while (!viewModel.vacaState.value.satelliteRunning ||
+                viewModel.vacaState.value.webViewPageLoadingStage != PageLoadingStage.LOADED) {
+                delay(100.milliseconds)
+            }
+            true
+        }
+        if (ready == null) {
+            Timber.w(
+                "Satellite/page load did not start within ${SCREEN_OFF_STARTUP_WAIT_TIMEOUT_SECS}s - " +
+                    "reverting to screen off anyway"
+            )
+        }
     }
 
     override fun onEventTriggered(event: Event) {
@@ -600,7 +639,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "textSize" -> webView.setTextSize(event.newValue as Int)
                 "darkMode" -> setDarkMode(event.newValue as Boolean)
                 "refresh" -> webView.refresh()
-                "screenOn" -> handleScreenOnChange(event.newValue as Boolean)
+                "screenOn" -> viewModel.viewModelScope.launch { handleScreenOnChange(event.newValue as Boolean) }
                 "screenSaver" -> onScreenSaver(event.newValue as Boolean)
                 "screenOrientationMode" -> screen.setScreenOrientation(this@MainActivity, event.newValue as String)
                 "deviceBump" -> if (config.screenOnBump) applyScreenMode(ScreenOnMode.ON)
@@ -620,15 +659,16 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         }
     }
 
-    fun handleScreenOnChange(screenOn: Boolean) {
+    suspend fun handleScreenOnChange(screenOn: Boolean) {
         val now = System.currentTimeMillis()
         if (now - lastScreenStateEvent > 5000) {
             if (screen.isScreenOn() != screenOn) {
+                Timber.d("Screen state changed to $screenOn")
                 applyScreenMode(if (screenOn) ScreenOnMode.ON else ScreenOnMode.OFF)
                 lastScreenStateEvent = now
             }
         } else {
-            if (screenDelayJob != null && screenDelayJob!!.isActive) screenDelayJob!!.cancel()
+            if (screenDelayJob != null && screenDelayJob!!.isActive) screenDelayJob!!.cancelAndJoin()
             screenDelayJob = lifecycleScope.launch {
                 delay(2.seconds)
                 applyScreenMode(if (config.screenOn) ScreenOnMode.ON else ScreenOnMode.OFF)

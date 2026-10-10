@@ -21,6 +21,7 @@ import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Logger
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeout
+import timber.log.Timber
 
 enum class ScreenOnMode {
     ON, ON_DARK, OFF
@@ -136,6 +137,7 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
 
     fun setScreenAlwaysOn(window: Window, state: Boolean) {
         // wake lock
+        Timber.d("Setting screen always on: $state")
         window.addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD)
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED)
         window.decorView.keepScreenOn = state

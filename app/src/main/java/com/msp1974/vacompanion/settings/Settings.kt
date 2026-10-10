@@ -326,7 +326,6 @@ class APPConfig @Inject constructor(val context: Context) {
         set(value) = this.sharedPrefs.edit { putBoolean("bluetooth_mic_enabled", value) }
 
     fun processSettings(settingString: String) {
-        initSettings = true
         val settings = Json.parseToJsonElement(settingString).jsonObject
 
         settings["ha_port"]?.jsonPrimitive?.intOrNull?.let { homeAssistantHTTPPort = it }
@@ -375,6 +374,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
 
+        initSettings = true
         firebase.addToCrashLog("Settings update")
     }
 
