@@ -592,13 +592,15 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                             }
                             startAudioPipeline(PipelineStartMode.CONTINUE_CONVERSATION)
                         }
+                        return
                     } else {
                         audioPipeline = null
                     }
                 } else {
                     audioPipeline = null
-                }
 
+                }
+                wakeWordHandler?.engine?.setStreaming(false)
                 if (reason == PipelineEndReason.ERRORED && config.wakeWordSound != "none") {
                     playErrorSound()
                 }
