@@ -240,7 +240,7 @@ class CustomFileDownloader(private val context: Context, val deviceManager: Devi
     }
 
     fun wakeWordFileExists(type: WakeWordType, fileName: String): Boolean {
-        val file = File("${context.filesDir}/$CUSTOM_DIR/$WAKEWORDS_DIR/${type.toString().lowercase()}", fileName)
+        val file = File("${context.filesDir}/$CUSTOM_DIR/$WAKEWORDS_DIR/${type.toString().lowercase()}", fileName.lowercase())
         return file.exists()
     }
     

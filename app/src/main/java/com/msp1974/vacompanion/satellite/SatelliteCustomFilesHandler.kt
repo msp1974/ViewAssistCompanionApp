@@ -118,7 +118,7 @@ class SatelliteCustomFilesHandler(
 
             for (ext in extensions) {
                 val fileName = "$name.$ext"
-                val fileExists = java.io.File("${context.filesDir}/${CustomFileDownloader.CUSTOM_DIR}/$subDir", fileName).exists()
+                val fileExists = java.io.File("${context.filesDir}/${CustomFileDownloader.CUSTOM_DIR}/$subDir", fileName.lowercase()).exists()
 
                 if (force || !fileExists) {
                     Timber.d("Download of $subDir/$fileName needed")
