@@ -58,6 +58,7 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.text.ifEmpty
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
@@ -423,6 +424,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
         if (clientId.isEmpty()) {
             Timber.e("Unable to run audio pipeline. Satellite not connected to HA")
+            val toastMessage = "No connection to Home Assistant.  Unable to respond to voice command."
+            BroadcastSender.sendBroadcast(context, BroadcastSender.TOAST_MESSAGE, toastMessage)
             return
         }
         soundEffectFinishTime = 0L
