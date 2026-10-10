@@ -19,10 +19,6 @@ import timber.log.Timber
 import java.io.File
 import java.io.FileOutputStream
 import java.net.URL
-import java.nio.file.Path
-import kotlin.io.path.Path
-import kotlin.io.path.createDirectories
-import kotlin.io.path.exists
 
 enum class WakeWordType {
     OPENWAKEWORD,
@@ -158,7 +154,7 @@ class CustomFileDownloader(private val context: Context, val deviceManager: Devi
         for (ext in extensions) {
             val file = "$fileNameBase.$ext"
             val fileUrl = URL(urlBase, file).toString()
-            downloadFileGeneric(Path(context.filesDir.absolutePath, CUSTOM_DIR, WAKEWORDS_DIR, wakeWordType.toString().lowercase()), fileUrl, file).collect { status ->
+            downloadFileGeneric(File(context.filesDir, "$CUSTOM_DIR/$WAKEWORDS_DIR/${wakeWordType.toString().lowercase()}"), fileUrl, file).collect { status ->
                 emit(status)
             }
         }
@@ -170,7 +166,7 @@ class CustomFileDownloader(private val context: Context, val deviceManager: Devi
     fun downloadCustomFile(subDir: String, fileName: String): Flow<DownloadStatus> = flow {
         val baseUrl = deviceManager.authenticationManager.getBaseUrl()
         val fileUrl = URL(baseUrl, "/vaca/$CUSTOM_DIR/$subDir/$fileName").toString()
-        val targetDir = Path(context.filesDir.absolutePath, CUSTOM_DIR, subDir)
+        val targetDir = File(context.filesDir, "$CUSTOM_DIR/$subDir")
 
         downloadFileGeneric(targetDir, fileUrl, fileName).collect { status ->
             emit(status)
@@ -180,10 +176,10 @@ class CustomFileDownloader(private val context: Context, val deviceManager: Devi
     /**
      * Generic download helper.
      */
-    private fun downloadFileGeneric(targetDir: Path, url: String, fileName: String): Flow<DownloadStatus> = flow {
+    private fun downloadFileGeneric(targetDir: File, url: String, fileName: String): Flow<DownloadStatus> = flow {
         if (!targetDir.exists()) {
             try {
-                targetDir.createDirectories()
+                targetDir.mkdirs()
             } catch (e: Exception) {
                 emit(DownloadStatus.Error(fileName, "Failed to create directory: $targetDir"))
                 return@flow

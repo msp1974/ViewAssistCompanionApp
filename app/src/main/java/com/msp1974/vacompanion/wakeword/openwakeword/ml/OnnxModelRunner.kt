@@ -16,7 +16,6 @@ import kotlinx.coroutines.runBlocking
 import timber.log.Timber
 import java.io.FileNotFoundException
 import java.io.IOException
-import kotlin.io.path.Path
 
 /**
  * Handles ONNX model loading and inference for wake word detection.

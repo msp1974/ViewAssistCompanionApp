@@ -21,14 +21,10 @@ import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
-import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.forEachDirectoryEntry
-import kotlin.io.path.name
 
 class MicroWakeWordCustomProvider (
     val context: Context,
-    val path: Path,
+    val path: File,
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO
     ) : WakeWordProvider {
         @SuppressLint("ThrowableNotAtBeginning")
@@ -36,10 +32,10 @@ class MicroWakeWordCustomProvider (
         override suspend fun get(): List<WakeWordWithId> = withContext(dispatcher) {
             if (!path.exists()) return@withContext emptyList()
             val wakeWords = buildList {
-                path.forEachDirectoryEntry("*.json", { file ->
+                path.listFiles { file -> file.name.endsWith(".json") }?.forEach { file ->
                     val name = file.name
                     runCatching {
-                        val uri = Uri.fromFile(File(file.toUri()))
+                        val uri = Uri.fromFile(file)
                         val wakeWord = context.contentResolver.openInputStream(uri)?.use {
                             Json.decodeFromStream<WakeWord>(it)
                         }
@@ -54,13 +50,13 @@ class MicroWakeWordCustomProvider (
                     }.onFailure {
                         Timber.e(it, "Error loading wake word: $name")
                     }
-                })
+                }
             }
             return@withContext wakeWords
         }
 
         private suspend fun loadModel(model: String): ByteBuffer = withContext(dispatcher) {
-            val file = File(path.toAbsolutePath().toString() , model)
+            val file = File(path, model)
             val buffer = context.contentResolver.getTFLiteModelBufferOrNull(Uri.fromFile(file))
                 ?: error("Could not load model $model")
             return@withContext buffer
@@ -91,7 +87,7 @@ class MicroWakeWordCustomProvider (
                 }
 
                 // If not a local file, try and query the size and copy to a direct byte buffer
-                return query(uri, null, null, null)?.use {
+                return query(uri, null, null, null, null)?.use {
                     if (it.moveToFirst()) {
                         val sizeIndex: Int = it.getColumnIndex(OpenableColumns.SIZE)
                         val size = if (it.isNull(sizeIndex)) 0 else it.getLong(sizeIndex)

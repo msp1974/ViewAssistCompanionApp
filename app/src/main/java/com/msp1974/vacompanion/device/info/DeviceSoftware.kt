@@ -25,8 +25,11 @@ class DeviceSoftware(
 
     private fun getWebViewVersion(): String {
         try {
-            val info = WebView.getCurrentWebViewPackage()
-            return info!!.versionName!!
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val info = WebView.getCurrentWebViewPackage()
+                return info?.versionName ?: "unknown"
+            }
+            return "unknown"
         } catch (e: Exception) {
             return "unknown"
         }
