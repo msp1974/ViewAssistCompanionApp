@@ -24,7 +24,7 @@ import kotlinx.coroutines.withTimeout
 import timber.log.Timber
 
 enum class ScreenOnMode {
-    ON, ON_DARK, OFF
+    ON, ON_DIM, ON_DARK, OFF
 }
 
 class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper(context) {
@@ -47,6 +47,13 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
                 setScreenBrightness(window, config.screenBrightness)
                 setScreenAutoBrightness(config.screenAutoBrightness)
                 setScreenTimeout(config.screenTimeout)
+                wakeScreen()
+            }
+            ScreenOnMode.ON_DIM -> {
+                setOverlay(false)
+                setScreenAlwaysOn(window, true)
+                setScreenAutoBrightness(false)
+                setScreenBrightness(window, 0.01f)
                 wakeScreen()
             }
             ScreenOnMode.ON_DARK -> {

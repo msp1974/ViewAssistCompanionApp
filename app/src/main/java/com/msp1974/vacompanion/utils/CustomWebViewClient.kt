@@ -81,6 +81,7 @@ class CustomWebViewClient(val viewModel: VAViewModel): WebViewClientCompat()  {
                                 )
                                 withContext(Dispatchers.Main) {
                                     if (config.accessToken != "") {
+                                        setPageLoadingState(PageLoadingStage.AUTHORISED)
                                         view.loadUrl(viewModel.deviceManager.authenticationManager.getHAUrl())
                                     } else {
                                         view.loadUrl(viewModel.deviceManager.authenticationManager.getExternalAuthUrl())

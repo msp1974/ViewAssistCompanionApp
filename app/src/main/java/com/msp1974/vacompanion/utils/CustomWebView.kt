@@ -132,6 +132,7 @@ class CustomWebView @JvmOverloads constructor(
                 deviceManager.authenticationManager.ensureValidSession(forceRefresh)
                 withContext(Dispatchers.Main) {
                     callAuthJS(view, true)
+                    setPageLoadingState(PageLoadingStage.AUTHORISED)
                 }
             } else {
                 withContext(Dispatchers.Main) {

@@ -569,9 +569,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             waitForWebViewLoadStarted()
             applyScreenMode(ScreenOnMode.OFF)
             screenOffStartUp = false
+            initialised = true
+        } else {
+            initialised = true
+            Timber.d("Initialised")
         }
-        initialised = true
-        Timber.d("Initialised")
     }
 
     // startService() above is fire-and-forget - it says nothing about whether the satellite
@@ -591,6 +593,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 viewModel.vacaState.value.webViewPageLoadingStage != PageLoadingStage.LOADED) {
                 delay(100.milliseconds)
             }
+            applyScreenMode(ScreenOnMode.ON_DIM)
+            delay(6000.milliseconds)
             true
         }
         if (ready == null) {
@@ -639,8 +643,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                 "textSize" -> webView.setTextSize(event.newValue as Int)
                 "darkMode" -> setDarkMode(event.newValue as Boolean)
                 "refresh" -> webView.refresh()
-                "screenOn" -> viewModel.viewModelScope.launch { handleScreenOnChange(event.newValue as Boolean) }
-                "screenSaver" -> onScreenSaver(event.newValue as Boolean)
+                "screenOn" -> if (!screenOffStartUp) viewModel.viewModelScope.launch { handleScreenOnChange(event.newValue as Boolean) }
+                "screenSaver" -> if (!screenOffStartUp) onScreenSaver(event.newValue as Boolean)
                 "screenOrientationMode" -> screen.setScreenOrientation(this@MainActivity, event.newValue as String)
                 "deviceBump" -> if (config.screenOnBump) applyScreenMode(ScreenOnMode.ON)
                 "proximity" -> if (config.screenOnProximity && event.newValue as Float == 0f) applyScreenMode(ScreenOnMode.ON)
