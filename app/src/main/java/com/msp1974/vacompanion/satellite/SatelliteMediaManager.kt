@@ -101,12 +101,14 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
         fun flush() {
             if (isRunning()) {
                 VoicePlayerService.sInstance?.stop(false)
+                MusicPlayerService.sInstance?.onVoicePlaybackEnded()
             }
         }
 
         fun forceStop() {
             if (isRunning()) {
                 VoicePlayerService.sInstance?.stop(true)
+                MusicPlayerService.sInstance?.onVoicePlaybackEnded()
             }
         }
 
@@ -116,6 +118,7 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
             } catch (e: Exception) {
                 Timber.e(e)
             }
+            MusicPlayerService.sInstance?.onVoicePlaybackEnded()
         }
 
         fun writeData(data: ByteArray) {

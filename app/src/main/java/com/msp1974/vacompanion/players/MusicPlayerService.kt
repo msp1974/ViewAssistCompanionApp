@@ -146,7 +146,17 @@ class MusicPlayerService : Service() {
                 mediaPlayer?.let { player ->
                     player.setMediaItem(mediaItem)
                     player.prepare()
-                    setPlayerVolume(musicVolume)
+                    // Start ducked not just when we already think we're ducked, but also when
+                    // the voice pipeline currently holds audio focus for TTS - if we weren't
+                    // already playing (so never received our own duck notification), our own
+                    // requestAudioFocus() below is about to win that focus outright rather than
+                    // duck us (Android only ducks an *existing* GAIN holder when a transient
+                    // request lands on it, never a fresh GAIN request against an existing
+                    // transient holder) - so without this check we'd start at full volume right
+                    // over the top of the assistant's response.
+                    val startDucked = ducked || VoicePlayerService.sInstance?.hasAudioFocus == true
+                    setPlayerVolume(if (startDucked) getDuckingVolume() else musicVolume)
+                    ducked = startDucked
                     player.play()
                 }
                 requestAudioFocus()
@@ -176,16 +186,30 @@ class MusicPlayerService : Service() {
     fun stop() {
         Timber.d("Music player: Stopping music")
         mediaPlayer?.let { player ->
+            // Each step gets its own try/catch rather than one try around all three - a player
+            // that's being torn down because it just errored is already in a degraded state, so
+            // removeListener()/stop() throwing here is a real possibility, not just a defensive
+            // formality. With a single shared try, that would skip release() entirely while
+            // mediaPlayer is still nulled out in finally - silently leaking the old player's
+            // native resources (decoder, surfaces) right in the one case (error recovery) this
+            // cleanup most needs to be reliable for.
             try {
                 player.removeListener(mediaPlayerListener)
+            } catch (e: Exception) {
+                Timber.e("Error removing media player listener: $e")
+            }
+            try {
                 player.stop()
+            } catch (e: Exception) {
+                Timber.e("Error stopping player: $e")
+            }
+            try {
                 player.release()
             } catch (e: Exception) {
-                Timber.e("Error stopping/releasing player: $e")
-            } finally {
-                mediaPlayer = null
+                Timber.e("Error releasing player: $e")
             }
         }
+        mediaPlayer = null
     }
 
     fun setVolume(volume: Float) {
@@ -212,10 +236,7 @@ class MusicPlayerService : Service() {
             .setOnAudioFocusChangeListener { focusChange ->
                 Timber.d("Music player focus change: $focusChange")
                 when (focusChange) {
-                    AudioManager.AUDIOFOCUS_GAIN -> {
-                        hasAudioFocus = true
-                        unDuckVolume()
-                    }
+                    AudioManager.AUDIOFOCUS_GAIN -> onFocusGained()
 
                     AudioManager.AUDIOFOCUS_LOSS -> {
                         hasAudioFocus = false
@@ -236,9 +257,39 @@ class MusicPlayerService : Service() {
             .build()
 
         val result = AudioManagerCompat.requestAudioFocus(audioManager, focusRequest!!)
-        hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        // A synchronous grant here is a real focus regain too, not just the async listener's
+        // AUDIOFOCUS_GAIN branch above - without routing it through onFocusGained() as well,
+        // this path would set hasAudioFocus = true without ever clearing ducked, leaving it
+        // stuck the same way a desynced currentOutputVolume could (see unDuckVolume()).
+        if (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED && !hasAudioFocus) {
+            onFocusGained()
+        } else {
+            hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        }
         Timber.d("Music requestAudioFocus: $result")
         return hasAudioFocus
+    }
+
+    // The single place a real focus regain (synchronous grant or async AUDIOFOCUS_GAIN) should
+    // go through, so ducked always converges with hasAudioFocus regardless of which path
+    // detected the regain.
+    private fun onFocusGained() {
+        hasAudioFocus = true
+        // Getting focus back doesn't mean the voice pipeline is done with it - if it still
+        // holds its own (transient) focus for TTS, stay ducked regardless of what just
+        // happened to our own request; onVoicePlaybackEnded() below is what un-ducks us once
+        // the pipeline genuinely finishes, since no further focus callback of our own will
+        // fire while we keep holding GAIN continuously.
+        if (VoicePlayerService.sInstance?.hasAudioFocus != true) unDuckVolume()
+    }
+
+    /**
+     * Called by [com.msp1974.vacompanion.satellite.SatelliteMediaManager.VoiceManager] once the
+     * voice pipeline's TTS playback has genuinely finished - see [onFocusGained]'s doc comment
+     * for why this can't just be inferred from our own focus callbacks in that scenario.
+     */
+    fun onVoicePlaybackEnded() {
+        if (ducked) unDuckVolume()
     }
 
     private fun getDuckingVolume(): Float {
@@ -253,13 +304,18 @@ class MusicPlayerService : Service() {
     }
 
     private fun unDuckVolume(animate: Boolean = true) {
+        // Cleared unconditionally, before the "anything to animate" check below - ducked must
+        // never stay true just because the volume already happened to be at musicVolume (e.g.
+        // play() started a new track at full volume while still ducked - see its own comment).
+        // ducked gates setVolume() below; leaving it stuck true after a genuine focus regain
+        // would silently break all future volume-set requests.
+        ducked = false
         if (currentOutputVolume == musicVolume) return
         if (animate) {
             animateUnDuckingVolume()
         } else {
             setPlayerVolume(musicVolume)
         }
-        ducked = false
     }
 
     private fun animateUnDuckingVolume (
@@ -281,8 +337,6 @@ class MusicPlayerService : Service() {
                     delay(delay.milliseconds)
                 }
             }
-            delay(2000.milliseconds)
-            ducked = false
         }
     }
 
