@@ -17,7 +17,7 @@ class LightSensor(context: Context) : Sensor, SensorEventListener {
     companion object {
         private var isListenerRegistered = false
         private var listenerLastRegistered = 0L
-        private const val UPDATE_PERCENTAGE = 0.25f // 25%
+        private const val UPDATE_PERCENTAGE = 0.05f // 25%
         private var sensorLastValue = -1f
         private const val MAX_UPDATE_INTERVAL_MS = 5000L
         private var lastUpdateTimestamp = 0L
