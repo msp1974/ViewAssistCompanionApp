@@ -13,6 +13,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.device.DeviceManager
@@ -46,6 +47,13 @@ class MusicPlayerService : Service() {
     private var ducked: Boolean = false
     private var lastUrl: String = ""
 
+    // Both reset only in onStartCommand() - i.e. only a genuinely new, externally-requested
+    // play-media gets a fresh budget. Internal recovery calls to play() (from onPlayerError's
+    // resumeAfterRecreate()) deliberately do not reset these, so retrying/redirect-following
+    // actually converges instead of looping forever.
+    private var retryCount = 0
+    private var redirectCount = 0
+
     // Player.getVolume() is only accessible on the main thread, but unDuckVolume()/
     // animateUnDuckingVolume() need the current volume for comparisons/animation math that can
     // run off it - so the current volume is cached here (kept in sync by setPlayerVolume(), the
@@ -58,6 +66,14 @@ class MusicPlayerService : Service() {
 
     companion object {
         var sInstance: MusicPlayerService? = null
+
+        // "Retry once before giving up" on a non-redirect HTTP/IO error.
+        private const val MAX_RETRIES = 1
+
+        // Redirects are expected to be followed, not counted against MAX_RETRIES - but a
+        // malformed/malicious redirect chain (e.g. one that cycles between distinct URLs) must
+        // still be bounded, same as any real HTTP client would cap it.
+        private const val MAX_REDIRECTS = 5
     }
 
     val audioAttributes: AudioAttributes = AudioAttributes.Builder()
@@ -80,25 +96,37 @@ class MusicPlayerService : Service() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            Timber.e(error, "Player error - recreating player....")
             val wasPlaying = mediaPlayer?.isPlaying ?: false
             val position = mediaPlayer?.currentPosition ?: 0L
+
+            val httpError = findInvalidResponseCodeException(error)
+            val redirectUrl = httpError?.takeIf { it.responseCode in 300..399 }
+                ?.let { redirectLocation(it) }
 
             stop()
             createMediaPlayer()
 
-            if (lastUrl.isNotEmpty()) {
-                scope.launch {
-                    delay(1000.milliseconds)
-                    withContext(Dispatchers.Main) {
-                        if (lastUrl.isNotEmpty()) {
-                            play(lastUrl)
-                            mediaPlayer?.let { player ->
-                                if (position > 0) player.seekTo(position)
-                                if (!wasPlaying) player.pause()
-                            }
-                        }
-                    }
+            when {
+                redirectUrl != null && redirectCount < MAX_REDIRECTS -> {
+                    redirectCount++
+                    Timber.w(
+                        "Player error - HTTP ${httpError.responseCode} redirect " +
+                            "($redirectCount/$MAX_REDIRECTS) to $redirectUrl"
+                    )
+                    resumeAfterRecreate(redirectUrl, wasPlaying, position)
+                }
+
+                retryCount < MAX_RETRIES -> {
+                    retryCount++
+                    Timber.e(error, "Player error - retrying ($retryCount/$MAX_RETRIES): $lastUrl")
+                    resumeAfterRecreate(lastUrl, wasPlaying, position)
+                }
+
+                else -> {
+                    Timber.e(
+                        error,
+                        "Player error - giving up (redirects=$redirectCount, retries=$retryCount): $lastUrl"
+                    )
                 }
             }
             super.onPlayerError(error)
@@ -109,6 +137,45 @@ class MusicPlayerService : Service() {
                 Timber.e(error, "Player error changed")
             }
             super.onPlayerErrorChanged(error)
+        }
+    }
+
+    /** Walks the cause chain for the HTTP response-code exception the default HTTP data
+     * source throws on a non-2xx response - PlaybackException wraps it a couple of levels
+     * deep (ExoPlaybackException -> ... -> InvalidResponseCodeException). */
+    private fun findInvalidResponseCodeException(error: Throwable?): HttpDataSource.InvalidResponseCodeException? {
+        var cause = error
+        while (cause != null) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) return cause
+            cause = cause.cause
+        }
+        return null
+    }
+
+    /** Extracts the `Location` header from a redirect response - header names are
+     * case-insensitive per HTTP, but the response map's keys preserve whatever casing the
+     * server actually sent, so this can't just be a direct map lookup. */
+    @SuppressLint("UnsafeOptInUsageError")
+    private fun redirectLocation(error: HttpDataSource.InvalidResponseCodeException): String? {
+        return error.headerFields.entries
+            .firstOrNull { it.key.equals("location", ignoreCase = true) }
+            ?.value?.firstOrNull()
+    }
+
+    /** Common tail of error recovery: wait a moment for the freshly-recreated player to settle,
+     * then replay at [url] (either the same track being retried, or a redirect target),
+     * restoring the pre-error playing/paused state and position. */
+    private fun resumeAfterRecreate(url: String, wasPlaying: Boolean, position: Long) {
+        if (url.isEmpty()) return
+        scope.launch {
+            delay(1000.milliseconds)
+            withContext(Dispatchers.Main) {
+                play(url)
+                mediaPlayer?.let { player ->
+                    if (position > 0) player.seekTo(position)
+                    if (!wasPlaying) player.pause()
+                }
+            }
         }
     }
 
@@ -130,6 +197,10 @@ class MusicPlayerService : Service() {
 
         val url = intent?.getStringExtra("url") ?: ""
         musicVolume = (intent?.getFloatExtra("volume", 1f) ?: 1f) / 100f
+        // A genuinely new, externally-requested play-media always gets a fresh error-recovery
+        // budget - see the fields' own comment for why this is the only place that resets them.
+        retryCount = 0
+        redirectCount = 0
         play(url)
         return START_STICKY
     }
