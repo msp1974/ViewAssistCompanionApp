@@ -78,7 +78,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     val mediaManager: SatelliteMediaManager = SatelliteMediaManager(context, config)
 
     var sensorJob: Job? = null
-    var motionTask = Camera(context, config)
+    var motionTask: Camera? = null
 
     private val customFilesHandler = SatelliteCustomFilesHandler(context, deviceManager)
 
@@ -287,8 +287,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         scope.launch {
             eventHandler.stop()
             wakeWordHandler?.stop()
-            motionTask.stopCamera()
-            motionTask.release()
+            stopMotionDetection()
         }.join()
 
         stopSensors()
@@ -413,7 +412,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             FirebaseManager.WAKE_WORD_ENGINE_RESTART,
             mapOf("engine" to config.wakeWordEngine, "attempt" to wakeWordEngineRestartAttempts.toString())
         )
-        delay(WAKE_WORD_ENGINE_RESTART_DELAY_MS)
+        delay(WAKE_WORD_ENGINE_RESTART_DELAY_MS.milliseconds)
         restartWakeWordDetection()
     }
 
@@ -805,18 +804,33 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         }
         scope.launch {
             deviceManager.sensorsManager.requestSensorUpdates()
+            startMotionDetection(delay=2)
         }
 
+
+    }
+
+    suspend fun startMotionDetection(delay: Int = 0) {
         // Start motion sensor
-        if (config.motionDetectionMode != "none") {
-            delay(2.seconds)  // Add delay to camera start to let app start up
-            motionTask.startCamera()
+        if (deviceInfo.hardware.hasFrontCamera) {
+            if (config.motionDetectionMode != "none") {
+                delay(delay.seconds)  // Add delay to camera start to let app start up
+                motionTask = Camera(context, config)
+                motionTask?.startCamera()
+            }
+        }
+    }
+
+    suspend fun stopMotionDetection() {
+        if (motionTask != null) {
+            motionTask?.stopCamera()
+            motionTask?.release()
         }
     }
 
     suspend fun stopSensors() {
         sensorJob?.cancel()
-        motionTask.stopCamera()
+        stopMotionDetection()
     }
 
     fun sendDiagnostics(audioLevel: Float, detectionLevel: Float) {

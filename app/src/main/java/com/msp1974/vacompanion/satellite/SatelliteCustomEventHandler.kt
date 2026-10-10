@@ -129,8 +129,7 @@ class SatelliteCustomEventHandler(
                 if (isOn && config.enableMotionDetection) {
                     // Force restart of camera when screen turns on to ensure recovery
                     scope.launch {
-                        delay(500.milliseconds)
-                        satellite.motionTask.startCamera()
+                        satellite.startMotionDetection(delay=1)
                     }
                 }
             }
@@ -138,10 +137,12 @@ class SatelliteCustomEventHandler(
                 val mode = event.newValue as String
                 if (mode != "none") {
                     if (!config.cameraStreamActive) {
-                        satellite.motionTask.startCamera()
+                        scope.launch {
+                            satellite.startMotionDetection()
+                        }
                     }
                 } else {
-                    scope.launch { satellite.motionTask.stopCamera() }
+                    scope.launch { satellite.stopMotionDetection() }
                 }
             }
             "motion" -> {
@@ -179,9 +180,9 @@ class SatelliteCustomEventHandler(
             "cameraStreamActive" -> {
                 val active = event.newValue as Boolean
                 if (active) {
-                    scope.launch { satellite.motionTask.stopCamera() }
+                    scope.launch { satellite.stopMotionDetection() }
                 } else if (config.enableMotionDetection) {
-                    satellite.motionTask.startCamera()
+                    scope.launch { satellite.startMotionDetection(delay=0) }
                 }
             }
             "updateAvailableWakeWords" -> {

@@ -109,8 +109,16 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
                         requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
                     }
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        if (deviceManager.deviceInfo.hardware.hasFrontCamera && checkPermission(
+                                Manifest.permission.CAMERA
+                            )
+                        ) {
+                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                        }
+
+                        if (checkPermission(Manifest.permission.RECORD_AUDIO)) {
+                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                        }
                     }
 
                     Timber.d("Running in foreground ServiceCompat mode")
@@ -148,6 +156,10 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
             }
         }
         return START_STICKY
+    }
+
+    private fun checkPermission(permission: String): Boolean {
+        return ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun startActivity(context: Context) {
