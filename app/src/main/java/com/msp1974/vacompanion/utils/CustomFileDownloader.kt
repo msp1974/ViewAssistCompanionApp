@@ -190,7 +190,7 @@ class CustomFileDownloader(private val context: Context, val deviceManager: Devi
             }
         }
 
-        val targetFile = File(targetDir.toString(), fileName)
+        val targetFile = File(targetDir.toString(), fileName.lowercase())
 
         try {
             Timber.d("Downloading $url to $targetDir")
