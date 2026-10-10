@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Note
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PermScanWifi
 import androidx.compose.material.icons.filled.SignalWifiStatusbarNull
 import androidx.compose.material.icons.filled.WifiOff
@@ -76,6 +77,7 @@ fun IconStatusBlock(
 private fun getIcon(name: String): ImageVector {
     return when (name) {
         "nowifi" -> Icons.Filled.WifiOff
+        "noserver" -> Icons.Filled.CloudOff
         else -> Icons.AutoMirrored.Filled.Note
     }
 }

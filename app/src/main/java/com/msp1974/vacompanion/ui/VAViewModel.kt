@@ -141,6 +141,10 @@ data class State(
     var webViewPageLoadingStage: PageLoadingStage = PageLoadingStage.NOT_STARTED,
     var showUUIDChangeDialog: Boolean = false,
     var isNetworkConnected: Boolean = true,
+    // Mirrors WyomingServerStatus.connected - whether Home Assistant currently has a client
+    // connected to this device's Wyoming server. Only meaningful when isNetworkConnected is
+    // true - see WebViewLayout's "wifi icon wins" ordering for why.
+    var isServerConnected: Boolean = true,
     var showSettings: Boolean = false,
     var customFiles: CustomFilesState = CustomFilesState(),
     var cameraStreamActive: Boolean = false,
@@ -184,6 +188,7 @@ class VAViewModel @Inject constructor(
                 _vacaState.update { currentState ->
                     currentState.copy(
                         isNetworkConnected = status.network.status == NetworkStatus.Available,
+                        isServerConnected = status.wyoming.connected,
                         satelliteRunning = isRunning,
                         isDND = status.isDND,
                         darkMode = status.darkMode,
