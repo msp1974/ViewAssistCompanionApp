@@ -308,12 +308,16 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         when (packet.type) {
             WyomingEvent.CUSTOM_EVENT -> customEventHandler(clientId, packet)
             else -> {
-                if (audioPipeline != null && audioPipeline?.pipelineStage != PipelineStage.ENDED) {
-                    audioPipeline?.processAudioPipelineMessage(packet)
-                } else if (packet.type == "audio-start") {
-                    handleAudioStart(packet)
-                } else if (packet.type == "transcribe") {
-                    handleTranscribe(packet)
+                try {
+                    if (audioPipeline != null && audioPipeline?.pipelineStage != PipelineStage.ENDED) {
+                        audioPipeline?.processAudioPipelineMessage(packet)
+                    } else if (packet.type == "audio-start") {
+                        handleAudioStart(packet)
+                    } else if (packet.type == "transcribe") {
+                        handleTranscribe(packet)
+                    }
+                } catch (e: Exception) {
+                    Timber.e("Error processing message: ${e.message.toString()}")
                 }
             }
         }
@@ -557,9 +561,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     }
                     PipelineStage.VOICE_STOPPED -> { wakeWordHandler?.engine?.setStreaming(false) }
                     PipelineStage.ENDED -> {
-                        if (wakeWordHandler?.engine?.isStreaming() == true) {
-                            wakeWordHandler?.engine?.setStreaming(false)
-                        }
+                        wakeWordHandler?.engine?.setStreaming(false)
                     }
                     else -> {}
                 }
@@ -578,8 +580,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             }
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
+                Timber.i("Pipeline ended.  Restarting: $continueConversation")
                 if (reason == PipelineEndReason.END_OF_PIPELINE) {
-                    Timber.i("Pipeline ended.  Restarting: $continueConversation")
                     if (continueConversation) {
                         scope.launch {
                             while (mediaManager.voicePlayer.isRunning()) {

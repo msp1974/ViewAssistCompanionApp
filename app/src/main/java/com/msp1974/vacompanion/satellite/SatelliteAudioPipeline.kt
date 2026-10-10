@@ -195,7 +195,7 @@ abstract class SatelliteAudioPipeline(
             }
         }
         result = pipelineRunning.await()
-        job.cancel()
+        job.cancelAndJoin()
         Timber.d("Pipeline stopped [$pipelineId] -> $result.")
     }
 
@@ -213,7 +213,10 @@ abstract class SatelliteAudioPipeline(
             WyomingEvent.TRANSCRIPT -> handleTranscript(packet)
             WyomingEvent.HANDLED -> handleHandled(packet)
             WyomingEvent.SYNTHESIZE -> handleSynthesize(packet)
-            WyomingEvent.AUDIO_START, WyomingEvent.AUDIO_CHUNK, WyomingEvent.AUDIO_STOP -> queueAudioMessage(packet)
+            WyomingEvent.AUDIO_START, WyomingEvent.AUDIO_CHUNK, WyomingEvent.AUDIO_STOP -> queueAudioMessage(
+                packet
+            )
+
             WyomingEvent.PIPELINE_ENDED -> handlePipelineEnded()
             WyomingEvent.ERROR -> handlePipelineError(packet)
         }
