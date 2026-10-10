@@ -26,6 +26,7 @@ import timber.log.Timber
 import java.nio.channels.ClosedChannelException
 import java.util.concurrent.Executors
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
 interface IEvents {
@@ -46,6 +47,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
     private var satelliteStatusListenerJob: Job? = null
+    private var pauseSatelliteTimeoutJob: Job? = null
 
     private var runServer: Boolean = true
     var satellite: Satellite? = null
@@ -265,7 +267,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
                 WyomingEvent.RUN_SATELLITE -> {
                     startSatellite(clientId)
                 }
-                WyomingEvent.PAUSE_SATELLITE -> stopSatellite()
+                WyomingEvent.PAUSE_SATELLITE -> schedulePauseSatelliteTimeout()
                 else -> {
                     var retryCount = 2
                     var processed = false
@@ -306,8 +308,39 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
         respondToGenericMessage(clientId, "capabilities", capabilitiesBuilder.buildInfo())
     }
 
+    /**
+     * pause-satellite means "going away for a bit" - HA sends this on things like a reload or
+     * restart, almost always followed shortly by a fresh run-satellite. Stopping immediately
+     * would tear down and restart wake-word detection/audio for what's usually just a
+     * few-second blip, so the actual stop is deferred instead: if run-satellite arrives within
+     * [PAUSE_SATELLITE_TIMEOUT_MINS], startSatellite() cancels this before it ever fires.
+     */
+    private fun schedulePauseSatelliteTimeout() {
+        val pausedSatellite = satellite ?: return
+        pauseSatelliteTimeoutJob?.cancel()
+        pauseSatelliteTimeoutJob = scope.launch {
+            delay(PAUSE_SATELLITE_TIMEOUT_MINS.minutes)
+            // Only stop the satellite that was actually running when pause-satellite arrived.
+            // If it's since been replaced (stopped and a new one started via some other path)
+            // this stale timeout no longer applies - identity-checked rather than relying on
+            // every stop path to remember to cancel this job, since this job calling
+            // stopSatellite() on itself would risk the cancellation it'd trigger interrupting
+            // stopSatellite()'s own cleanup partway through.
+            if (satellite === pausedSatellite) {
+                Timber.w("No run-satellite received within ${PAUSE_SATELLITE_TIMEOUT_MINS}min of pause-satellite - stopping satellite")
+                stopSatellite()
+            }
+        }
+    }
+
     private suspend fun startSatellite(clientId: String) {
         Timber.d("Processing run satellite")
+
+        // A run-satellite always cancels any pending pause-satellite timeout, regardless of
+        // what happens below - including the "already running, just take over" branch, which
+        // keeps the same satellite instance (so the identity check in
+        // schedulePauseSatelliteTimeout() alone wouldn't catch this case).
+        pauseSatelliteTimeoutJob?.cancel()
 
         if (config.settingsOpen) {
             Timber.d("Settings screen open - delaying satellite start")
@@ -442,5 +475,6 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     companion object {
         private val IGNORED_LOG_EVENTS = setOf("ping", "pong", "audio-chunk")
         private const val DISCONNECTION_TIMEOUT_MINS = 5
+        private const val PAUSE_SATELLITE_TIMEOUT_MINS = 5
     }
 }
