@@ -62,6 +62,12 @@ class CameraController(
     private var cameraProvider: ProcessCameraProvider? = null
     private var rebindJob: Job? = null
 
+    // On devices where CameraX's own enumeration/validation rejects a camera that otherwise
+    // works fine (see DeviceCameraQuirks), route through raw Camera2 instead. Null for every
+    // other device, which keeps using the normal CameraX path below unchanged.
+    private val directCameraId: String? = DeviceCameraQuirks.directCameraId()
+    private var directSource: Camera2DirectSource? = null
+
     // Backs off retrying ProcessCameraProvider/bindToLifecycle after a failure, instead of
     // re-attempting (and eating CameraX's own ~5s internal retry loop) on every single consumer
     // attach - e.g. some devices never have a usable camera (OS-level permission the app can
@@ -178,6 +184,11 @@ class CameraController(
             return
         }
 
+        if (directCameraId != null) {
+            rebindDirect(directCameraId, needsAnalysis)
+            return
+        }
+
         val provider = cameraProvider ?: try {
             withContext(Dispatchers.IO) { ProcessCameraProvider.getInstance(context).get() }
         } catch (e: Exception) {
@@ -244,6 +255,33 @@ class CameraController(
         Timber.w("CameraController: bind failure #$consecutiveBindFailures, backing off for ${backoff}ms before the next attempt")
     }
 
+    /** Quirks-only backend for devices where CameraX itself can't open the camera - see
+     *  [DeviceCameraQuirks]. Outputs/analyzer only ever change via attach/detach, which already
+     *  triggers a debounced rebind, so a full stop/start here is simplest rather than trying to
+     *  add/remove live targets on an existing capture session. */
+    private fun rebindDirect(id: String, needsAnalysis: Boolean) {
+        val source = directSource ?: Camera2DirectSource(
+            context = context,
+            cameraId = id,
+            analysisExecutor = analysisExecutor,
+            analyzerProvider = { analyzer },
+        ).also {
+            it.onOpened = {
+                _availability.value = CameraAvailability.READY
+                onBindSuccess()
+                Timber.i("CameraController: bound via direct Camera2 (id=$id)")
+            }
+            it.onError = {
+                _availability.value = CameraAvailability.IN_USE
+                onBindFailure()
+            }
+            directSource = it
+        }
+
+        source.stop()
+        source.start(outputs.map { it.surface }, needsAnalysis)
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     private fun buildAnalysisUseCase(applyFpsRange: Boolean, targetFps: Int): ImageAnalysis {
         val analysisResolution = Size(320, 240)
@@ -308,6 +346,11 @@ class CameraController(
     }
 
     private suspend fun unbind() {
+        if (directCameraId != null) {
+            directSource?.stop()
+            _availability.value = computeStaticAvailability()
+            return
+        }
         withContext(Dispatchers.Main.immediate) {
             cameraProvider?.unbindAll()
             if (lifecycleRegistry.currentState != Lifecycle.State.CREATED) {
