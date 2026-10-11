@@ -9,7 +9,7 @@ import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
-import com.msp1974.vacompanion.device.Camera
+import com.msp1974.vacompanion.device.camera.MotionDetector
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.VolumeObserver
 import com.msp1974.vacompanion.ui.DiagnosticInfo
@@ -79,7 +79,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     val mediaManager: SatelliteMediaManager = SatelliteMediaManager(context, config)
 
     var sensorJob: Job? = null
-    var motionTask: Camera? = null
+    var motionTask: MotionDetector? = null
 
     private val customFilesHandler = SatelliteCustomFilesHandler(context, deviceManager)
 
@@ -819,17 +819,20 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         if (deviceInfo.hardware.hasFrontCamera) {
             if (config.motionDetectionMode != "none") {
                 delay(delay.seconds)  // Add delay to camera start to let app start up
-                motionTask = Camera(context, config)
-                motionTask?.startCamera()
+                // Reuse the existing detector rather than leaking it - this can be called again
+                // (e.g. on screenOn) while one is already running.
+                if (motionTask == null) {
+                    motionTask = MotionDetector(deviceManager.camera, config)
+                }
+                motionTask?.start()
             }
         }
     }
 
     suspend fun stopMotionDetection() {
-        if (motionTask != null) {
-            motionTask?.stopCamera()
-            motionTask?.release()
-        }
+        motionTask?.stop()
+        motionTask?.release()
+        motionTask = null
     }
 
     suspend fun stopSensors() {

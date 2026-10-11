@@ -90,7 +90,12 @@ class APPConfig @Inject constructor(val context: Context) {
     var hasRecordAudioPermission: Boolean = false
     var hasPostNotificationPermission: Boolean = false
     var hasWriteExternalStoragePermission: Boolean = false
-    var hasCameraPermission: Boolean = false
+
+    // Delegates.observable (unlike its siblings above) so CameraController and the foreground
+    // service can react immediately to a permission grant/revoke rather than only on next bind.
+    var hasCameraPermission: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
 
     var ignoreSSLErrors: Boolean = alwaysIgnoreSSLErrors
 
@@ -279,6 +284,40 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    var rtspEnabled: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspPort: Int by Delegates.observable(DEFAULT_RTSP_PORT) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspResolution: String by Delegates.observable(DEFAULT_RTSP_RESOLUTION) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspFps: Int by Delegates.observable(DEFAULT_RTSP_FPS) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspBitrate: Int by Delegates.observable(DEFAULT_RTSP_BITRATE) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    // Lower = a client joining or resyncing waits less time for a keyframe, at the cost of a
+    // slightly higher bitrate. Keep in sync with rtsp_keyframe_interval in processSettings.
+    var rtspKeyframeIntervalSecs: Int by Delegates.observable(DEFAULT_RTSP_KEYFRAME_INTERVAL_SECS) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspUsername: String by Delegates.observable("") { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var rtspPassword: String by Delegates.observable("") { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
 
     // SharedPreferences
     var canSetScreenWritePermission: Boolean
@@ -373,6 +412,14 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
+        settings["rtsp_enabled"]?.jsonPrimitive?.booleanOrNull?.let { rtspEnabled = it }
+        settings["rtsp_port"]?.jsonPrimitive?.intOrNull?.let { rtspPort = it }
+        settings["rtsp_resolution"]?.jsonPrimitive?.contentOrNull?.let { rtspResolution = it }
+        settings["rtsp_fps"]?.jsonPrimitive?.intOrNull?.let { rtspFps = it }
+        settings["rtsp_bitrate"]?.jsonPrimitive?.intOrNull?.let { rtspBitrate = it }
+        settings["rtsp_keyframe_interval"]?.jsonPrimitive?.intOrNull?.let { rtspKeyframeIntervalSecs = it }
+        settings["rtsp_username"]?.jsonPrimitive?.contentOrNull?.let { rtspUsername = it }
+        settings["rtsp_password"]?.jsonPrimitive?.contentOrNull?.let { rtspPassword = it }
 
         initSettings = true
         firebase.addToCrashLog("Settings update")
@@ -428,6 +475,11 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_DUCKING_VOLUME = 2
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0
+        const val DEFAULT_RTSP_PORT = 8554
+        const val DEFAULT_RTSP_RESOLUTION = "720p"
+        const val DEFAULT_RTSP_FPS = 15
+        const val DEFAULT_RTSP_BITRATE = 2_000_000
+        const val DEFAULT_RTSP_KEYFRAME_INTERVAL_SECS = 1
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }

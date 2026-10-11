@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.device.info
 import android.content.Context
 import android.os.Build
 import android.webkit.WebView
+import com.msp1974.vacompanion.utils.Helpers
 
 data class DeviceSoftwareData(
     val appVersion: String,

@@ -42,9 +42,13 @@ import javax.inject.Inject
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.device.MotionDetectionEngine.Companion.MOTION_INTERVAL_TIMEOUT
 import com.msp1974.vacompanion.device.sensors.SensorState
+import com.msp1974.vacompanion.device.MotionResult
+import com.msp1974.vacompanion.device.camera.CameraAvailability
+import com.msp1974.vacompanion.device.camera.TeeOutput
 import com.msp1974.vacompanion.satellite.AudioLogEntry
 import com.msp1974.vacompanion.utils.Helpers.Companion.capitalizeWords
 import com.msp1974.vacompanion.utils.WebViewGestureDetector
+import android.view.Surface
 
   class VADialog(
     val title: String = "AlertDialog",
@@ -150,7 +154,9 @@ data class State(
     var cameraStreamActive: Boolean = false,
     var motionDetectionSensitivity: Int = 0,
     var motionDetectionMode: String = "motion",
-    var sensorState: SensorState = SensorState()
+    var sensorState: SensorState = SensorState(),
+    var cameraAvailability: CameraAvailability = CameraAvailability.NO_CAMERA,
+    var lastMotionResult: MotionResult? = null
     )
 
 @HiltViewModel
@@ -196,6 +202,7 @@ class VAViewModel @Inject constructor(
                         cameraStreamActive = status.cameraStreamActive,
                         screenBlank = status.screenBlank,
                         isBluetoothMicConnected = status.bluetoothMicConnected,
+                        cameraAvailability = status.cameraAvailability,
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             muted = status.isMuted
                         ),
@@ -378,6 +385,15 @@ class VAViewModel @Inject constructor(
                     }
                 }
             }
+            "motionBoxes" -> {
+                consumed = false // Very numerous - do not log.
+                val result = event.newValue as? MotionResult
+                if (result != null) {
+                    _vacaState.update { currentState ->
+                        currentState.copy(lastMotionResult = result)
+                    }
+                }
+            }
             else -> consumed = false
         }
         if (consumed) {
@@ -549,6 +565,7 @@ class VAViewModel @Inject constructor(
     }
 
     fun refreshPermissionsStatus() {
+        deviceManager.camera.refreshAvailability()
         _vacaState.update { currentState ->
             currentState.copy(
                 permissions = PermissionsStatus(
@@ -646,6 +663,26 @@ class VAViewModel @Inject constructor(
         config.cameraStreamActive = active
         deviceManager.updateCameraStreamActive(active)
         config.eventBroadcaster.notifyEvent(Event("cameraStreamActive", "", active))
+    }
+
+    /** Attaches the on-device Camera Stream view's surface to the shared camera. Runs alongside
+     *  motion/face detection and the RTSP stream - see [com.msp1974.vacompanion.device.camera.CameraController]. */
+    fun attachPreviewSurface(surface: Surface, width: Int, height: Int) {
+        deviceManager.camera.addSurfaceOutput(
+            TeeOutput(id = PREVIEW_OUTPUT_ID, surface = surface, width = width, height = height, mirror = true)
+        )
+    }
+
+    fun detachPreviewSurface() {
+        deviceManager.camera.removeSurfaceOutput(PREVIEW_OUTPUT_ID)
+    }
+
+    fun refreshCameraAvailability() {
+        deviceManager.camera.refreshAvailability()
+    }
+
+    companion object {
+        private const val PREVIEW_OUTPUT_ID = "local_preview"
     }
 
     fun refreshCustomFiles() {

@@ -21,6 +21,8 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.VACAApplication
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.settings.BackgroundTaskStatus
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,7 +33,7 @@ import java.util.TimerTask
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class VAForegroundService @Inject constructor() : LifecycleService() {
+class VAForegroundService @Inject constructor() : LifecycleService(), EventListener {
 
     @Inject lateinit var deviceManager: DeviceManager
 
@@ -42,6 +44,7 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
     private var watchdogTimer: Timer = Timer()
 
     private var backgroundTask:  BackgroundTaskController? = null
+    private var activeNotification: android.app.Notification? = null
 
     enum class Actions {
         START, STOP
@@ -55,6 +58,7 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         firebase = FirebaseManager.getInstance(this)
+        config.eventBroadcaster.addListener(this)
 
         // Some Amazon devices are not seeing this permission so we are trying to check
         val permission = "android.permission.DISABLE_KEYGUARD"
@@ -100,37 +104,17 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
 
 
 
+                activeNotification = notification
+
                 lifecycleScope.launch {
                     firebase.addToCrashLog("Background service starting")
-
-                    //need core 1.12 and higher and SDK 30 and higher
-                    var requires: Int = 0
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    }
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                        if (deviceManager.deviceInfo.hardware.hasFrontCamera && checkPermission(
-                                Manifest.permission.CAMERA
-                            )
-                        ) {
-                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-                        }
-
-                        if (checkPermission(Manifest.permission.RECORD_AUDIO)) {
-                            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-                        }
-                    }
 
                     Timber.d("Running in foreground ServiceCompat mode")
                     ServiceCompat.startForeground(
                         this@VAForegroundService,
                         1,
                         notification,
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            requires
-                        } else {
-                            0
-                        },
+                        foregroundServiceTypes(),
                     )
 
                     try {
@@ -160,6 +144,41 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
 
     private fun checkPermission(permission: String): Boolean {
         return ActivityCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+    }
+
+    //need core 1.12 and higher and SDK 30 and higher
+    private fun foregroundServiceTypes(): Int {
+        var requires = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (deviceManager.deviceInfo.hardware.hasFrontCamera && checkPermission(Manifest.permission.CAMERA)) {
+                requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+            }
+            if (checkPermission(Manifest.permission.RECORD_AUDIO)) {
+                requires += ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+            return requires
+        }
+        return 0
+    }
+
+    override fun onEventTriggered(event: Event) {
+        // Camera permission can be granted after the service already started (it isn't a
+        // required-at-boot permission) - repromote so background RTSP/motion detection works
+        // without needing an app restart. hasCameraPermission is only ever set true on a grant,
+        // so this never fires for a revoke (Android kills/restarts the process on revoke anyway).
+        if (event.eventName == "hasCameraPermission" && event.newValue == true) {
+            val notification = activeNotification ?: return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    ServiceCompat.startForeground(this, 1, notification, foregroundServiceTypes())
+                } catch (e: Exception) {
+                    Timber.w("Failed to re-promote foreground service type after camera permission grant: $e")
+                }
+            }
+        }
     }
 
     private fun startActivity(context: Context) {
@@ -204,6 +223,7 @@ class VAForegroundService @Inject constructor() : LifecycleService() {
     override fun onDestroy() {
         super.onDestroy()
         Timber.i("Stopping Background Service")
+        config.eventBroadcaster.removeListener(this)
         watchdogTimer.cancel()
         backgroundTask?.shutdown()
 

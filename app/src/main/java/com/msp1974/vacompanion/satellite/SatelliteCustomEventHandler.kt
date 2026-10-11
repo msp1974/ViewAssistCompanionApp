@@ -134,13 +134,12 @@ class SatelliteCustomEventHandler(
                 }
             }
             "motionDetectionMode" -> {
+                // The shared CameraController lets motion/face detection run alongside the
+                // on-device preview and the RTSP stream, so this no longer needs to defer to
+                // cameraStreamActive.
                 val mode = event.newValue as String
                 if (mode != "none") {
-                    if (!config.cameraStreamActive) {
-                        scope.launch {
-                            satellite.startMotionDetection()
-                        }
-                    }
+                    scope.launch { satellite.startMotionDetection() }
                 } else {
                     scope.launch { satellite.stopMotionDetection() }
                 }
@@ -177,13 +176,14 @@ class SatelliteCustomEventHandler(
                     }
                 )
             }
-            "cameraStreamActive" -> {
-                val active = event.newValue as Boolean
-                if (active) {
-                    scope.launch { satellite.stopMotionDetection() }
-                } else if (config.enableMotionDetection) {
-                    scope.launch { satellite.startMotionDetection(delay=0) }
-                }
+            "rtspClientCount" -> {
+                satellite.sendStatus(
+                    buildJsonObject {
+                        putJsonObject("sensors", {
+                            put("rtsp_clients", event.newValue as Int)
+                        })
+                    }
+                )
             }
             "updateAvailableWakeWords" -> {
                 val infoBuilder = WyomingInfoBuilder(deviceManager)

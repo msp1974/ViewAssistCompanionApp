@@ -7,6 +7,8 @@ import android.media.AudioManager
 import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.device.authentication.AuthenticationManager
 import com.msp1974.vacompanion.device.authentication.Token
+import com.msp1974.vacompanion.device.camera.CameraAvailability
+import com.msp1974.vacompanion.device.camera.CameraController
 import com.msp1974.vacompanion.device.info.DeviceInfo
 import com.msp1974.vacompanion.device.sensors.NetworkState
 import com.msp1974.vacompanion.device.sensors.SensorManager
@@ -43,7 +45,8 @@ data class Status(
     val webViewPageLoadingStage: PageLoadingStage = PageLoadingStage.NOT_STARTED,
     val cameraStreamActive: Boolean = false,
     val screenBlank: Boolean = true,
-    val bluetoothMicConnected: Boolean = false
+    val bluetoothMicConnected: Boolean = false,
+    val cameraAvailability: CameraAvailability = CameraAvailability.NO_CAMERA
 )
 
 @Singleton
@@ -54,9 +57,14 @@ class DeviceManager @Inject constructor(
     val deviceManagerScope = CoroutineScope(Dispatchers.Default + job)
 
     val config: APPConfig = APPConfig(context)
-    val deviceInfo: DeviceInfo = DeviceInfo(context)
+    val deviceInfo: DeviceInfo = DeviceInfo(context, config)
     val sensorsManager = SensorManager(context, this)
     val authenticationManager: AuthenticationManager = AuthenticationManager(this.config)
+
+    // Single owner of the front camera - motion/face detection, the on-device preview and the
+    // RTSP encoder all attach to this instead of binding their own CameraX session. See
+    // CameraController's class doc.
+    val camera: CameraController = CameraController(context, config, deviceInfo)
 
     // Network status handling
     private val _networkStatus = MutableStateFlow(NetworkState())
@@ -111,6 +119,12 @@ class DeviceManager @Inject constructor(
         deviceManagerScope.launch {
             sensorsManager.sensorUpdates.collect { updates ->
                 _sensors.value = updates
+            }
+        }
+
+        deviceManagerScope.launch {
+            camera.availability.collect { availability ->
+                _status.update { it.copy(cameraAvailability = availability) }
             }
         }
     }

@@ -1,6 +1,8 @@
 package com.msp1974.vacompanion.device.info
 
 import android.content.Context
+import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.Helpers
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.addJsonObject
@@ -11,7 +13,7 @@ import kotlinx.serialization.json.putJsonObject
 import javax.inject.Inject
 
 
-class DeviceInfo @Inject constructor(val context: Context) {
+class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig) {
 
     val hardware = DeviceHardware(context).hardwareInfo
     val software = DeviceSoftware(context).softwareInfo
@@ -28,6 +30,8 @@ class DeviceInfo @Inject constructor(val context: Context) {
             put("release", software.release)
             put("has_battery", hardware.hasBattery)
             put("has_front_camera", hardware.hasFrontCamera)
+            put("has_rtsp", hardware.hasFrontCamera)
+            put("rtsp_url", rtspUrl())
             put("has_dnd", features.supportsDND)
             put("proximity_sensor_type", hardware.proximitySensorType)
             putJsonObject("audio") {
@@ -49,5 +53,12 @@ class DeviceInfo @Inject constructor(val context: Context) {
                 }
             }
         }
+    }
+
+    private fun rtspUrl(): String {
+        if (!hardware.hasFrontCamera) return ""
+        val ip = Helpers.getIpv4HostAddress()
+        if (ip.isEmpty()) return ""
+        return "rtsp://$ip:${config.rtspPort}/camera"
     }
 }
