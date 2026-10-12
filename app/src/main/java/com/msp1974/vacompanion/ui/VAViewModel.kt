@@ -158,7 +158,9 @@ data class State(
     var cameraAvailability: CameraAvailability = CameraAvailability.NO_CAMERA,
     var lastMotionResult: MotionResult? = null,
     var rtspClientCount: Int = 0,
-    var showRtspStreamingIndicator: Boolean = true
+    var showRtspStreamingIndicator: Boolean = true,
+    var audioOutputId: Int = -1,
+    var audioInputId: Int = -1
     )
 
 @HiltViewModel
@@ -234,6 +236,8 @@ class VAViewModel @Inject constructor(
                 motionDetectionMode = config.motionDetectionMode,
                 isBluetoothMicEnabled = config.bluetoothMicEnabled,
                 showRtspStreamingIndicator = config.showRtspStreamingIndicator,
+                audioOutputId = config.audioOutputId,
+                audioInputId = config.audioInputId,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -326,6 +330,18 @@ class VAViewModel @Inject constructor(
                 val count = event.newValue as? Int ?: 0
                 _vacaState.update { currentState ->
                     currentState.copy(rtspClientCount = count)
+                }
+            }
+            "audioOutputId" -> {
+                val id = event.newValue as? Int ?: -1
+                _vacaState.update { currentState ->
+                    currentState.copy(audioOutputId = id)
+                }
+            }
+            "audioInputId" -> {
+                val id = event.newValue as? Int ?: -1
+                _vacaState.update { currentState ->
+                    currentState.copy(audioInputId = id)
                 }
             }
             "diagnosticsEnabled" -> {
@@ -459,6 +475,14 @@ class VAViewModel @Inject constructor(
 
     fun onToggleRtspStreamingIndicator(enabled: Boolean) {
         config.showRtspStreamingIndicator = enabled
+    }
+
+    fun setAudioOutputId(id: Int) {
+        config.audioOutputId = id
+    }
+
+    fun setAudioInputId(id: Int) {
+        config.audioInputId = id
     }
 
     fun onToggleDND(enabled: Boolean) {

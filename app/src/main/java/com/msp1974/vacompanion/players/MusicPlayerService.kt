@@ -15,7 +15,9 @@ import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import com.msp1974.vacompanion.audio.AudioOutputRouter
 import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -31,7 +33,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @SuppressLint("UnsafeOptInUsageError")
 @AndroidEntryPoint
-class MusicPlayerService : Service() {
+class MusicPlayerService : Service(), EventListener {
 
     @Inject
     lateinit var deviceManager: DeviceManager
@@ -85,6 +87,13 @@ class MusicPlayerService : Service() {
         super.onCreate()
         sInstance = this
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        config.eventBroadcaster.addListener(this)
+    }
+
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "audioOutputId") {
+            mediaPlayer?.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
+        }
     }
 
     val mediaPlayerListener = object : Player.Listener {
@@ -184,6 +193,7 @@ class MusicPlayerService : Service() {
             .setAudioAttributes(audioAttributes, false)
             .build().apply {
                 repeatMode = Player.REPEAT_MODE_OFF
+                setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this@MusicPlayerService, config))
             }
         mediaPlayer!!.addListener(mediaPlayerListener)
     }
@@ -421,6 +431,7 @@ class MusicPlayerService : Service() {
 
     override fun onDestroy() {
         Timber.d("Music service destroy")
+        config.eventBroadcaster.removeListener(this)
         abandonAudioFocus()
         stop()
         sInstance = null

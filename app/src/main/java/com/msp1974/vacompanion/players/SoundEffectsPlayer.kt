@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.players
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
 import androidx.core.net.toUri
@@ -9,18 +10,39 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 
-class SoundEffectsPlayer(val context: Context) {
+// Matches MusicPlayerService's convention: SuppressLint (not @UnstableApi, which would make
+// this class's own public API - play()/preload() etc., called from Satellite.kt - require every
+// caller to opt in too) scoped to just this one unstable call (setPreferredAudioDevice).
+@SuppressLint("UnsafeOptInUsageError")
+class SoundEffectsPlayer(val context: Context, val config: APPConfig) : EventListener {
     private val players = mutableMapOf<Int, ExoPlayer>()
     private val uriPlayers = mutableMapOf<Uri, ExoPlayer>()
     private var activeAdhocPlayer: ExoPlayer? = null
     private val _state = MutableStateFlow(Player.STATE_IDLE)
     val state: StateFlow<Int> = _state
+
+    init {
+        config.eventBroadcaster.addListener(this)
+    }
+
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "audioOutputId") {
+            val device = AudioOutputRouter.resolvePreferredDevice(context, config)
+            players.values.forEach { it.setPreferredAudioDevice(device) }
+            uriPlayers.values.forEach { it.setPreferredAudioDevice(device) }
+            activeAdhocPlayer?.setPreferredAudioDevice(device)
+        }
+    }
 
     val audioAttributes: AudioAttributes = AudioAttributes.Builder()
         .setUsage(C.USAGE_NOTIFICATION)
@@ -59,6 +81,7 @@ class SoundEffectsPlayer(val context: Context) {
             val player = ExoPlayer.Builder(context).build()
             val mediaItem = MediaItem.fromUri(uri)
             player.setAudioAttributes(audioAttributes, false)
+            player.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(context, config))
             player.setMediaItem(mediaItem)
             player.addListener(object : Player.Listener {
                 override fun onPlaybackStateChanged(playbackState: Int) {
@@ -164,6 +187,7 @@ class SoundEffectsPlayer(val context: Context) {
     }
 
     suspend fun release() {
+        config.eventBroadcaster.removeListener(this)
         withContext(Dispatchers.Main) {
             players.values.forEach { it.release() }
             players.clear()

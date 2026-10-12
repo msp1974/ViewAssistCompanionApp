@@ -10,11 +10,23 @@ import android.media.AudioManager
 import android.media.AudioTrack
 import android.os.IBinder
 import androidx.media3.common.util.UnstableApi
+import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
+import javax.inject.Inject
 
 
 @UnstableApi
-class VoicePlayerService : Service() {
+@AndroidEntryPoint
+class VoicePlayerService : Service(), EventListener {
+
+    @Inject
+    lateinit var deviceManager: DeviceManager
+
+    private val config get() = deviceManager.config
 
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: AudioTrack? = null
@@ -40,6 +52,13 @@ class VoicePlayerService : Service() {
         super.onCreate()
         sInstance = this
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        config.eventBroadcaster.addListener(this)
+    }
+
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "audioOutputId") {
+            mediaPlayer?.setPreferredDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -69,6 +88,7 @@ class VoicePlayerService : Service() {
                 )
             )
             .build()
+            .apply { setPreferredDevice(AudioOutputRouter.resolvePreferredDevice(this@VoicePlayerService, config)) }
     }
 
     fun start(rate: Int, width: Int, channels: Int) {
@@ -167,6 +187,7 @@ class VoicePlayerService : Service() {
     }
 
     override fun onDestroy() {
+        config.eventBroadcaster.removeListener(this)
         stop(true)
         abandonAudioFocus()
         sInstance = null

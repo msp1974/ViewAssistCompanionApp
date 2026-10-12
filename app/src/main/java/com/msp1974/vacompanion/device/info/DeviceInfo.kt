@@ -41,6 +41,26 @@ class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig
                 put("has_agc", features.audio.autoGainControl)
                 put("has_ns", features.audio.noiseSuppression)
                 put("has_aec", features.audio.acousticEchoCancellation)
+                putJsonArray("inputs") {
+                    hardware.audioInputs.forEach {
+                        addJsonObject {
+                            put("id", it.id)
+                            put("type", it.type)
+                            put("type_name", it.typeName)
+                            put("product_name", it.productName)
+                        }
+                    }
+                }
+                putJsonArray("outputs") {
+                    hardware.audioOutputs.forEach {
+                        addJsonObject {
+                            put("id", it.id)
+                            put("type", it.type)
+                            put("type_name", it.typeName)
+                            put("product_name", it.productName)
+                        }
+                    }
+                }
             }
             putJsonArray("sensors") {
                 hardware.sensors.forEach {

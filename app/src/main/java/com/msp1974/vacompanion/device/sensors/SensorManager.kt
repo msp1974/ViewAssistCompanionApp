@@ -49,6 +49,7 @@ class SensorManager(
             "orientation" to OrientationSensor(context),
             "network" to NetworkSensor(context),
             "mic_input" to MicInputSensor(context),
+            "audio_output" to AudioOutputSensor(context),
         )
 
         // Start sensors
@@ -86,6 +87,9 @@ class SensorManager(
                     pendingUpdates.putAll(data.toMap())
                 }
                 is MicInputState -> {
+                    pendingUpdates.putAll(data.toMap())
+                }
+                is AudioOutputState -> {
                     pendingUpdates.putAll(data.toMap())
                 }
                 is NetworkState -> {
@@ -134,6 +138,7 @@ class SensorManager(
                         "orientation" -> nextState.copy(orientation = data as String)
                         "network" -> nextState.copy(network = data as NetworkState)
                         "mic_input" -> nextState.copy(micInput = data as MicInputState)
+                        "audio_output" -> nextState.copy(audioOutput = data as AudioOutputState)
                         else -> nextState
                     }
                 }

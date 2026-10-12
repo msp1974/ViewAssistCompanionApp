@@ -45,7 +45,7 @@ class MicInputSensor(private val context: Context) : Sensor {
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         
         val filteredDevices = devices.filter { device ->
-            AudioInRouter.getDeviceTypeName(device.type) != "Other"
+            AudioInRouter.isUsableMicrophoneType(device.type)
         }
 
         val inputNames = filteredDevices.map { device ->

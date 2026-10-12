@@ -318,6 +318,22 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    // -1 = automatically let Android/AudioManager pick the output; otherwise an
+    // AudioDeviceInfo.id (see AudioOutputRouter, which resolves this into an actual device for
+    // every player to route to). Settable via the Wyoming settings push (audio_output_id) or the
+    // on-device quick actions menu - both just assign this same property.
+    var audioOutputId: Int by Delegates.observable(DEFAULT_AUDIO_OUTPUT_ID) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    // -1 = AudioInRouter's normal auto-selection logic (USB > Bluetooth > Wired > built-in);
+    // otherwise an AudioDeviceInfo.id to force as the microphone, falling back to auto-selection
+    // if that device isn't currently connected. Settable via the Wyoming settings push
+    // (audio_input_id).
+    var audioInputId: Int by Delegates.observable(DEFAULT_AUDIO_INPUT_ID) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
 
     // SharedPreferences
     var canSetScreenWritePermission: Boolean
@@ -426,6 +442,8 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["rtsp_keyframe_interval"]?.jsonPrimitive?.intOrNull?.let { rtspKeyframeIntervalSecs = it }
         settings["rtsp_username"]?.jsonPrimitive?.contentOrNull?.let { rtspUsername = it }
         settings["rtsp_password"]?.jsonPrimitive?.contentOrNull?.let { rtspPassword = it }
+        settings["audio_output_id"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
+        settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
 
         initSettings = true
         firebase.addToCrashLog("Settings update")
@@ -486,6 +504,8 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_RTSP_FPS = 15
         const val DEFAULT_RTSP_BITRATE = 2_000_000
         const val DEFAULT_RTSP_KEYFRAME_INTERVAL_SECS = 1
+        const val DEFAULT_AUDIO_OUTPUT_ID = -1
+        const val DEFAULT_AUDIO_INPUT_ID = -1
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"
         const val GITHUB_RELEASES_URL = "https://github.com/msp1974/ViewAssist_Companion_App/releases"
     }

@@ -140,6 +140,16 @@ data class MicInputState(
     }
 }
 
+data class AudioOutputState(
+    val availableOutputs: List<String> = emptyList(),
+) {
+    fun toMap(): Map<String, Any> {
+        return mapOf(
+            "available_audio_outputs" to availableOutputs
+        )
+    }
+}
+
 data class SensorState(
     val light: Float? = null,
     val proximity: Float? = null,
@@ -149,6 +159,7 @@ data class SensorState(
     val accelerometer: AccelerometerState? = null,
     val network: NetworkState? = null,
     val micInput: MicInputState? = null,
+    val audioOutput: AudioOutputState? = null,
 ) {
     fun toMap(): Map<String, Any> {
         val map = mutableMapOf<String, Any>()
@@ -166,6 +177,7 @@ data class SensorState(
         }
         network?.let { map.putAll(it.toMap()) }
         micInput?.let { map.putAll(it.toMap()) }
+        audioOutput?.let { map.putAll(it.toMap()) }
         return map
     }
 }

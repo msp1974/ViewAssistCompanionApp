@@ -9,8 +9,11 @@ import android.hardware.Sensor
 import android.hardware.SensorManager
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Build
+import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.utils.Helpers
 import timber.log.Timber
 
@@ -24,6 +27,13 @@ data class DeviceSensor(
     val reportingMode: Int
 )
 
+data class AudioDeviceSummary(
+    val id: Int,
+    val type: Int,
+    val typeName: String,
+    val productName: String,
+)
+
 data class DeviceHardwareData(
     val deviceName: String,
     val hasAccelerometer: Boolean,
@@ -34,6 +44,8 @@ data class DeviceHardwareData(
     val hasProximitySensor: Boolean,
     val proximitySensorType: String,
     val sensors: List<DeviceSensor>,
+    val audioInputs: List<AudioDeviceSummary>,
+    val audioOutputs: List<AudioDeviceSummary>,
 )
 
 class DeviceHardware(
@@ -49,7 +61,12 @@ class DeviceHardware(
         hasMicrophone = hasMicrophone(),
         hasProximitySensor = hasProximitySensor(),
         proximitySensorType = getProximitySensorType(),
-        sensors = getAvailableSensors()
+        sensors = getAvailableSensors(),
+        // Same filtering MicInputSensor/AudioOutputSensor apply, so this static snapshot agrees
+        // with what those live sensors report rather than also listing tuner inputs, telephony
+        // uplink, internal routing buses, etc. that AudioManager reports alongside real mics/speakers.
+        audioInputs = getAudioDevices(AudioManager.GET_DEVICES_INPUTS, AudioInRouter::isUsableMicrophoneType),
+        audioOutputs = getAudioDevices(AudioManager.GET_DEVICES_OUTPUTS, AudioInRouter::isUsableOutputType),
     )
 
     @SuppressLint("HardwareIds")
@@ -132,6 +149,25 @@ class DeviceHardware(
 
         return sensors
     }
+
+    private fun getAudioDevices(direction: Int, isUsable: (Int) -> Boolean): List<AudioDeviceSummary> {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return try {
+            audioManager.getDevices(direction)
+                .filter { isUsable(it.type) }
+                .map { it.toSummary() }
+        } catch (e: Exception) {
+            Timber.e(e, "Error listing audio devices (direction=$direction)")
+            emptyList()
+        }
+    }
+
+    private fun AudioDeviceInfo.toSummary() = AudioDeviceSummary(
+        id = id,
+        type = type,
+        typeName = AudioInRouter.getDeviceTypeName(type),
+        productName = productName?.toString() ?: "Unknown",
+    )
 
     fun getProximitySensorType(): String {
         // Some devices have raw proximity sensors that report raw ADC values

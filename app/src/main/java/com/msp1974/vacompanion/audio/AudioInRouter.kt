@@ -69,16 +69,88 @@ class AudioInRouter(
             activeMicInputListeners.remove(listener)
         }
 
+        // Covers both input (mic-routing) and output types - also used by DeviceHardware to
+        // name entries in audioInputs/audioOutputs, so this is the single source of truth for
+        // AudioDeviceInfo.TYPE_* -> friendly name across the app.
         fun getDeviceTypeName(type: Int): String {
             return when (type) {
                 AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Built-in Mic"
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE -> "Built-in Earpiece"
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Built-in Speaker"
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE -> "Built-in Speaker (Safe Media Volume)"
                 AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth SCO"
                 AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Bluetooth A2DP"
                 AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Wired Headset"
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired Headphones"
+                AudioDeviceInfo.TYPE_LINE_ANALOG -> "Line Analog"
+                AudioDeviceInfo.TYPE_LINE_DIGITAL -> "Line Digital"
                 AudioDeviceInfo.TYPE_USB_DEVICE -> "USB Device"
                 AudioDeviceInfo.TYPE_USB_HEADSET -> "USB Headset"
+                AudioDeviceInfo.TYPE_USB_ACCESSORY -> "USB Accessory"
+                AudioDeviceInfo.TYPE_DOCK -> "Dock"
+                AudioDeviceInfo.TYPE_HDMI -> "HDMI"
+                AudioDeviceInfo.TYPE_HDMI_ARC -> "HDMI ARC"
+                AudioDeviceInfo.TYPE_FM -> "FM"
+                AudioDeviceInfo.TYPE_FM_TUNER -> "FM Tuner"
+                AudioDeviceInfo.TYPE_TV_TUNER -> "TV Tuner"
+                AudioDeviceInfo.TYPE_TELEPHONY -> "Telephony"
+                AudioDeviceInfo.TYPE_AUX_LINE -> "Aux Line"
+                AudioDeviceInfo.TYPE_IP -> "IP"
+                AudioDeviceInfo.TYPE_BUS -> "Bus"
+                AudioDeviceInfo.TYPE_HEARING_AID -> "Hearing Aid"
+                AudioDeviceInfo.TYPE_REMOTE_SUBMIX -> "Remote Submix"
                 AudioDeviceInfo.TYPE_BLE_HEADSET -> "BLE Headset"
+                AudioDeviceInfo.TYPE_BLE_SPEAKER -> "BLE Speaker"
+                AudioDeviceInfo.TYPE_HDMI_EARC -> "HDMI eARC"
+                AudioDeviceInfo.TYPE_BLE_BROADCAST -> "BLE Broadcast"
                 else -> "Other"
+            }
+        }
+
+        // Types AudioManager reports under GET_DEVICES_INPUTS that are genuinely usable as a
+        // general-purpose microphone - as opposed to tuner inputs, telephony uplink, loopback
+        // capture, etc., which also show up there but aren't something MicInputSensor should
+        // offer as a "mic".
+        fun isUsableMicrophoneType(type: Int): Boolean {
+            return when (type) {
+                AudioDeviceInfo.TYPE_BUILTIN_MIC,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_HEARING_AID -> true
+                else -> false
+            }
+        }
+
+        // Types AudioManager reports under GET_DEVICES_OUTPUTS that are genuinely usable as a
+        // general-purpose playback output - as opposed to tuner loopback, telephony, internal
+        // routing buses, etc., which also show up there but aren't a real "speaker" to a user.
+        fun isUsableOutputType(type: Int): Boolean {
+            return when (type) {
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER,
+                AudioDeviceInfo.TYPE_BUILTIN_SPEAKER_SAFE,
+                AudioDeviceInfo.TYPE_BUILTIN_EARPIECE,
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_USB_DEVICE,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_ACCESSORY,
+                AudioDeviceInfo.TYPE_HDMI,
+                AudioDeviceInfo.TYPE_HDMI_ARC,
+                AudioDeviceInfo.TYPE_HDMI_EARC,
+                AudioDeviceInfo.TYPE_DOCK,
+                AudioDeviceInfo.TYPE_LINE_ANALOG,
+                AudioDeviceInfo.TYPE_LINE_DIGITAL,
+                AudioDeviceInfo.TYPE_BLE_HEADSET,
+                AudioDeviceInfo.TYPE_BLE_SPEAKER,
+                AudioDeviceInfo.TYPE_BLE_BROADCAST,
+                AudioDeviceInfo.TYPE_HEARING_AID -> true
+                else -> false
             }
         }
 
@@ -149,6 +221,9 @@ class AudioInRouter(
                 stopSco()
             }
             scheduleEvaluate()
+        } else if (event.eventName == "audioInputId") {
+            Timber.d("Preferred mic input id setting changed, re-evaluating preferred microphone")
+            scheduleEvaluate()
         }
     }
 
@@ -186,6 +261,15 @@ class AudioInRouter(
         val devices = audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
         for (device in devices) {
             Timber.d("MIC Device: ${device.productName}, type: ${getDeviceTypeName(device.type)}")
+        }
+
+        // A forced device (audioInputId >= 0) takes priority over the auto-selection logic
+        // below, provided it's actually connected - otherwise fall back to auto-selection.
+        val forcedId = deviceManager.config.audioInputId
+        if (forcedId >= 0) {
+            val forced = devices.firstOrNull { it.id == forcedId }
+            if (forced != null) return forced
+            Timber.w("Configured mic input id=$forcedId not currently connected - falling back to automatic selection")
         }
 
         return devices.firstOrNull { isUsbMic(it) }

@@ -16,10 +16,22 @@ import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
+import javax.inject.Inject
 
 @UnstableApi
-class AlarmService : Service() {
+@AndroidEntryPoint
+class AlarmService : Service(), EventListener {
+
+    @Inject
+    lateinit var deviceManager: DeviceManager
+
+    private val config get() = deviceManager.config
 
     private lateinit var audioManager: AudioManager
     private var mediaPlayer: ExoPlayer? = null
@@ -34,6 +46,13 @@ class AlarmService : Service() {
         super.onCreate()
         sInstance = this
         audioManager = getSystemService(AUDIO_SERVICE) as AudioManager
+        config.eventBroadcaster.addListener(this)
+    }
+
+    override fun onEventTriggered(event: Event) {
+        if (event.eventName == "audioOutputId") {
+            mediaPlayer?.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -53,6 +72,7 @@ class AlarmService : Service() {
             .setContentType(C.AUDIO_CONTENT_TYPE_SONIFICATION)
             .build()
         player.setAudioAttributes(audioAttributes, false)
+        player.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
         player.addListener(object : Player.Listener {
             override fun onPlayerError(error: PlaybackException) {
                 Timber.e("Alarm player error: $error")
@@ -158,6 +178,7 @@ class AlarmService : Service() {
     }
 
     override fun onDestroy() {
+        config.eventBroadcaster.removeListener(this)
         stop()
         abandonAudioFocus()
         sInstance = null
