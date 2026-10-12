@@ -54,13 +54,7 @@ class DeviceHardware(
 
     @SuppressLint("HardwareIds")
     private fun getDeviceName(): String {
-        val manufacturer = Build.MANUFACTURER
-        val model = Build.MODEL
-        if (model.lowercase().startsWith(manufacturer.lowercase())) {
-            return model
-        } else {
-            return "$manufacturer $model"
-        }
+        return Helpers.getDeviceName() ?: "Unknown"
     }
 
     private fun hasAccelerometerSensor(): Boolean {

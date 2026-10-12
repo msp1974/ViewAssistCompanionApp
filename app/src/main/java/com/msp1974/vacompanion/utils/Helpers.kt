@@ -34,10 +34,11 @@ class Helpers {
         fun getDeviceName(): String? {
             val manufacturer = Build.MANUFACTURER
             val model = Build.MODEL
+            val device = Build.DEVICE
             if (model.lowercase().startsWith(manufacturer.lowercase())) {
-                return model
+                return "$model ($device)"
             } else {
-                return "$manufacturer $model"
+                return "$manufacturer $model ($device)"
             }
         }
 
