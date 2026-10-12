@@ -9,6 +9,9 @@ import android.system.Os
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraXConfig
+import com.google.android.gms.common.ConnectionResult
+import com.google.android.gms.common.GoogleApiAvailability
+import com.google.firebase.FirebaseApp
 import com.msp1974.vacompanion.utils.ActivityManager
 import com.msp1974.vacompanion.utils.Helpers
 import dagger.hilt.android.HiltAndroidApp
@@ -44,6 +47,8 @@ class VACAApplication: Application(), CameraXConfig.Provider {
 
         suppressMLKitSpam()
 
+        initialiseFirebaseIfAvailable()
+
         Thread.setDefaultUncaughtExceptionHandler(AppExceptionHandler(this.applicationContext))
 
         disableSSLCertificateChecking()
@@ -61,6 +66,22 @@ class VACAApplication: Application(), CameraXConfig.Provider {
             getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(channel)
 
+    }
+
+    // Firebase's own auto-init provider is removed from the manifest (see its comment there),
+    // so FirebaseApp is only brought up here, and only on devices that actually have Google
+    // Play Services - on devices without it (several of the kiosk targets this app ships to)
+    // Firebase would otherwise spend several seconds every launch retrying checks against a
+    // Play Store that will never be reachable. FirebaseManager already degrades gracefully
+    // (null analytics/crashlytics) when FirebaseApp was never initialised.
+    private fun initialiseFirebaseIfAvailable() {
+        val playServicesAvailable = GoogleApiAvailability.getInstance()
+            .isGooglePlayServicesAvailable(this) == ConnectionResult.SUCCESS
+        if (playServicesAvailable) {
+            FirebaseApp.initializeApp(this)
+        } else {
+            Timber.w("Google Play Services unavailable - skipping Firebase initialisation")
+        }
     }
 
     private fun suppressMLKitSpam() {

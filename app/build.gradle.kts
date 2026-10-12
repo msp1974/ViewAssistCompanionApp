@@ -113,6 +113,7 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.analytics)
     implementation(libs.firebase.crashlytics.ndk)
+    implementation(libs.play.services.base)
     implementation (libs.androidx.material.icons.extended)
     implementation (libs.androidx.preference.ktx)
     implementation (libs.timber)
@@ -126,7 +127,13 @@ dependencies {
     implementation(libs.androidx.camera.camera2)
     implementation(libs.androidx.camera.view)
     implementation(libs.androidx.compose.foundation)
-    implementation(libs.litert)
+    implementation(libs.litert) {
+        // ai-delivery is LiteRT's optional Play Feature Delivery path for downloading models
+        // over-the-air - unused here since wake-word models ship in assets/. It drags in
+        // asset-delivery -> work-runtime -> Room 2.5.0, whose generated WorkDatabase R8 can't
+        // reconstruct, crashing every release build at process start before any app code runs.
+        exclude(group = "com.google.android.play", module = "ai-delivery")
+    }
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.ktor.network)
     implementation(libs.ktor.client.core) // Ktor-Core

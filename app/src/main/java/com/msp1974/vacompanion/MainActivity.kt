@@ -133,18 +133,11 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
 
         var keepSplashScreen = true
 
-        firebaseManager = try {
-            FirebaseManager.getInstance(this)
-        } catch (e: Exception) {
-            Timber.w("Firebase unavailable: ${e.message}")
-            null
-        }
         enableEdgeToEdge()
 
         splashscreen.setKeepOnScreenCondition { keepSplashScreen }
 
         onBackPressedDispatcher.addCallback(this, onBackButton)
-        setFirebaseUserProperties()
 
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
@@ -162,9 +155,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.i("Performing screen on startup....")
             applyScreenMode(ScreenOnMode.ON)
         }
-
-        // Init webview setup
-        initWebView()
 
         setContent {
             val vaUiState by viewModel.vacaState.collectAsState()
@@ -219,6 +209,22 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     }
                 }
             }
+        }
+
+        // Deferred until after setContent() has had a chance to post the first frame - neither
+        // is needed for it (ConnectionScreen renders first; webView isn't touched until the
+        // satellite actually starts, well after this runs). Running them before setContent used
+        // to sit in front of the splash screen's dismissal for no benefit, since WebView
+        // construction and Firebase init are two of the costlier parts of a cold start.
+        lifecycleScope.launch {
+            initWebView()
+            firebaseManager = try {
+                FirebaseManager.getInstance(this@MainActivity)
+            } catch (e: Exception) {
+                Timber.w("Firebase unavailable: ${e.message}")
+                null
+            }
+            setFirebaseUserProperties()
         }
 
         // Check and get required user permissions

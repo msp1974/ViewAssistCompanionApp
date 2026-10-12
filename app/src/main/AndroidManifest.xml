@@ -131,5 +131,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Firebase normally self-initialises via this provider at process start, before any
+             of our own code runs - on devices with no Google Play Services (several of the
+             kiosk targets this app ships to, e.g. Echo Show) that init repeatedly retries and
+             logs "requires the Google Play Store, but it is missing" for several seconds on
+             every launch. Removing it and initialising Firebase ourselves in VACAApplication,
+             only when Play Services is actually available, skips that cost entirely on those
+             devices while leaving it unchanged on ones that do have Play Services. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
     </application>
 </manifest>

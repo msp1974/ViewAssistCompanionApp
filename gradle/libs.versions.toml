@@ -28,6 +28,7 @@ ktor = "3.5.1"
 ksp = "2.3.6"
 hilt = "2.59.2"
 faceDetection = "16.1.7"
+playServicesBase = "18.10.0"
 
 
 [libraries]
@@ -76,6 +77,7 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 hilt-android-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 mlkit-face-detection = { group = "com.google.mlkit", name = "face-detection", version.ref = "faceDetection" }
+play-services-base = { group = "com.google.android.gms", name = "play-services-base", version.ref = "playServicesBase" }
 
 
 [plugins]
