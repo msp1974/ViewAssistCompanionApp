@@ -364,6 +364,12 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("bluetooth_mic_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("bluetooth_mic_enabled", value) }
 
+    // On-device-only display preference (not HA-driven, unlike rtspEnabled etc.) - whether to
+    // show the on-screen indicator while the RTSP stream has one or more connections.
+    var showRtspStreamingIndicator: Boolean
+        get() = this.sharedPrefs.getBoolean("show_rtsp_streaming_indicator", true)
+        set(value) = this.sharedPrefs.edit { putBoolean("show_rtsp_streaming_indicator", value) }
+
     fun processSettings(settingString: String) {
         val settings = Json.parseToJsonElement(settingString).jsonObject
 

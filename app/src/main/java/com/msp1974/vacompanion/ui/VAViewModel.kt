@@ -156,7 +156,9 @@ data class State(
     var motionDetectionMode: String = "motion",
     var sensorState: SensorState = SensorState(),
     var cameraAvailability: CameraAvailability = CameraAvailability.NO_CAMERA,
-    var lastMotionResult: MotionResult? = null
+    var lastMotionResult: MotionResult? = null,
+    var rtspClientCount: Int = 0,
+    var showRtspStreamingIndicator: Boolean = true
     )
 
 @HiltViewModel
@@ -231,6 +233,7 @@ class VAViewModel @Inject constructor(
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
                 isBluetoothMicEnabled = config.bluetoothMicEnabled,
+                showRtspStreamingIndicator = config.showRtspStreamingIndicator,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -309,6 +312,20 @@ class VAViewModel @Inject constructor(
                     currentState.copy(
                         isBluetoothMicEnabled = config.bluetoothMicEnabled
                     )
+                }
+            }
+            "show_rtsp_streaming_indicator" -> {
+                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        showRtspStreamingIndicator = config.showRtspStreamingIndicator
+                    )
+                }
+            }
+            "rtspClientCount" -> {
+                val count = event.newValue as? Int ?: 0
+                _vacaState.update { currentState ->
+                    currentState.copy(rtspClientCount = count)
                 }
             }
             "diagnosticsEnabled" -> {
@@ -438,6 +455,10 @@ class VAViewModel @Inject constructor(
 
     fun onToggleBluetoothMic(enabled: Boolean) {
         config.bluetoothMicEnabled = enabled
+    }
+
+    fun onToggleRtspStreamingIndicator(enabled: Boolean) {
+        config.showRtspStreamingIndicator = enabled
     }
 
     fun onToggleDND(enabled: Boolean) {

@@ -122,6 +122,22 @@ fun SettingsLayout(
                             )
                         )
                     }
+                    if (viewModel.deviceInfo.hardware.hasFrontCamera) {
+                        menuOptions.add(
+                            MenuOption(
+                                title = "Camera Streaming Icon",
+                                subtitle = if (vaUiState.showRtspStreamingIndicator) {
+                                    "Shown on screen while the camera stream is active - tap to disable"
+                                } else {
+                                    "Hidden while the camera stream is active - tap to enable"
+                                },
+                                icon = Icons.Default.Videocam,
+                                onClick = {
+                                    viewModel.onToggleRtspStreamingIndicator(!vaUiState.showRtspStreamingIndicator)
+                                }
+                            )
+                        )
+                    }
                     menuOptions.add(
                         MenuOption(
                             title = "Device Info",

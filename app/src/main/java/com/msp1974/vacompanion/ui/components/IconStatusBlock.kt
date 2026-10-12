@@ -17,6 +17,7 @@ import androidx.compose.material.icons.automirrored.filled.Note
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.PermScanWifi
 import androidx.compose.material.icons.filled.SignalWifiStatusbarNull
+import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -78,6 +79,7 @@ private fun getIcon(name: String): ImageVector {
     return when (name) {
         "nowifi" -> Icons.Filled.WifiOff
         "noserver" -> Icons.Filled.CloudOff
+        "camera" -> Icons.Filled.Videocam
         else -> Icons.AutoMirrored.Filled.Note
     }
 }

@@ -117,21 +117,29 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
             )
         }
 
-        // Wifi disconnection takes priority - if wifi is down, the server is necessarily
-        // unreachable too, and showing both icons at once would just be redundant noise over
-        // the one thing the user can actually act on.
-        if (!vaUiState.isNetworkConnected) {
-            IconStatusBlock(
-                message = "Wifi Disconnected",
-                icon = "nowifi",
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
-        } else if (!vaUiState.isServerConnected) {
-            IconStatusBlock(
-                message = "Server Disconnected",
-                icon = "noserver",
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
+        // Stacked (rather than overlapping) bottom-right status icons, in priority order.
+        Column(modifier = Modifier.align(Alignment.BottomEnd)) {
+            if (vaUiState.rtspClientCount > 0 && vaUiState.showRtspStreamingIndicator) {
+                IconStatusBlock(
+                    message = "Camera Streaming",
+                    icon = "camera"
+                )
+            }
+
+            // Wifi disconnection takes priority - if wifi is down, the server is necessarily
+            // unreachable too, and showing both icons at once would just be redundant noise over
+            // the one thing the user can actually act on.
+            if (!vaUiState.isNetworkConnected) {
+                IconStatusBlock(
+                    message = "Wifi Disconnected",
+                    icon = "nowifi"
+                )
+            } else if (!vaUiState.isServerConnected) {
+                IconStatusBlock(
+                    message = "Server Disconnected",
+                    icon = "noserver"
+                )
+            }
         }
 
         if (showBottomSheet && vaViewModel.config.enableQuickActions) {
