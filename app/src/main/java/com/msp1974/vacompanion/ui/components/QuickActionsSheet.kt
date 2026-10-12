@@ -37,7 +37,12 @@ fun QuickActionsSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 32.dp, start = 16.dp, end = 16.dp, top = 8.dp),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
+                // The sheet is edge-to-edge, so on devices where the system nav bar stays
+                // visible (e.g. 3-button nav), a fixed bottom padding isn't enough on small
+                // screens where the bar still overlaps the last row of tiles - pad by the
+                // actual nav bar inset first, then the usual breathing room on top of it.
+                .navigationBarsPadding(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -46,7 +51,7 @@ fun QuickActionsSheet(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 32.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 maxItemsInEachRow = Int.MAX_VALUE
