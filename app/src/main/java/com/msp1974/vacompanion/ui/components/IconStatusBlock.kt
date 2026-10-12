@@ -7,7 +7,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,12 +41,16 @@ fun IconStatusBlock(
     icon: String,
     modifier: Modifier = Modifier,
 ) {
+    // Deliberately NOT fillMaxWidth(): this sits in a Box on top of the WebView, and a full-width
+    // row - even an invisible one - claims Compose's hit-testing for that whole strip (because of
+    // the pointerInput modifier below), which swallowed touches meant for the WebView underneath,
+    // including the two-finger swipe that opens the quick actions sheet. Wrapping to just the
+    // icon's own bounds keeps the touch-blocking scoped to the icon itself.
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.End,
         modifier = modifier
             .zIndex(2f)
-            .fillMaxWidth()
             .background(Color.Transparent)
             .pointerInput(Unit) {
                 // Prevent propagation of click
