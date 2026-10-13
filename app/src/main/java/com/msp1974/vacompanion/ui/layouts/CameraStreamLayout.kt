@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowLeft
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import com.msp1974.vacompanion.device.MotionDetectionEngine
 import com.msp1974.vacompanion.device.MotionDetectionMode
 import com.msp1974.vacompanion.device.MotionResult
 import com.msp1974.vacompanion.ui.VAViewModel
+import com.msp1974.vacompanion.utils.Helpers
 import android.graphics.RectF
 import timber.log.Timber
 import java.util.concurrent.Executors
@@ -78,21 +80,38 @@ fun CameraStreamLayout(
     // Camera Provider state to handle safe unbinding on exit
     val cameraProviderRef = remember { mutableStateOf<ProcessCameraProvider?>(null) }
 
-    DisposableEffect(Unit) {
-        viewModel.setCameraStreamActive(true)
-        scope.launch {
-            delay(500) // Give background task time to stop
-            isCameraReady = true
+    // The camera can only be held by one consumer at a time (see RtspCameraStreamer's
+    // docs for the full arbitration story). If an RTSP viewer is currently connected,
+    // don't fight it for the camera - show a message instead of a black/frozen preview.
+    val cameraBusyWithRtsp = vaUiState.rtspStreamActive
+
+    DisposableEffect(cameraBusyWithRtsp) {
+        if (cameraBusyWithRtsp) {
+            isCameraReady = false
+            onDispose {}
+        } else {
+            viewModel.setCameraStreamActive(true)
+            scope.launch {
+                delay(500) // Give background task time to stop
+                isCameraReady = true
+            }
+            onDispose {
+                viewModel.setCameraStreamActive(false)
+                // Explicitly unbind everything to prevent CAMERA_DISCONNECTED errors on exit
+                runCatching {
+                    cameraProviderRef.value?.unbindAll()
+                }
+            }
         }
+    }
+
+    // Cleanup that must run once when the screen itself is left, regardless of whether
+    // the camera was ever actually bound (e.g. the whole time was spent camera-busy).
+    DisposableEffect(Unit) {
         onDispose {
-            viewModel.setCameraStreamActive(false)
             hideJob?.cancel()
             executor.shutdown()
             motionEngine.close()
-            // Explicitly unbind everything to prevent CAMERA_DISCONNECTED errors on exit
-            runCatching {
-                cameraProviderRef.value?.unbindAll()
-            }
         }
     }
 
@@ -116,6 +135,17 @@ fun CameraStreamLayout(
             .fillMaxSize()
             .background(Color.Black)
     ) {
+        if (cameraBusyWithRtsp) {
+            Text(
+                text = "Camera unavailable: a network (RTSP) stream is currently active",
+                color = Color.White,
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 32.dp)
+            )
+        }
+
         // Camera Preview
         if (isCameraReady) {
             AndroidView(
@@ -265,6 +295,79 @@ fun CameraStreamLayout(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
+                }
+            }
+        }
+
+        // RTSP network stream status/toggle - lets this be tested/enabled on-device
+        // without requiring a matching change in the HA-side custom integration, which
+        // is where rtspStreamEnabled/Port/Width/Height/Fps are normally pushed from
+        // (see APPConfig.processSettings, alongside motion_detection_* settings).
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .align(Alignment.BottomStart),
+            color = Color.Black.copy(alpha = 0.5f)
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "RTSP network stream",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (vaUiState.rtspStreamEnabled) {
+                            "rtsp://${Helpers.getIpv4HostAddress()}:${viewModel.config.rtspStreamPort}/stream"
+                        } else {
+                            "Disabled"
+                        },
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+                Switch(
+                    checked = vaUiState.rtspStreamEnabled,
+                    onCheckedChange = { viewModel.setRtspStreamEnabled(it) },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = MaterialTheme.colorScheme.primary
+                    )
+                )
+            }
+            if (vaUiState.rtspStreamEnabled) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Rotation: ${vaUiState.rtspStreamRotation}°",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(onClick = { viewModel.cycleRtspStreamRotation() }) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.RotateRight,
+                            contentDescription = "Rotate RTSP stream 90°",
+                            tint = Color.White
+                        )
+                    }
+                    Text(
+                        text = "Mirror",
+                        color = Color.White.copy(alpha = 0.8f),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Switch(
+                        checked = vaUiState.rtspStreamMirror,
+                        onCheckedChange = { viewModel.setRtspStreamMirror(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                        )
+                    )
                 }
             }
         }
