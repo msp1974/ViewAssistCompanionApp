@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.camera2.CaptureRequest
+import android.view.Surface
 import android.util.Range
 import android.util.Size
 import androidx.camera.camera2.interop.Camera2Interop
@@ -37,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 enum class CameraAvailability { NO_CAMERA, NO_PERMISSION, IN_USE, READY }
 
@@ -68,6 +70,17 @@ class CameraController(
     private val directCameraId: String? = DeviceCameraQuirks.directCameraId()
     private var directSource: Camera2DirectSource? = null
 
+    // The camera's reported orientation - decides whether the image needs re-orienting. Re-read if
+    // the device is rotated while the camera is running.
+    private val orientation = CameraOrientation(context, directCameraId)
+
+    // Whether the direct backend is currently feeding the outputs through the GL tee (to turn the
+    // image upright) rather than straight from the camera.
+    private var directViaTee = false
+
+    private var previewUseCase: Preview? = null
+    private var analysisUseCase: ImageAnalysis? = null
+
     // Backs off retrying ProcessCameraProvider/bindToLifecycle after a failure, instead of
     // re-attempting (and eating CameraX's own ~5s internal retry loop) on every single consumer
     // attach - e.g. some devices never have a usable camera (OS-level permission the app can
@@ -91,15 +104,64 @@ class CameraController(
 
     init {
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
+        surfaceTee.setRotationOffset(totalRotationOffset())
+        orientation.onRotationChanged = { onOrientationChanged() }
+        // CameraX's rotation is worked out from the sensor orientation and the display rotation it
+        // was given, so the three only make sense read together.
+        surfaceTee.onCameraXTransform = { rotation, mirroring ->
+            Timber.i(
+                "CameraController: CameraX transform rotation=$rotation mirroring=$mirroring " +
+                    "(sensorOrientation=${orientation.sensorOrientation}, " +
+                    "displayRotation=${orientation.surfaceRotation}, " +
+                    "naturalLandscape=${orientation.isNaturalLandscape}, " +
+                    "device=${android.os.Build.MANUFACTURER}/${android.os.Build.DEVICE})"
+            )
+        }
+        orientation.start()
         config.eventBroadcaster.addListener(object : EventListener {
             override fun onEventTriggered(event: Event) {
-                if (event.eventName == "hasCameraPermission") {
-                    refreshAvailability()
-                    scheduleRebind()
+                when (event.eventName) {
+                    "hasCameraPermission" -> {
+                        refreshAvailability()
+                        scheduleRebind()
+                    }
+                    // SharedPreferences-backed, so the event carries no typed value - read it back.
+                    "camera_rotation_offset" -> mainScope.launch {
+                        surfaceTee.setRotationOffset(totalRotationOffset())
+                        onOrientationChanged()
+                    }
                 }
             }
         })
     }
+
+    /**
+     * The device was turned, or the user changed the rotation setting: bring the camera image back
+     * upright. CameraX is told the new display rotation and re-sends its transform to the tee; the
+     * direct backend sets the rotation itself - unless whether it needs the tee at all has changed
+     * (an upright image needs none), which takes a rebind.
+     */
+    private fun onOrientationChanged() {
+        previewUseCase?.targetRotation = orientation.surfaceRotation
+        analysisUseCase?.targetRotation = orientation.surfaceRotation
+
+        if (directCameraId == null) return
+        val needsTee = outputs.isNotEmpty() && directNeedsTransform()
+        if (needsTee != directViaTee) {
+            scheduleRebind()
+        } else if (directViaTee) {
+            surfaceTee.setDirectRotation(orientation.sensorOrientation)
+        }
+    }
+
+    /** Whether frames from the direct backend have to be turned (or the user has asked for it);
+     *  when not, they go to the outputs untouched. */
+    private fun directNeedsTransform(): Boolean =
+        orientation.sensorOrientation != 0 || totalRotationOffset() != 0
+
+    /** The user's rotation setting plus the correction for this model of device, if it has one. */
+    private fun totalRotationOffset(): Int =
+        (DeviceCameraQuirks.rotationOffsetDegrees() + config.cameraRotationOffset) % 360
 
     /** Best-effort availability, recomputed from permission/hardware state plus the last known
      *  dynamic camera state (e.g. in-use-elsewhere) observed while bound. */
@@ -208,12 +270,11 @@ class CameraController(
                 val useCases = mutableListOf<UseCase>()
                 val targetFps = encoderFps ?: ANALYSIS_ONLY_FPS
 
-                if (needsAnalysis) {
-                    useCases.add(buildAnalysisUseCase(applyFpsRange = !needsPreview, targetFps = targetFps))
-                }
-                if (needsPreview) {
-                    useCases.add(buildPreviewUseCase(targetFps))
-                }
+                analysisUseCase = if (needsAnalysis) {
+                    buildAnalysisUseCase(applyFpsRange = !needsPreview, targetFps = targetFps)
+                } else null
+                previewUseCase = if (needsPreview) buildPreviewUseCase(targetFps) else null
+                useCases.addAll(listOfNotNull(analysisUseCase, previewUseCase))
 
                 val camera = provider.bindToLifecycle(
                     this@CameraController,
@@ -233,7 +294,11 @@ class CameraController(
                 observeCameraState(camera)
                 _availability.value = CameraAvailability.READY
                 onBindSuccess()
-                Timber.i("CameraController: bound (analysis=$needsAnalysis, preview=$needsPreview)")
+                Timber.i(
+                    "CameraController: bound (analysis=$needsAnalysis, preview=$needsPreview), " +
+                        "sensorOrientation=${orientation.sensorOrientation} " +
+                        "displayRotation=${orientation.surfaceRotation}"
+                )
             } catch (e: Exception) {
                 Timber.e("CameraController: bind failed: $e")
                 _availability.value = CameraAvailability.IN_USE
@@ -259,12 +324,13 @@ class CameraController(
      *  [DeviceCameraQuirks]. Outputs/analyzer only ever change via attach/detach, which already
      *  triggers a debounced rebind, so a full stop/start here is simplest rather than trying to
      *  add/remove live targets on an existing capture session. */
-    private fun rebindDirect(id: String, needsAnalysis: Boolean) {
+    private suspend fun rebindDirect(id: String, needsAnalysis: Boolean) {
         val source = directSource ?: Camera2DirectSource(
             context = context,
             cameraId = id,
             analysisExecutor = analysisExecutor,
             analyzerProvider = { analyzer },
+            rotationProvider = { orientation.sensorOrientation },
         ).also {
             it.onOpened = {
                 _availability.value = CameraAvailability.READY
@@ -279,7 +345,42 @@ class CameraController(
         }
 
         source.stop()
-        source.start(outputs.map { it.surface }, needsAnalysis)
+        source.start(directTargets(), needsAnalysis)
+    }
+
+    /**
+     * The surfaces the direct camera writes to. Normally that is the outputs themselves. If the
+     * image isn't upright for the device's orientation it is a single tee input instead, which
+     * turns the image and draws it to every output.
+     */
+    private suspend fun directTargets(): List<Surface> {
+        val viaTee = outputs.isNotEmpty() && directNeedsTransform()
+        directViaTee = false
+        if (viaTee) {
+            try {
+                val size = orientation.outputSize(streamResolution())
+                surfaceTee.setDirectRotation(orientation.sensorOrientation)
+                val input = withContext(Dispatchers.IO) {
+                    surfaceTee.createDirectInput(size.width, size.height).get(TEE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                }
+                if (input != null) {
+                    directViaTee = true
+                    Timber.i(
+                        "CameraController: re-orienting direct camera feed by " +
+                            "${orientation.sensorOrientation}deg (+${totalRotationOffset()}deg offset), " +
+                            "${size.width}x${size.height}"
+                    )
+                    return listOf(input)
+                }
+            } catch (e: Exception) {
+                Timber.e("CameraController: couldn't set up re-orientation, using the raw camera feed: $e")
+            }
+        }
+        // The outputs go straight to the camera, so the tee must give up its hold on them.
+        withContext(Dispatchers.IO) {
+            surfaceTee.releaseOutputSurfaces().get(TEE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        }
+        return outputs.map { it.surface }
     }
 
     @SuppressLint("UnsafeOptInUsageError")
@@ -348,10 +449,13 @@ class CameraController(
     private suspend fun unbind() {
         if (directCameraId != null) {
             directSource?.stop()
+            directViaTee = false
             _availability.value = computeStaticAvailability()
             return
         }
         withContext(Dispatchers.Main.immediate) {
+            previewUseCase = null
+            analysisUseCase = null
             cameraProvider?.unbindAll()
             if (lifecycleRegistry.currentState != Lifecycle.State.CREATED) {
                 lifecycleRegistry.currentState = Lifecycle.State.CREATED
@@ -361,12 +465,14 @@ class CameraController(
     }
 
     fun release() {
+        orientation.stop()
         mainScope.launch { unbind() }
         surfaceTee.release()
         analysisExecutor.shutdown()
     }
 
     companion object {
+        private const val TEE_TIMEOUT_SECONDS = 3L
         private const val REBIND_DEBOUNCE_MS = 300L
         private const val ANALYSIS_ONLY_FPS = 4
         private const val REBIND_FAILURE_BACKOFF_BASE_MS = 5_000L

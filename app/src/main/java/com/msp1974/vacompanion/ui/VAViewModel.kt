@@ -163,6 +163,7 @@ data class State(
     var audioOutputId: Int = -1,
     var audioInputId: Int = -1,
     var sendspinEnabled: Boolean = false,
+    var cameraRotationOffset: Int = 0,
     var sendspinNowPlaying: SendspinNowPlaying = SendspinNowPlaying()
     )
 
@@ -242,6 +243,7 @@ class VAViewModel @Inject constructor(
                 audioOutputId = config.audioOutputId,
                 audioInputId = config.audioInputId,
                 sendspinEnabled = config.sendspinEnabled,
+                cameraRotationOffset = config.cameraRotationOffset,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -334,6 +336,12 @@ class VAViewModel @Inject constructor(
                 // SharedPreferences-backed, so the event carries no typed newValue - read it back.
                 _vacaState.update { currentState ->
                     currentState.copy(sendspinEnabled = config.sendspinEnabled)
+                }
+            }
+            "camera_rotation_offset" -> {
+                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
+                _vacaState.update { currentState ->
+                    currentState.copy(cameraRotationOffset = config.cameraRotationOffset)
                 }
             }
             "sendspinNowPlaying" -> {
@@ -496,6 +504,10 @@ class VAViewModel @Inject constructor(
     /** A transport button on the now-playing overlay: "play", "pause", "next" or "previous". */
     fun onSendspinCommand(command: String) {
         config.eventBroadcaster.notifyEvent(Event("sendspinCommand", "", command))
+    }
+
+    fun setCameraRotationOffset(degrees: Int) {
+        config.cameraRotationOffset = degrees
     }
 
     fun onToggleSendspin(enabled: Boolean) {

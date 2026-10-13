@@ -22,18 +22,18 @@ import java.util.concurrent.Executor
  * and targets every currently-needed output - the analysis [ImageReader] plus any preview/
  * encoder [Surface]s - with a single capture session and one repeating request.
  *
- * Camera2 natively fans one capture request out to multiple target surfaces, so - unlike
- * [CameraController]'s normal CameraX path - no GL tee is needed here to share the feed. The
- * trade-off: every output gets the same raw sensor orientation with no per-output transform
- * (there is no [SurfaceTee] in this path), so on these devices the local preview and the RTSP
- * stream share whatever orientation/mirroring the sensor natively reports, rather than each
- * getting its own corrected transform the way other devices do.
+ * Camera2 natively fans one capture request out to multiple target surfaces, so the surfaces it is
+ * given can be the outputs themselves. Those get the raw sensor orientation, which is only right
+ * when the camera's image is already upright; [CameraController] instead hands this a single
+ * [SurfaceTee] input when the image needs turning, and the tee draws it to every output.
  */
 class Camera2DirectSource(
     private val context: Context,
     private val cameraId: String,
     private val analysisExecutor: Executor,
     private val analyzerProvider: () -> ImageAnalysis.Analyzer?,
+    /** Rotation that makes the camera's image upright for the device's current orientation. */
+    private val rotationProvider: () -> Int,
 ) {
     private var thread: HandlerThread? = null
     private var handler: Handler? = null
@@ -43,19 +43,6 @@ class Camera2DirectSource(
 
     @Volatile private var running = false
     @Volatile private var starting = false
-
-    /** Fixed camera-to-display rotation. Portal devices are a fixed wall/desk mount with no
-     *  rotation sensor concerns, so - unlike CameraX's dynamic per-frame transform - this is
-     *  computed once from SENSOR_ORIENTATION and reused for every frame. */
-    private val sensorOrientation: Int by lazy {
-        try {
-            val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-            cameraManager.getCameraCharacteristics(cameraId).get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-        } catch (e: Exception) {
-            Timber.e("Camera2DirectSource: failed to read sensor orientation: $e")
-            0
-        }
-    }
 
     var onOpened: (() -> Unit)? = null
     var onError: (() -> Unit)? = null
@@ -82,7 +69,7 @@ class Camera2DirectSource(
                     }
                     analysisExecutor.execute {
                         try {
-                            analyzer.analyze(DirectImageProxy(image, sensorOrientation))
+                            analyzer.analyze(DirectImageProxy(image, rotationProvider()))
                         } catch (e: Exception) {
                             Timber.e("Camera2DirectSource: analyzer threw: $e")
                             image.close()

@@ -90,6 +90,11 @@ fun ConfigurationLayout(
                 icon = Icons.Default.Videocam,
                 onCheckedChange = { viewModel.onToggleRtspStreamingIndicator(it) }
             )
+            RotationDropdown(
+                label = "Camera image rotation",
+                selectedDegrees = vaUiState.cameraRotationOffset,
+                onSelect = { viewModel.setCameraRotationOffset(it) }
+            )
         }
     }
 }
@@ -142,6 +147,57 @@ private fun SectionHeader(title: String) {
         fontWeight = FontWeight.Bold,
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
     )
+}
+
+/**
+ * Extra rotation for the camera image (the RTSP stream and the on-device preview), for a device
+ * that still shows it the wrong way up after the automatic orientation.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun RotationDropdown(
+    label: String,
+    selectedDegrees: Int,
+    onSelect: (Int) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = listOf(0, 90, 180, 270)
+
+    fun optionLabel(degrees: Int) = if (degrees == 0) "Automatic" else "Automatic + $degrees\u00B0"
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        OutlinedTextField(
+            value = optionLabel(selectedDegrees),
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            supportingText = { Text("Use if the camera feed is the wrong way up") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable)
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { degrees ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(degrees)) },
+                    onClick = {
+                        onSelect(degrees)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

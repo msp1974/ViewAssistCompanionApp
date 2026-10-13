@@ -128,6 +128,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         super.onCreate(savedInstanceState)
 
         screen = ScreenUtils(this, config)
+        // The orientation is otherwise only applied when the setting changes, so a new Activity
+        // would start with the manifest default whatever mode is configured.
+        screen.setScreenOrientation(this, config.screenOrientationMode)
         updater = Updater(this)
         permissions = Permissions(this, deviceManager, this)
 

@@ -393,6 +393,15 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("sendspin_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("sendspin_enabled", value) }
 
+    // Extra rotation (0, 90, 180 or 270 degrees) applied to the camera image - the RTSP stream and
+    // the on-device preview - on top of the automatic orientation, for a device whose camera
+    // orientation is reported wrongly. On-device preference that HA can also push.
+    var cameraRotationOffset: Int
+        get() = this.sharedPrefs.getInt("camera_rotation_offset", 0)
+        set(value) = this.sharedPrefs.edit {
+            putInt("camera_rotation_offset", (((value % 360) + 360) % 360) / 90 * 90)
+        }
+
     fun processSettings(settingString: String) {
         val settings = Json.parseToJsonElement(settingString).jsonObject
 
@@ -452,6 +461,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["audio_output_id"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
         settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
         settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
+        settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
 
         initSettings = true
         firebase.addToCrashLog("Settings update")

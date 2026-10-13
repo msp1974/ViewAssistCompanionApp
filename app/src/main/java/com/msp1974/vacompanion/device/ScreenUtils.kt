@@ -6,6 +6,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
@@ -198,15 +199,46 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         }
     }
 
+    /**
+     * Sets the screen orientation: "auto" follows the device's orientation sensor, the other modes
+     * lock it. Unknown modes are ignored.
+     *
+     * "auto" must not be SCREEN_ORIENTATION_UNSPECIFIED. That means "no preference", so the system
+     * decides, and with the user's auto-rotate setting off - normal on a wall-mounted kiosk - it
+     * simply holds whatever rotation the screen is already in. On Android 8.x, which keeps the last
+     * forced orientation until told otherwise, going from a locked mode back to "auto" then leaves
+     * the screen stuck in the locked orientation. FULL_SENSOR asks for the sensor outright, and
+     * unlike USER/UNSPECIFIED it doesn't depend on the auto-rotate setting. (All orientations,
+     * including upside-down, are allowed; a kiosk can be mounted either way up.)
+     */
     @SuppressLint("SourceLockedOrientationActivity")
     fun setScreenOrientation(activity: Activity, mode: String) {
-        when (mode) {
-            "auto" ->  activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED)
-            "portrait" -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT)
-            "landscape" -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
-            "reverse_portrait" -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT)
-            "reverse_landscape" -> activity.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE)
+        val orientation = when (mode) {
+            "auto" -> if (hasOrientationSensor()) {
+                ActivityInfo.SCREEN_ORIENTATION_SENSOR
+            } else {
+                // Nothing to follow, so leave it to the system.
+                ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+            "portrait" -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            "landscape" -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            "reverse_portrait" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+            "reverse_landscape" -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+            else -> {
+                log.w("Ignoring unknown screen orientation mode: $mode")
+                return
+            }
         }
+        if (activity.requestedOrientation != orientation) {
+            log.d("Setting screen orientation: $mode")
+            activity.requestedOrientation = orientation
+        }
+    }
+
+    private fun hasOrientationSensor(): Boolean {
+        val pm = context.packageManager
+        return pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_ACCELEROMETER) ||
+            pm.hasSystemFeature(PackageManager.FEATURE_SENSOR_GYROSCOPE)
     }
 
     fun wakeScreen(lockDuration: Long = 500) {

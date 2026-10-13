@@ -32,6 +32,27 @@ object DeviceCameraQuirks {
         Entry(make = "facebook", device = "cipher", cameraId = "0"),
     )
 
+    private data class RotationEntry(val make: String, val device: String, val degrees: Int)
+
+    // Devices whose camera feed is still turned after the orientation the camera reports is applied,
+    // because that report doesn't match how the camera is really mounted. `device` is Build.DEVICE
+    // again. The correction is added to whatever the user sets (see APPConfig.cameraRotationOffset).
+    //
+    // Lenovo Smart Display ("starfire"): a portrait-built panel used in landscape. Reports CameraX
+    //   rotation=180 (sensorOrientation=270, displayRotation=3), but the image really needs a
+    //   quarter turn - 180 left it sideways and 180+90 upside-down - so the total must be 90.
+    private val rotationEntries = listOf(
+        RotationEntry(make = "lenovo", device = "starfire", degrees = 270),
+    )
+
+    /** Extra rotation (0, 90, 180 or 270 degrees) to apply to the camera image on this device, on
+     *  top of the orientation the camera reports. 0 for every device not listed. */
+    fun rotationOffsetDegrees(): Int {
+        val manufacturer = Build.MANUFACTURER.orEmpty().lowercase()
+        val device = Build.DEVICE.orEmpty().lowercase()
+        return rotationEntries.firstOrNull { it.make == manufacturer && it.device == device }?.degrees ?: 0
+    }
+
     /** The camera id to open directly via Camera2 on this device, or null for every other
      *  device (which should keep using the normal CameraX path). */
     fun directCameraId(): String? {

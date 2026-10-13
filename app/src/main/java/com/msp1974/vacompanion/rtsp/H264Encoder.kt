@@ -70,7 +70,9 @@ class H264Encoder(
 
         cameraController.setEncoderFps(config.rtspFps)
         cameraController.addSurfaceOutput(
-            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false)
+            // fit: a portrait image (device turned upright) is pillarboxed in the landscape
+            // stream rather than stretched across it.
+            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false, fit = true)
         )
 
         scope.launch { drainOutput(mediaCodec) }
