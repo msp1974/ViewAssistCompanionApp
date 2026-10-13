@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +34,7 @@ import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.components.DiagnosticBar
 import com.msp1974.vacompanion.ui.components.IconStatusBlock
+import com.msp1974.vacompanion.ui.components.NowPlayingOverlay
 import com.msp1974.vacompanion.ui.components.QuickActionsSheet
 import com.msp1974.vacompanion.utils.CustomWebView
 import com.msp1974.vacompanion.utils.WebViewGestureDetector
@@ -116,6 +120,19 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                 modifier = Modifier.align(Alignment.TopCenter)
             )
         }
+
+        // Sendspin now-playing card, bottom-left so it stays clear of the status icons below.
+        NowPlayingOverlay(
+            nowPlaying = vaUiState.sendspinNowPlaying,
+            onCommand = { vaViewModel.onSendspinCommand(it) },
+            // Half the screen width (margin included), but never so narrow that the controls
+            // and track details don't fit.
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .widthIn(min = 300.dp)
+                .fillMaxWidth(0.5f)
+                .padding(start = 16.dp, bottom = 16.dp),
+        )
 
         // Stacked (rather than overlapping) bottom-right status icons, in priority order.
         Column(modifier = Modifier.align(Alignment.BottomEnd)) {

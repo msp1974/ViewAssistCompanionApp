@@ -386,6 +386,13 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("show_rtsp_streaming_indicator", true)
         set(value) = this.sharedPrefs.edit { putBoolean("show_rtsp_streaming_indicator", value) }
 
+    // Whether to run the Sendspin player (this device appears as a synchronised audio output to
+    // Music Assistant / Home Assistant). On-device preference that can also be pushed by HA, so it
+    // is persisted rather than only held in memory.
+    var sendspinEnabled: Boolean
+        get() = this.sharedPrefs.getBoolean("sendspin_enabled", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("sendspin_enabled", value) }
+
     fun processSettings(settingString: String) {
         val settings = Json.parseToJsonElement(settingString).jsonObject
 
@@ -444,6 +451,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["rtsp_password"]?.jsonPrimitive?.contentOrNull?.let { rtspPassword = it }
         settings["audio_output_id"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
         settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
+        settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
 
         initSettings = true
         firebase.addToCrashLog("Settings update")

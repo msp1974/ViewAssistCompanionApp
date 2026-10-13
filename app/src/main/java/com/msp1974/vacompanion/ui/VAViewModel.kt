@@ -13,6 +13,7 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.sensors.NetworkStatus
+import com.msp1974.vacompanion.sendspin.SendspinNowPlaying
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.utils.Event
@@ -160,7 +161,9 @@ data class State(
     var rtspClientCount: Int = 0,
     var showRtspStreamingIndicator: Boolean = true,
     var audioOutputId: Int = -1,
-    var audioInputId: Int = -1
+    var audioInputId: Int = -1,
+    var sendspinEnabled: Boolean = false,
+    var sendspinNowPlaying: SendspinNowPlaying = SendspinNowPlaying()
     )
 
 @HiltViewModel
@@ -238,6 +241,7 @@ class VAViewModel @Inject constructor(
                 showRtspStreamingIndicator = config.showRtspStreamingIndicator,
                 audioOutputId = config.audioOutputId,
                 audioInputId = config.audioInputId,
+                sendspinEnabled = config.sendspinEnabled,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -324,6 +328,18 @@ class VAViewModel @Inject constructor(
                     currentState.copy(
                         showRtspStreamingIndicator = config.showRtspStreamingIndicator
                     )
+                }
+            }
+            "sendspin_enabled" -> {
+                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
+                _vacaState.update { currentState ->
+                    currentState.copy(sendspinEnabled = config.sendspinEnabled)
+                }
+            }
+            "sendspinNowPlaying" -> {
+                val nowPlaying = event.newValue as? SendspinNowPlaying ?: SendspinNowPlaying()
+                _vacaState.update { currentState ->
+                    currentState.copy(sendspinNowPlaying = nowPlaying)
                 }
             }
             "rtspClientCount" -> {
@@ -475,6 +491,15 @@ class VAViewModel @Inject constructor(
 
     fun onToggleRtspStreamingIndicator(enabled: Boolean) {
         config.showRtspStreamingIndicator = enabled
+    }
+
+    /** A transport button on the now-playing overlay: "play", "pause", "next" or "previous". */
+    fun onSendspinCommand(command: String) {
+        config.eventBroadcaster.notifyEvent(Event("sendspinCommand", "", command))
+    }
+
+    fun onToggleSendspin(enabled: Boolean) {
+        config.sendspinEnabled = enabled
     }
 
     fun setAudioOutputId(id: Int) {

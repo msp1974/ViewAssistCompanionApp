@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -67,6 +68,16 @@ fun ConfigurationLayout(
             devices = deviceInfo.hardware.audioOutputs,
             selectedId = vaUiState.audioOutputId,
             onSelect = { viewModel.setAudioOutputId(it) }
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        SectionHeader("Sendspin")
+        SwitchOptionItem(
+            label = "Sendspin Player",
+            subtitle = "Let Music Assistant play synchronised audio on this device",
+            checked = vaUiState.sendspinEnabled,
+            icon = Icons.Default.Speaker,
+            onCheckedChange = { viewModel.onToggleSendspin(it) }
         )
 
         if (deviceInfo.hardware.hasFrontCamera) {

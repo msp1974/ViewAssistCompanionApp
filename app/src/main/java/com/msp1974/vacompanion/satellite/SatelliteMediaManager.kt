@@ -8,12 +8,13 @@ import com.msp1974.vacompanion.players.SoundEffectsPlayer
 import com.msp1974.vacompanion.players.MusicPlayerService
 import com.msp1974.vacompanion.players.VoicePlayerService
 import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.Event
 import timber.log.Timber
 
 @SuppressLint("UnsafeOptInUsageError")
 class SatelliteMediaManager(val context: Context, val config: APPConfig) {
     val soundPlayer = SoundEffectsPlayer(context, config)
-    val voicePlayer = VoiceManager(context)
+    val voicePlayer = VoiceManager(context, config)
     val musicPlayer = MusicManager(context)
     val alarmPlayer = AlarmManager(context)
 
@@ -69,7 +70,7 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
     }
 
 
-    class VoiceManager(val context: Context) {
+    class VoiceManager(val context: Context, val config: APPConfig) {
         val voiceService = Intent(context, VoicePlayerService::class.java)
 
         fun start() {
@@ -98,17 +99,23 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
             }
         }
 
+        // Lets players that duck for the assistant (music, Sendspin) know it has finished.
+        private fun notifyPlaybackEnded() {
+            MusicPlayerService.sInstance?.onVoicePlaybackEnded()
+            config.eventBroadcaster.notifyEvent(Event("voicePlaybackEnded", "", ""))
+        }
+
         fun flush() {
             if (isRunning()) {
                 VoicePlayerService.sInstance?.stop(false)
-                MusicPlayerService.sInstance?.onVoicePlaybackEnded()
+                notifyPlaybackEnded()
             }
         }
 
         fun forceStop() {
             if (isRunning()) {
                 VoicePlayerService.sInstance?.stop(true)
-                MusicPlayerService.sInstance?.onVoicePlaybackEnded()
+                notifyPlaybackEnded()
             }
         }
 
@@ -118,7 +125,7 @@ class SatelliteMediaManager(val context: Context, val config: APPConfig) {
             } catch (e: Exception) {
                 Timber.e(e)
             }
-            MusicPlayerService.sInstance?.onVoicePlaybackEnded()
+            notifyPlaybackEnded()
         }
 
         fun writeData(data: ByteArray) {

@@ -100,6 +100,7 @@ androidComponents {
 dependencies {
 
     implementation(project(":microfeatures"))
+    implementation(project(":sendspin"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)

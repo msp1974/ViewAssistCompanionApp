@@ -63,6 +63,10 @@ Wyoming wire format lives in `wyoming/Packet.kt` (`WyomingPacket`, JSON header +
 
 `APPConfig` wraps default `SharedPreferences` plus a mix of transient in-memory fields. Most user-facing settings (wake word, thresholds, screen behavior, custom sounds, etc.) are `Delegates.observable` properties — changing one automatically notifies `eventBroadcaster` listeners (UI, `Satellite`, `MainActivity` screen handling) rather than requiring manual wiring. Server-driven settings arrive as a JSON blob over the custom Wyoming `settings` event and are applied via `APPConfig.processSettings`.
 
+### Sendspin player
+
+Optional (setting `APPConfig.sendspinEnabled`, key `sendspin_enabled`, settable on-device in Configuration or pushed by HA). `service/BackgroundTask` starts `sendspin/SendspinManager`, which runs a `SendspinPlayer` (native sendspin-cpp engine from the `:sendspin` module + `SendspinAudioOutput` AudioTrack) and advertises it over mDNS via `SendspinAdvertiser`; Music Assistant connects to it. It ducks via audio focus and the `voicePlaybackEnded` event, and publishes track info as the `sendspinNowPlaying` event, which `ui/components/NowPlayingOverlay` shows over the web view (transport buttons go back as `sendspinCommand` events). See `sendspin/README.md`.
+
 ### Custom/downloadable assets
 
 Wake sounds, alarms, and custom wake word models can be supplied by the HA-side integration and are fetched via `utils/CustomFileDownloader` / `satellite/SatelliteCustomFilesHandler` into app-private storage, then indexed via `data/AvailableWakeSounds`, `data/AvailableAlarms`, `wakeword/AvailableWakeWords`.
