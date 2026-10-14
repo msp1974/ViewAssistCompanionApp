@@ -125,32 +125,40 @@ class H264Encoder(
             }
             if (index < 0) continue
 
-            val buffer = mediaCodec.getOutputBuffer(index)
-            if (buffer != null && bufferInfo.size > 0) {
-                buffer.position(bufferInfo.offset)
-                buffer.limit(bufferInfo.offset + bufferInfo.size)
-                val data = ByteArray(bufferInfo.size)
-                buffer.get(data)
+            try {
+                val buffer = mediaCodec.getOutputBuffer(index)
+                if (buffer != null && bufferInfo.size > 0) {
+                    buffer.position(bufferInfo.offset)
+                    buffer.limit(bufferInfo.offset + bufferInfo.size)
+                    val data = ByteArray(bufferInfo.size)
+                    buffer.get(data)
 
-                if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
-                    spsPps = data
-                    if (!configReady.isCompleted) configReady.complete(Unit)
-                } else {
-                    val nals = NalUtils.splitNalUnits(data)
-                    if (nals.isNotEmpty()) {
-                        val isKey = bufferInfo.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                        // Re-send SPS/PPS ahead of every IDR so a client joining mid-stream (or
-                        // one that dropped earlier packets) can always resync.
-                        val toSend = if (isKey) {
-                            NalUtils.splitNalUnits(spsPps ?: ByteArray(0)) + nals
-                        } else {
-                            nals
+                    if (bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) {
+                        spsPps = data
+                        if (!configReady.isCompleted) configReady.complete(Unit)
+                    } else {
+                        val nals = NalUtils.splitNalUnits(data)
+                        if (nals.isNotEmpty()) {
+                            val isKey = bufferInfo.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
+                            // Re-send SPS/PPS ahead of every IDR so a client joining mid-stream (or
+                            // one that dropped earlier packets) can always resync.
+                            val toSend = if (isKey) {
+                                NalUtils.splitNalUnits(spsPps ?: ByteArray(0)) + nals
+                            } else {
+                                nals
+                            }
+                            _frames.tryEmit(EncodedFrame(toSend, bufferInfo.presentationTimeUs, isKey))
                         }
-                        _frames.tryEmit(EncodedFrame(toSend, bufferInfo.presentationTimeUs, isKey))
                     }
                 }
+                mediaCodec.releaseOutputBuffer(index, false)
+            } catch (e: IllegalStateException) {
+                // stop() released the codec while this was between dequeuing a buffer and handing it
+                // back, so the buffer is gone with it. That is the normal way out of this loop on
+                // shutdown; anywhere else it is a real codec fault, but still not worth a crash.
+                if (running.get()) Timber.e("H264Encoder: codec error while draining: $e")
+                break
             }
-            mediaCodec.releaseOutputBuffer(index, false)
         }
     }
 
