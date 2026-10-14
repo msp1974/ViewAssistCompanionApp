@@ -23,8 +23,13 @@ data class SendspinNowPlaying(
     val active: Boolean = false,
     /** Audio is actually playing, as opposed to paused. */
     val playing: Boolean = false,
-    /** Transport commands the server accepts, e.g. "play", "pause", "next", "previous". */
+    /** Playback commands the server accepts, e.g. "play", "pause", "next", "shuffle". */
     val commands: Set<String> = emptySet(),
+    val shuffle: Boolean = false,
+    /** "off", "one" or "all". */
+    val repeat: String = "off",
+    /** Colours the server derived from the track, if it provided any. */
+    val colors: SendspinColors = SendspinColors(),
 ) {
     val hasContent: Boolean get() = title.isNotBlank() || artist.isNotBlank()
 
@@ -36,3 +41,15 @@ data class SendspinNowPlaying(
         return if (durationMs > 0) position.coerceIn(0, durationMs) else position.coerceAtLeast(0)
     }
 }
+
+/**
+ * The palette a Sendspin server derives from the current track, as opaque ARGB ints. 0 means the
+ * server didn't provide that colour. Each background comes with a foreground that has enough
+ * contrast on it, for a dark and a light theme.
+ */
+data class SendspinColors(
+    val backgroundDark: Int = 0,
+    val backgroundLight: Int = 0,
+    val onDark: Int = 0,
+    val onLight: Int = 0,
+)

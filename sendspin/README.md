@@ -2,7 +2,7 @@
 
 Native [Sendspin](https://www.sendspin-audio.com/) player support. The protocol, clock sync, FLAC/Opus
 decoding and playback scheduling come from [sendspin-cpp](https://github.com/Sendspin/sendspin-cpp)
-(player, metadata and controller roles), pinned in `src/main/cpp/CMakeLists.txt`. `sendspin_jni.cpp` is the JNI bridge and
+(player, metadata, controller and colour roles), pinned in `src/main/cpp/CMakeLists.txt`. `sendspin_jni.cpp` is the JNI bridge and
 `NativeSendspin.kt` its Kotlin surface. The app side lives in
 `app/.../sendspin/` (audio output, player session, mDNS advertiser, manager).
 

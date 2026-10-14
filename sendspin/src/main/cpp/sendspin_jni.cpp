@@ -1,5 +1,5 @@
-// JNI bridge between com.msp1974.sendspin.NativeSendspin and sendspin-cpp (player, metadata and
-// controller roles).
+// JNI bridge between com.msp1974.sendspin.NativeSendspin and sendspin-cpp (player, metadata,
+// controller and colour roles).
 //
 // sendspin-cpp expects one thread - its "main loop" - to call start(), loop() and stop(), and the
 // player update_* calls are only safe from there too. So that thread is owned here: it starts the
@@ -28,6 +28,7 @@
 #include <vector>
 
 #include "sendspin/client.h"
+#include "sendspin/color_role.h"
 #include "sendspin/controller_role.h"
 #include "sendspin/metadata_role.h"
 #include "sendspin/player_role.h"
@@ -117,7 +118,8 @@ jmethodID find_method(JNIEnv* env, jclass cls, const char* name, const char* sig
     return mid;
 }
 
-// Names used on the Kotlin side for the controller commands the overlay sends.
+// Names used on the Kotlin side for the controller commands the overlay sends and the server
+// advertises.
 const std::pair<const char*, sendspin::SendspinControllerCommand> kCommands[] = {
     {"play", sendspin::SendspinControllerCommand::PLAY},
     {"pause", sendspin::SendspinControllerCommand::PAUSE},
@@ -125,7 +127,20 @@ const std::pair<const char*, sendspin::SendspinControllerCommand> kCommands[] = 
     {"next", sendspin::SendspinControllerCommand::NEXT},
     {"previous", sendspin::SendspinControllerCommand::PREVIOUS},
     {"seek", sendspin::SendspinControllerCommand::SEEK},
+    {"shuffle", sendspin::SendspinControllerCommand::SHUFFLE},
+    {"unshuffle", sendspin::SendspinControllerCommand::UNSHUFFLE},
+    {"repeat_off", sendspin::SendspinControllerCommand::REPEAT_OFF},
+    {"repeat_one", sendspin::SendspinControllerCommand::REPEAT_ONE},
+    {"repeat_all", sendspin::SendspinControllerCommand::REPEAT_ALL},
 };
+
+// Packs a colour as opaque ARGB, or 0 (fully transparent) when the server didn't provide it.
+jint pack_color(const std::optional<sendspin::RgbColor>& color) {
+    if (!color) return 0;
+    const auto& c = *color;
+    return static_cast<jint>(0xFF000000u | (static_cast<uint32_t>(c[0]) << 16) |
+                             (static_cast<uint32_t>(c[1]) << 8) | static_cast<uint32_t>(c[2]));
+}
 
 const char* command_name(sendspin::SendspinControllerCommand command) {
     for (const auto& [name, value] : kCommands) {
@@ -148,6 +163,7 @@ jstring optional_jstring(JNIEnv* env, const std::optional<std::string>& s) {
 class Bridge final : public sendspin::PlayerRoleListener,
                      public sendspin::MetadataRoleListener,
                      public sendspin::ControllerRoleListener,
+                     public sendspin::ColorRoleListener,
                      public sendspin::SendspinClientListener,
                      public sendspin::SendspinNetworkProvider {
 public:
@@ -155,6 +171,7 @@ public:
     sendspin::PlayerRole* player = nullptr;
     sendspin::ControllerRole* controller = nullptr;
     sendspin::MetadataRole* metadata = nullptr;
+    sendspin::ColorRole* color = nullptr;
 
     jobject callbacks = nullptr;  // global ref
     jmethodID on_audio_write_mid = nullptr;
@@ -166,7 +183,8 @@ public:
     jmethodID on_metadata_mid = nullptr;
     jmethodID on_metadata_clear_mid = nullptr;
     jmethodID on_playback_state_mid = nullptr;
-    jmethodID on_commands_mid = nullptr;
+    jmethodID on_controller_mid = nullptr;
+    jmethodID on_colors_mid = nullptr;
 
     std::thread loop_thread;
     std::atomic<bool> running{false};
@@ -308,14 +326,19 @@ public:
 
     // --- ControllerRoleListener ---------------------------------------------
 
-    // Tells the overlay which transport buttons the server will honour right now.
+    // Tells the overlay which transport buttons the server will honour right now, and the
+    // shuffle and repeat modes it is in.
     void on_controller_state(const sendspin::ServerStateControllerObject& state) override {
-        report_commands(state.supported_commands);
+        const char* repeat = state.repeat == sendspin::SendspinRepeatMode::ONE   ? "one"
+                             : state.repeat == sendspin::SendspinRepeatMode::ALL ? "all"
+                                                                                : "off";
+        report_controller(state.supported_commands, state.shuffle, repeat);
     }
 
-    void on_controller_state_clear() override { report_commands({}); }
+    void on_controller_state_clear() override { report_controller({}, false, "off"); }
 
-    void report_commands(const std::vector<sendspin::SendspinControllerCommand>& commands) {
+    void report_controller(const std::vector<sendspin::SendspinControllerCommand>& commands,
+                           bool shuffle, const char* repeat) {
         JNIEnv* env = env_for_this_thread();
         if (env == nullptr) return;
         std::string joined;
@@ -326,9 +349,30 @@ public:
             joined.append(name);
         }
         jstring list = env->NewStringUTF(joined.c_str());
-        env->CallVoidMethod(callbacks, on_commands_mid, list);
+        jstring repeat_str = env->NewStringUTF(repeat);
+        env->CallVoidMethod(callbacks, on_controller_mid, list, static_cast<jboolean>(shuffle),
+                            repeat_str);
         clear_exception(env);
         env->DeleteLocalRef(list);
+        env->DeleteLocalRef(repeat_str);
+    }
+
+    // --- ColorRoleListener --------------------------------------------------
+
+    // The palette the server derived from the track. Colours it doesn't give arrive as 0.
+    void on_color(const sendspin::ServerColorStateObject& colors) override {
+        report_colors(pack_color(colors.background_dark), pack_color(colors.background_light),
+                      pack_color(colors.on_dark), pack_color(colors.on_light));
+    }
+
+    void on_color_clear() override { report_colors(0, 0, 0, 0); }
+
+    void report_colors(jint background_dark, jint background_light, jint on_dark, jint on_light) {
+        JNIEnv* env = env_for_this_thread();
+        if (env == nullptr) return;
+        env->CallVoidMethod(callbacks, on_colors_mid, background_dark, background_light, on_dark,
+                            on_light);
+        clear_exception(env);
     }
 
     // --- SendspinClientListener ---------------------------------------------
@@ -380,11 +424,13 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_msp1974_sendspin_NativeSendspin_nati
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJI)V");
     bridge->on_metadata_clear_mid = find_method(env, cls, "onMetadataCleared", "()V");
     bridge->on_playback_state_mid = find_method(env, cls, "onPlaybackStateChanged", "(Z)V");
-    bridge->on_commands_mid =
-        find_method(env, cls, "onSupportedCommands", "(Ljava/lang/String;)V");
+    bridge->on_controller_mid =
+        find_method(env, cls, "onControllerState", "(Ljava/lang/String;ZLjava/lang/String;)V");
+    bridge->on_colors_mid = find_method(env, cls, "onColors", "(IIII)V");
     env->DeleteLocalRef(cls);
     if (bridge->on_metadata_mid == nullptr || bridge->on_metadata_clear_mid == nullptr ||
-        bridge->on_playback_state_mid == nullptr || bridge->on_commands_mid == nullptr ||
+        bridge->on_playback_state_mid == nullptr || bridge->on_controller_mid == nullptr ||
+        bridge->on_colors_mid == nullptr ||
         bridge->on_audio_write_mid == nullptr || bridge->on_stream_start_mid == nullptr ||
         bridge->on_stream_end_mid == nullptr || bridge->on_volume_mid == nullptr ||
         bridge->on_mute_mid == nullptr || bridge->on_connection_mid == nullptr) {
@@ -429,6 +475,8 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_msp1974_sendspin_NativeSendspin_nati
     bridge->controller->set_listener(bridge.get());
     bridge->metadata = &bridge->client->add_metadata();
     bridge->metadata->set_listener(bridge.get());
+    bridge->color = &bridge->client->add_color();
+    bridge->color->set_listener(bridge.get());
     bridge->client->set_listener(bridge.get());
     bridge->client->set_network_provider(bridge.get());
 

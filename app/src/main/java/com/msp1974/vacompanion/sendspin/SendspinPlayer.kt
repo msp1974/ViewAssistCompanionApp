@@ -80,6 +80,9 @@ class SendspinPlayer(
     private var positionAtMs = 0L
     private var speed = -1
     private var commands = emptySet<String>()
+    private var shuffle = false
+    private var repeat = "off"
+    private var colors = SendspinColors()
     private var published = SendspinNowPlaying()
 
     private val focusAttributes = AudioAttributes.Builder()
@@ -265,9 +268,18 @@ class SendspinPlayer(
         publishNowPlaying()
     }
 
-    override fun onSupportedCommands(commands: String) {
+    override fun onControllerState(commands: String, shuffle: Boolean, repeat: String) {
         synchronized(nowPlayingLock) {
             this.commands = commands.split(',').filter { it.isNotEmpty() }.toSet()
+            this.shuffle = shuffle
+            this.repeat = repeat
+        }
+        publishNowPlaying()
+    }
+
+    override fun onColors(backgroundDark: Int, backgroundLight: Int, onDark: Int, onLight: Int) {
+        synchronized(nowPlayingLock) {
+            colors = SendspinColors(backgroundDark, backgroundLight, onDark, onLight)
         }
         publishNowPlaying()
     }
@@ -284,6 +296,9 @@ class SendspinPlayer(
             positionMs = 0
             speed = -1
             commands = emptySet()
+            shuffle = false
+            repeat = "off"
+            colors = SendspinColors()
         }
         publishNowPlaying()
     }
@@ -307,6 +322,9 @@ class SendspinPlayer(
                 active = (streamActive || groupPlaying) && hasTrack,
                 playing = groupPlaying && speed != 0,
                 commands = commands,
+                shuffle = shuffle,
+                repeat = repeat,
+                colors = colors,
             )
             if (new == published) return
             old = published

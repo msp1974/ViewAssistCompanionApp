@@ -13,13 +13,14 @@ FetchContent_Declare(
     GIT_TAG        9331ace6428979982c934384702d289958ca125e
 )
 
-# Player plays the audio; metadata (track info, progress) and controller (play/pause/skip) feed the
-# on-screen now-playing overlay. Artwork arrives as a URL in the metadata, so the artwork role, and
-# the other roles VACA has no use for, stay out of the binary.
+# Player plays the audio; metadata (track info, progress), controller (transport, shuffle, repeat)
+# and colour (the track's palette) feed the on-screen now-playing overlay. Artwork arrives as a URL
+# in the metadata, so the artwork role, and the other roles VACA has no use for, stay out of the
+# binary.
 set(SENDSPIN_ENABLE_PLAYER ON CACHE BOOL "" FORCE)
 set(SENDSPIN_ENABLE_CONTROLLER ON CACHE BOOL "" FORCE)
 set(SENDSPIN_ENABLE_METADATA ON CACHE BOOL "" FORCE)
-set(SENDSPIN_ENABLE_COLOR OFF CACHE BOOL "" FORCE)
+set(SENDSPIN_ENABLE_COLOR ON CACHE BOOL "" FORCE)
 set(SENDSPIN_ENABLE_ARTWORK OFF CACHE BOOL "" FORCE)
 set(SENDSPIN_ENABLE_VISUALIZER OFF CACHE BOOL "" FORCE)
 set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)

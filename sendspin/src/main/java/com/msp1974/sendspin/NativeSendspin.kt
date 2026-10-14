@@ -47,8 +47,19 @@ interface NativeSendspinCallbacks {
     /** The group's playback state: true while it is playing. */
     fun onPlaybackStateChanged(playing: Boolean)
 
-    /** Comma-separated names of the transport commands the server currently accepts. */
-    fun onSupportedCommands(commands: String)
+    /**
+     * The server's playback controls: [commands] is the comma-separated names of the commands it
+     * currently accepts (e.g. "play,pause,next,shuffle,repeat_all"), [shuffle] whether shuffle is
+     * on, and [repeat] the repeat mode - "off", "one" or "all".
+     */
+    fun onControllerState(commands: String, shuffle: Boolean, repeat: String)
+
+    /**
+     * The colour palette the server derived from the current track, as opaque ARGB ints; 0 means
+     * the server didn't provide that colour. The background colours are safe behind the matching
+     * foreground: [onDark] on [backgroundDark], [onLight] on [backgroundLight].
+     */
+    fun onColors(backgroundDark: Int, backgroundLight: Int, onDark: Int, onLight: Int)
 }
 
 /**
@@ -95,8 +106,9 @@ object NativeSendspin {
     external fun nativeUpdateMuted(handle: Long, muted: Boolean)
 
     /**
-     * Sends a transport command - "play", "pause", "stop", "next", "previous" or "seek" - to the
-     * server. [arg] is the target position in ms for "seek". False if the command is unknown.
+     * Sends a playback command to the server - "play", "pause", "stop", "next", "previous",
+     * "seek", "shuffle", "unshuffle", "repeat_off", "repeat_one" or "repeat_all". [arg] is the
+     * target position in ms for "seek". False if the command is unknown.
      */
     external fun nativeSendCommand(handle: Long, command: String, arg: Long): Boolean
 
