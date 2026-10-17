@@ -222,6 +222,14 @@ class SendspinPlayer(
         applyGain()
     }
 
+    /** Sets the volume from this device rather than the server, and tells the server. */
+    private fun setVolumeFromDevice(percent: Int) {
+        val value = percent.coerceIn(0, 100)
+        onVolumeChanged(value)
+        val h = handle
+        if (h != 0L) NativeSendspin.nativeUpdateVolume(h, value)
+    }
+
     override fun onMuteChanged(muted: Boolean) {
         this.muted = muted
         prefs.edit().putBoolean(PREF_MUTED, muted).apply()
@@ -309,6 +317,7 @@ class SendspinPlayer(
         val old: SendspinNowPlaying
         val new: SendspinNowPlaying
         synchronized(nowPlayingLock) {
+            config.sendspinPlaying = streamActive
             val hasTrack = title.isNotBlank() || artist.isNotBlank()
             new = SendspinNowPlaying(
                 title = title,
@@ -413,6 +422,8 @@ class SendspinPlayer(
         when (event.eventName) {
             "audioOutputId" ->
                 output.setPreferredDevice(AudioOutputRouter.resolvePreferredDevice(context, config))
+            // A set-volume action while Sendspin is the thing playing (0-100).
+            "sendspinSetVolume" -> (event.newValue as? Float)?.let { setVolumeFromDevice(it.toInt()) }
             // A transport button on the now-playing overlay.
             "sendspinCommand" -> {
                 val command = event.newValue as? String ?: return

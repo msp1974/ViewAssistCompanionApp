@@ -472,7 +472,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     // hardware AEC, so without this the chime's acoustic leak-back would pollute
                     // the AGC's envelope and get forwarded to HA. The capped duration is a safety
                     // net in case ENDED is never observed below.
-                    MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_MAX_SUPPRESSION_MS)
+                    // MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_MAX_SUPPRESSION_MS)
                     mediaManager.soundPlayer.play(soundUri)
                 }
 
@@ -487,7 +487,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     mediaManager.soundPlayer.state.first { it == Player.STATE_ENDED }
                     // Now that actual playback end is known, shrink the gate down to just the
                     // acoustic/capture-latency margin instead of the full safety-net duration.
-                    MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_TRAILING_MARGIN_MS)
+                    // MicrophoneInput.suppressMicFor(NOTIFICATION_SOUND_TRAILING_MARGIN_MS)
                     Timber.i("Ended wake word sound")
                 }
             } catch (e: Exception) {
@@ -677,7 +677,13 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 "pause" -> mediaManager.musicPlayer.pause()
                 "stop" ->  mediaManager.musicPlayer.stop()
                 "set-volume" -> if (payloadStr.isNotEmpty()) {
-                   mediaManager.musicPlayer.setVolume(Json.parseToJsonElement(payloadStr).jsonObject["volume"]?.jsonPrimitive?.floatOrNull ?: 90f)
+                    val volume = Json.parseToJsonElement(payloadStr).jsonObject["volume"]?.jsonPrimitive?.floatOrNull ?: 90f
+                    if (config.sendspinPlaying) {
+                        // Sendspin audio is what is playing, so it is the volume that is meant.
+                        config.eventBroadcaster.notifyEvent(Event("sendspinSetVolume", "", volume))
+                    } else {
+                        mediaManager.musicPlayer.setVolume(volume)
+                    }
                 }
             }
         }
