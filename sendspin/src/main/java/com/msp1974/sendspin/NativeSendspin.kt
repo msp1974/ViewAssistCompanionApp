@@ -112,6 +112,13 @@ object NativeSendspin {
      */
     external fun nativeSendCommand(handle: Long, command: String, arg: Long): Boolean
 
+    /**
+     * Restricts which server may connect to the one at [ip], a dotted IPv4 address. Blank accepts
+     * any server (Auto). A connected server at another address is disconnected, so this can be
+     * changed while connected.
+     */
+    external fun nativeSetPreferredServer(handle: Long, ip: String)
+
     external fun nativeIsConnected(handle: Long): Boolean
 
     external fun nativeMonotonicTimeUs(): Long

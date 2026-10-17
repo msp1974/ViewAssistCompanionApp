@@ -325,7 +325,7 @@ class APPConfig @Inject constructor(val context: Context) {
 
     // -1 = automatically let Android/AudioManager pick the output; otherwise an
     // AudioDeviceInfo.id (see AudioOutputRouter, which resolves this into an actual device for
-    // every player to route to). Settable via the Wyoming settings push (audio_output_id) or the
+    // every player to route to). Settable via the Wyoming settings push (audio_output) or the
     // on-device quick actions menu - both just assign this same property.
     var audioOutputId: Int by Delegates.observable(DEFAULT_AUDIO_OUTPUT_ID) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -334,7 +334,7 @@ class APPConfig @Inject constructor(val context: Context) {
     // -1 = AudioInRouter's normal auto-selection logic (USB > Bluetooth > Wired > built-in);
     // otherwise an AudioDeviceInfo.id to force as the microphone, falling back to auto-selection
     // if that device isn't currently connected. Settable via the Wyoming settings push
-    // (audio_input_id).
+    // (audio_input).
     var audioInputId: Int by Delegates.observable(DEFAULT_AUDIO_INPUT_ID) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -397,6 +397,13 @@ class APPConfig @Inject constructor(val context: Context) {
     var sendspinEnabled: Boolean
         get() = this.sharedPrefs.getBoolean("sendspin_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("sendspin_enabled", value) }
+
+    // Which Music Assistant (Sendspin) server this device accepts, as the URL HA gives for it (e.g.
+    // http://192.168.200.240:8095), or blank for Auto: whichever server connects first. Pushed by
+    // HA only, and persisted so it applies after a reboot before HA has reconnected.
+    var sendspinPreferredServer: String
+        get() = this.sharedPrefs.getString("sendspin_preferred_server", "") ?: ""
+        set(value) = this.sharedPrefs.edit { putString("sendspin_preferred_server", value.trim()) }
 
     // Whether to run the Home Assistant Bluetooth proxy (this device appears as an ESPHome node that
     // forwards BLE advertisements and GATT connections). On-device preference that can also be
@@ -477,9 +484,10 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["rtsp_keyframe_interval"]?.jsonPrimitive?.intOrNull?.let { rtspKeyframeIntervalSecs = it }
         settings["rtsp_username"]?.jsonPrimitive?.contentOrNull?.let { rtspUsername = it }
         settings["rtsp_password"]?.jsonPrimitive?.contentOrNull?.let { rtspPassword = it }
-        settings["audio_output_id"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
-        settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
+        settings["audio_output"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
+        settings["audio_input"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
         settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
+        settings["sendspin_preferred_server"]?.jsonPrimitive?.contentOrNull?.let { sendspinPreferredServer = it }
         settings["sendspin_overlay_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinOverlayEnabled = it }
         settings["bluetooth_proxy_enabled"]?.jsonPrimitive?.booleanOrNull?.let { bluetoothProxyEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }

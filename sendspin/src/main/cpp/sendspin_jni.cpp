@@ -11,7 +11,11 @@
 
 #include <jni.h>
 #include <android/log.h>
+#include <arpa/inet.h>
+#include <dirent.h>
+#include <netinet/in.h>
 #include <pthread.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -19,6 +23,7 @@
 #include <chrono>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <future>
 #include <memory>
 #include <mutex>
@@ -193,6 +198,77 @@ public:
 
     std::atomic<bool> connected{false};
 
+    uint16_t listen_port = 0;
+
+    // Dotted IPv4 address of the only server allowed to connect; empty accepts any. Only touched
+    // on the loop thread (changes are queued).
+    std::string preferred_ip;
+
+    // Id of the connected server once it has been confirmed to be at preferred_ip.
+    std::string verified_id;
+    std::chrono::steady_clock::time_point next_check{};
+
+    // Server id to the address it was last seen connecting from; kept in memory only.
+    std::map<std::string, std::string> id_to_ip;
+
+    // The library doesn't expose where a connection came from, so find the remote IPv4 address
+    // of every inbound socket on our listening port by asking the kernel about our own fds.
+    std::vector<std::string> inbound_peers() const {
+        std::vector<std::string> peers;
+        DIR* dir = opendir("/proc/self/fd");
+        if (dir == nullptr) return peers;
+        while (const dirent* entry = readdir(dir)) {
+            const int fd = atoi(entry->d_name);
+            if (fd <= 0) continue;
+            sockaddr_storage local{}, remote{};
+            socklen_t local_len = sizeof(local), remote_len = sizeof(remote);
+            if (getsockname(fd, reinterpret_cast<sockaddr*>(&local), &local_len) != 0 ||
+                getpeername(fd, reinterpret_cast<sockaddr*>(&remote), &remote_len) != 0) {
+                continue;
+            }
+            char text[INET_ADDRSTRLEN] = {};
+            if (local.ss_family == AF_INET && remote.ss_family == AF_INET) {
+                if (ntohs(reinterpret_cast<sockaddr_in*>(&local)->sin_port) != listen_port) continue;
+                inet_ntop(AF_INET, &reinterpret_cast<sockaddr_in*>(&remote)->sin_addr, text,
+                          sizeof(text));
+            } else if (local.ss_family == AF_INET6 && remote.ss_family == AF_INET6) {
+                auto* local6 = reinterpret_cast<sockaddr_in6*>(&local);
+                auto* remote6 = reinterpret_cast<sockaddr_in6*>(&remote);
+                if (ntohs(local6->sin6_port) != listen_port) continue;
+                if (!IN6_IS_ADDR_V4MAPPED(&remote6->sin6_addr)) continue;
+                inet_ntop(AF_INET, &remote6->sin6_addr.s6_addr[12], text, sizeof(text));
+            } else {
+                continue;
+            }
+            if (text[0] != '\0' &&
+                std::find(peers.begin(), peers.end(), text) == peers.end()) {
+                peers.emplace_back(text);
+            }
+        }
+        closedir(dir);
+        return peers;
+    }
+
+    enum class Verdict { UNDECIDED, ALLOW, REFUSE };
+
+    // Whether the connected server [id] is the one at preferred_ip.
+    Verdict check_server(const std::string& id) {
+        const auto peers = inbound_peers();
+        if (peers.empty()) return Verdict::UNDECIDED;
+        // One inbound peer is unambiguously the connected server, which also teaches us its
+        // address for the times several servers are connected at once.
+        if (peers.size() == 1) id_to_ip[id] = peers[0];
+        const auto known = id_to_ip.find(id);
+        if (known != id_to_ip.end()) {
+            return known->second == preferred_ip ? Verdict::ALLOW : Verdict::REFUSE;
+        }
+        // Several peers and this server not seen alone yet: allow it if the preferred server is
+        // among them, since there is no way to tell which one is active.
+        return std::find(peers.begin(), peers.end(), preferred_ip) != peers.end()
+                   ? Verdict::ALLOW
+                   : Verdict::REFUSE;
+    }
+
     void post(std::function<void()> fn) {
         std::lock_guard<std::mutex> lock(queue_mutex);
         queue.push_back(std::move(fn));
@@ -217,7 +293,39 @@ public:
             client->loop();
 
             // The library has no connection callback, so watch for the edge here.
-            const bool now_connected = client->is_connected();
+            bool now_connected = client->is_connected();
+            if (!now_connected) verified_id.clear();
+            if (now_connected && !preferred_ip.empty()) {
+                // The library accepts whichever server connects first and has no hook to refuse
+                // one earlier, so a server that isn't the preferred one is dropped as soon as its
+                // hello names it, before it is reported as connected.
+                const auto info = client->get_server_information();
+                if (!info) {
+                    now_connected = false;  // handshake details not in yet; check next tick
+                } else if (info->server_id != verified_id) {
+                    now_connected = false;
+                    const auto now = std::chrono::steady_clock::now();
+                    if (now >= next_check) {
+                        next_check = now + std::chrono::milliseconds(200);
+                        switch (check_server(info->server_id)) {
+                            case Verdict::ALLOW:
+                                verified_id = info->server_id;
+                                now_connected = true;
+                                break;
+                            case Verdict::REFUSE:
+                                __android_log_print(
+                                    ANDROID_LOG_INFO, TAG,
+                                    "refusing server '%s' (%s): not the preferred server %s",
+                                    info->name.c_str(), info->server_id.c_str(),
+                                    preferred_ip.c_str());
+                                client->disconnect(sendspin::SendspinGoodbyeReason::ANOTHER_SERVER);
+                                break;
+                            case Verdict::UNDECIDED:
+                                break;
+                        }
+                    }
+                }
+            }
             connected.store(now_connected);
             if (now_connected != was_connected) {
                 was_connected = now_connected;
@@ -445,6 +553,7 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_msp1974_sendspin_NativeSendspin_nati
     config.manufacturer = to_std_string(env, manufacturer);
     config.software_version = to_std_string(env, software_version);
     config.server_port = static_cast<uint16_t>(server_port);
+    bridge->listen_port = config.server_port;
     bridge->client = std::make_unique<sendspin::SendspinClient>(std::move(config));
 
     // formats: four ints per entry - codec (0 flac, 1 opus, 2 pcm), channels, sample rate, bit
@@ -553,6 +662,20 @@ extern "C" JNIEXPORT jboolean JNICALL Java_com_msp1974_sendspin_NativeSendspin_n
         bridge->controller->send_command(obj);
     });
     return JNI_TRUE;
+}
+
+// Sets the IPv4 address of the only server allowed to connect; blank allows any. A connected
+// server at another address is dropped on the loop's next pass.
+extern "C" JNIEXPORT void JNICALL Java_com_msp1974_sendspin_NativeSendspin_nativeSetPreferredServer(
+    JNIEnv* env, jobject, jlong handle, jstring ip) {
+    Bridge* bridge = bridge_from(handle);
+    if (bridge == nullptr) return;
+    std::string value = to_std_string(env, ip);
+    bridge->post([bridge, value = std::move(value)] {
+        bridge->preferred_ip = value;
+        bridge->verified_id.clear();
+        bridge->next_check = {};
+    });
 }
 
 extern "C" JNIEXPORT jboolean JNICALL Java_com_msp1974_sendspin_NativeSendspin_nativeIsConnected(

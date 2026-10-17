@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
+import android.util.Patterns
 import com.msp1974.sendspin.NativeSendspin
 import com.msp1974.sendspin.NativeSendspinCallbacks
 import com.msp1974.vacompanion.audio.AudioOutputRouter
@@ -17,6 +18,8 @@ import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import timber.log.Timber
 import java.io.IOException
+import java.net.URI
+import java.net.URISyntaxException
 import java.net.ServerSocket
 import java.nio.ByteBuffer
 import java.util.concurrent.atomic.AtomicBoolean
@@ -136,6 +139,7 @@ class SendspinPlayer(
         } else {
             NativeSendspin.nativeUpdateVolume(handle, volume)
             NativeSendspin.nativeUpdateMuted(handle, muted)
+            NativeSendspin.nativeSetPreferredServer(handle, preferredServerIp())
             config.eventBroadcaster.addListener(this)
             startFeedbackLoop()
             Timber.i("Sendspin: listening on port $port")
@@ -146,6 +150,22 @@ class SendspinPlayer(
         ServerSocket(port).use { true }
     } catch (_: IOException) {
         false
+    }
+
+    // The IPv4 address in the preferred-server URL, or blank (Auto) when there is none.
+    private fun preferredServerIp(): String {
+        val url = config.sendspinPreferredServer
+        if (url.isBlank()) return ""
+        val host = try {
+            URI(if ("://" in url) url else "http://$url").host
+        } catch (_: URISyntaxException) {
+            null
+        }
+        if (host == null || !Patterns.IP_ADDRESS.matcher(host).matches()) {
+            Timber.w("Sendspin: preferred server '$url' has no IPv4 address, accepting any server")
+            return ""
+        }
+        return host
     }
 
     fun destroy() {
@@ -420,6 +440,10 @@ class SendspinPlayer(
 
     override fun onEventTriggered(event: Event) {
         when (event.eventName) {
+            "sendspin_preferred_server" -> {
+                val h = handle
+                if (h != 0L) NativeSendspin.nativeSetPreferredServer(h, preferredServerIp())
+            }
             "audioOutputId" ->
                 output.setPreferredDevice(AudioOutputRouter.resolvePreferredDevice(context, config))
             // A set-volume action while Sendspin is the thing playing (0-100).
