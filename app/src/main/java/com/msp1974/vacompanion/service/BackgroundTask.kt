@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.service
 
 import android.content.Context
+import com.msp1974.vacompanion.btproxy.BluetoothProxyManager
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
 import com.msp1974.vacompanion.device.DeviceManager
@@ -23,6 +24,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
     private val config = deviceManager.config
     private val rtspServerManager = RtspServerManager(context, deviceManager)
     private val sendspinManager = SendspinManager(context, deviceManager)
+    private val bluetoothProxyManager = BluetoothProxyManager(context, deviceManager)
 
 
     fun start() {
@@ -30,6 +32,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
         // satellite session is connected - the camera stream is useful on its own.
         rtspServerManager.start()
         sendspinManager.start()
+        bluetoothProxyManager.start()
 
         server = object: WyomingTCPServer(context, deviceManager) {
             override fun onEvent(event: String, data: JsonObject) {
@@ -89,5 +92,6 @@ internal class BackgroundTaskController (private val context: Context, val devic
         server?.stopServer()
         rtspServerManager.shutdown()
         sendspinManager.shutdown()
+        bluetoothProxyManager.shutdown()
     }
 }

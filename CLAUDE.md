@@ -67,6 +67,10 @@ Wyoming wire format lives in `wyoming/Packet.kt` (`WyomingPacket`, JSON header +
 
 Optional (setting `APPConfig.sendspinEnabled`, key `sendspin_enabled`, settable on-device in Configuration or pushed by HA). `service/BackgroundTask` starts `sendspin/SendspinManager`, which runs a `SendspinPlayer` (native sendspin-cpp engine from the `:sendspin` module + `SendspinAudioOutput` AudioTrack) and advertises it over mDNS via `SendspinAdvertiser`; Music Assistant connects to it. It ducks via audio focus and the `voicePlaybackEnded` event, and publishes track info as the `sendspinNowPlaying` event, which `ui/components/NowPlayingOverlay` shows over the web view (transport buttons go back as `sendspinCommand` events). See `sendspin/README.md`.
 
+### Bluetooth proxy
+
+Optional (setting `APPConfig.bluetoothProxyEnabled`, key `bluetooth_proxy_enabled`, settable on-device in Configuration or pushed by HA). `service/BackgroundTask` starts `btproxy/BluetoothProxyManager`, which makes the device look like an ESPHome Bluetooth-proxy node to Home Assistant: `BtProxyApiServer` (pure-JVM ESPHome native API server on port 6053, **plaintext framing only** - no Noise encryption, so no key must be set in HA; hand-rolled protobuf in `ProtoIo`/`ApiMessages`), `BleScanner` (raw advertisement batching/dedupe), `GattManager` (connect/services/read/write/notify, 3 slots, per-connection op queue, synthetic ATT handles) and `BtProxyAdvertiser` (`_esphomelib._tcp` mDNS). Needs `BLUETOOTH_SCAN`+`BLUETOOTH_CONNECT` (or `ACCESS_FINE_LOCATION` pre-Android 12), requested via the `OPEN_PERMISSION_SCREEN` broadcast. Known limit: Android stops unfiltered BLE scans while the screen is off.
+
 ### Custom/downloadable assets
 
 Wake sounds, alarms, and custom wake word models can be supplied by the HA-side integration and are fetched via `utils/CustomFileDownloader` / `satellite/SatelliteCustomFilesHandler` into app-private storage, then indexed via `data/AvailableWakeSounds`, `data/AvailableAlarms`, `wakeword/AvailableWakeWords`.

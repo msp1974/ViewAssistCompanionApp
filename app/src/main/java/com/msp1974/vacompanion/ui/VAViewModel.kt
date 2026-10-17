@@ -164,6 +164,7 @@ data class State(
     var audioInputId: Int = -1,
     var sendspinEnabled: Boolean = false,
     var sendspinOverlayEnabled: Boolean = true,
+    var bluetoothProxyEnabled: Boolean = false,
     var cameraRotationOffset: Int = 0,
     var sendspinNowPlaying: SendspinNowPlaying = SendspinNowPlaying()
     )
@@ -245,6 +246,7 @@ class VAViewModel @Inject constructor(
                 audioInputId = config.audioInputId,
                 sendspinEnabled = config.sendspinEnabled,
                 sendspinOverlayEnabled = config.sendspinOverlayEnabled,
+                bluetoothProxyEnabled = config.bluetoothProxyEnabled,
                 cameraRotationOffset = config.cameraRotationOffset,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
@@ -344,6 +346,12 @@ class VAViewModel @Inject constructor(
                 // SharedPreferences-backed, so the event carries no typed newValue - read it back.
                 _vacaState.update { currentState ->
                     currentState.copy(sendspinOverlayEnabled = config.sendspinOverlayEnabled)
+                }
+            }
+            "bluetooth_proxy_enabled" -> {
+                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
+                _vacaState.update { currentState ->
+                    currentState.copy(bluetoothProxyEnabled = config.bluetoothProxyEnabled)
                 }
             }
             "camera_rotation_offset" -> {
@@ -524,6 +532,10 @@ class VAViewModel @Inject constructor(
 
     fun onToggleSendspin(enabled: Boolean) {
         config.sendspinEnabled = enabled
+    }
+
+    fun onToggleBluetoothProxy(enabled: Boolean) {
+        config.bluetoothProxyEnabled = enabled
     }
 
     fun setAudioOutputId(id: Int) {

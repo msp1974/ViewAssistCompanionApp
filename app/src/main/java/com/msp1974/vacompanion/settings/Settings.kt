@@ -398,6 +398,13 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("sendspin_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("sendspin_enabled", value) }
 
+    // Whether to run the Home Assistant Bluetooth proxy (this device appears as an ESPHome node that
+    // forwards BLE advertisements and GATT connections). On-device preference that can also be
+    // pushed by HA, so it is persisted rather than only held in memory.
+    var bluetoothProxyEnabled: Boolean
+        get() = this.sharedPrefs.getBoolean("bluetooth_proxy_enabled", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("bluetooth_proxy_enabled", value) }
+
     // Whether to show the on-screen now-playing player while Sendspin audio is playing. Separate
     // from sendspinEnabled: the audio can play without the overlay. On-device preference that HA
     // can also push; on unless turned off.
@@ -474,6 +481,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
         settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
         settings["sendspin_overlay_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinOverlayEnabled = it }
+        settings["bluetooth_proxy_enabled"]?.jsonPrimitive?.booleanOrNull?.let { bluetoothProxyEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
 
         initSettings = true

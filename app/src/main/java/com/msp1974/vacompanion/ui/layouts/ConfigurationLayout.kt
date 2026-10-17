@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Videocam
@@ -86,6 +87,16 @@ fun ConfigurationLayout(
             checked = vaUiState.sendspinOverlayEnabled,
             icon = Icons.Default.MusicNote,
             onCheckedChange = { viewModel.onToggleSendspinOverlay(it) }
+        )
+
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+        SectionHeader("Bluetooth Proxy")
+        SwitchOptionItem(
+            label = "Bluetooth Proxy",
+            subtitle = "Let Home Assistant use this device's Bluetooth to reach BLE devices (add it via the ESPHome integration, no encryption key)",
+            checked = vaUiState.bluetoothProxyEnabled,
+            icon = Icons.Default.Bluetooth,
+            onCheckedChange = { viewModel.onToggleBluetoothProxy(it) }
         )
 
         if (deviceInfo.hardware.hasFrontCamera) {
