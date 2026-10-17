@@ -580,6 +580,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             screenOffStartUp = false
             initialised = true
         } else {
+            applyScreenMode(ScreenOnMode.ON)
             initialised = true
             Timber.d("Initialised")
         }
