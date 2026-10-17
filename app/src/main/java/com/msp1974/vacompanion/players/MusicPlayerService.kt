@@ -294,10 +294,10 @@ class MusicPlayerService : Service(), EventListener {
     }
 
     fun setVolume(volume: Float) {
-        if (!ducked) {
-            musicVolume = volume / 100f
-            setPlayerVolume(musicVolume)
-        }
+        musicVolume = volume / 100f
+        if (ducked && musicVolume >= (mediaPlayer?.volume ?: 1f))
+            return
+        setPlayerVolume(musicVolume)
     }
 
     /** The only place that should assign [ExoPlayer.volume] - keeps [currentOutputVolume] in sync. */
