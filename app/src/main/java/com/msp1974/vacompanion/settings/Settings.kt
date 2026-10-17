@@ -85,6 +85,11 @@ class APPConfig @Inject constructor(val context: Context) {
     var backgroundTaskStatus: BackgroundTaskStatus = BackgroundTaskStatus.NOT_STARTED
     var isRunning: Boolean = false
     var cameraStreamActive: Boolean = false
+
+    // True while Sendspin audio is being streamed to this device. Set by SendspinPlayer so other
+    // components (e.g. a set-volume action) can tell whether Sendspin is the thing playing.
+    @Volatile
+    var sendspinPlaying: Boolean = false
     var settingsOpen: Boolean = false
 
     var hasRecordAudioPermission: Boolean = false
@@ -393,6 +398,13 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("sendspin_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("sendspin_enabled", value) }
 
+    // Whether to show the on-screen now-playing player while Sendspin audio is playing. Separate
+    // from sendspinEnabled: the audio can play without the overlay. On-device preference that HA
+    // can also push; on unless turned off.
+    var sendspinOverlayEnabled: Boolean
+        get() = this.sharedPrefs.getBoolean("sendspin_overlay_enabled", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("sendspin_overlay_enabled", value) }
+
     // Extra rotation (0, 90, 180 or 270 degrees) applied to the camera image - the RTSP stream and
     // the on-device preview - on top of the automatic orientation, for a device whose camera
     // orientation is reported wrongly. On-device preference that HA can also push.
@@ -461,6 +473,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["audio_output_id"]?.jsonPrimitive?.intOrNull?.let { audioOutputId = it }
         settings["audio_input_id"]?.jsonPrimitive?.intOrNull?.let { audioInputId = it }
         settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
+        settings["sendspin_overlay_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinOverlayEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
 
         initSettings = true

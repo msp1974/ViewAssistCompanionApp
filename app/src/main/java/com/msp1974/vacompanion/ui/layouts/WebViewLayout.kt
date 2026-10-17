@@ -123,15 +123,17 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
 
         // Sendspin now-playing card: three quarters of the screen width, centred along the bottom.
         // Never so narrow that the track details and controls don't fit.
-        NowPlayingOverlay(
-            nowPlaying = vaUiState.sendspinNowPlaying,
-            onCommand = { vaViewModel.onSendspinCommand(it) },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .widthIn(min = 300.dp)
-                .fillMaxWidth(0.75f)
-                .padding(bottom = 24.dp),
-        )
+        if (vaUiState.sendspinOverlayEnabled) {
+            NowPlayingOverlay(
+                nowPlaying = vaUiState.sendspinNowPlaying,
+                onCommand = { vaViewModel.onSendspinCommand(it) },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .widthIn(min = 300.dp)
+                    .fillMaxWidth(0.75f)
+                    .padding(bottom = 24.dp),
+            )
+        }
 
         // Stacked (rather than overlapping) bottom-right status icons, in priority order.
         Column(modifier = Modifier.align(Alignment.BottomEnd)) {

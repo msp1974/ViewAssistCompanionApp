@@ -16,6 +16,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.runtime.Composable
@@ -78,6 +79,13 @@ fun ConfigurationLayout(
             checked = vaUiState.sendspinEnabled,
             icon = Icons.Default.Speaker,
             onCheckedChange = { viewModel.onToggleSendspin(it) }
+        )
+        SwitchOptionItem(
+            label = "Media Player Overlay",
+            subtitle = "Show the now-playing player on screen while Sendspin audio plays",
+            checked = vaUiState.sendspinOverlayEnabled,
+            icon = Icons.Default.MusicNote,
+            onCheckedChange = { viewModel.onToggleSendspinOverlay(it) }
         )
 
         if (deviceInfo.hardware.hasFrontCamera) {
