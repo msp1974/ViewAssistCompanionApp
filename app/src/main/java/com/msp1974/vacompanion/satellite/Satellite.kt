@@ -2,6 +2,11 @@ package com.msp1974.vacompanion.satellite
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.Player
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.audio.AudioDSP
@@ -181,6 +186,31 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
         state = SatelliteState.RUNNING
         BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
+
+        audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+    }
+
+    // HA lists the audio inputs and outputs from the capabilities, so tell it when they change.
+    // Device events arrive in bursts (and once on registration for everything already present),
+    // so they are debounced and only a real change in the lists is sent.
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val audioDeviceHandler = Handler(Looper.getMainLooper())
+    private val audioDevicesChanged = Runnable {
+        scope.launch {
+            if (state == SatelliteState.RUNNING && deviceInfo.refreshAudioDevices()) {
+                Timber.d("Audio devices changed - sending capabilities")
+                sendCapabilities()
+            }
+        }
+    }
+    private val audioDeviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = scheduleAudioDeviceCheck()
+        override fun onAudioDevicesRemoved(removedDevices: Array<out AudioDeviceInfo>) = scheduleAudioDeviceCheck()
+    }
+
+    private fun scheduleAudioDeviceCheck() {
+        audioDeviceHandler.removeCallbacks(audioDevicesChanged)
+        audioDeviceHandler.postDelayed(audioDevicesChanged, AUDIO_DEVICE_DEBOUNCE_MS)
     }
 
 
@@ -233,6 +263,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 putJsonObject("media_player") {
                     put("playing", false)
                 }
+                putJsonObject("audio") {
+                    put("input_id", config.audioInputId)
+                    put("output_id", config.audioOutputId)
+                }
             }
         )
     }
@@ -278,6 +312,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     suspend fun stop() {
         state = SatelliteState.STOPPING
         config.eventBroadcaster.removeListener(this)
+        audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
+        audioDeviceHandler.removeCallbacks(audioDevicesChanged)
 
         stopAudioPipeline()
 
@@ -887,6 +923,18 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     }
                 }
             }
+            // The selected audio devices (-1 = automatic), whoever changed them - HA or the
+            // on-device settings.
+            "audioInputId", "audioOutputId" -> {
+                sendStatus(
+                    buildJsonObject {
+                        putJsonObject("audio") {
+                            put("input_id", config.audioInputId)
+                            put("output_id", config.audioOutputId)
+                        }
+                    }
+                )
+            }
             "playRecording" -> {
                 (event.newValue as? Long)?.let { eventId ->
                     audioLogManager.playRecording(eventId)
@@ -902,6 +950,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     companion object {
         fun isoNow(): String = DateTimeFormatter.ISO_INSTANT.format(Instant.now())
+
+        private const val AUDIO_DEVICE_DEBOUNCE_MS = 1000L
 
         // Upper bound on how long a short notification sound (wake sound/error sound) could
         // plausibly take to report ENDED, in case that never arrives (e.g. player error) - keeps

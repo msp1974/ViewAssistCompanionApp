@@ -15,9 +15,25 @@ import javax.inject.Inject
 
 class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig) {
 
-    val hardware = DeviceHardware(context).hardwareInfo
+    @Volatile
+    var hardware = DeviceHardware(context).hardwareInfo
+        private set
     val software = DeviceSoftware(context).softwareInfo
     val features = DeviceFeatures(context).featuresInfo
+
+    /**
+     * Re-reads the audio input and output devices, which change as devices are plugged in or out
+     * while the rest of [hardware] is fixed. True if the lists changed.
+     */
+    fun refreshAudioDevices(): Boolean {
+        val deviceHardware = DeviceHardware(context)
+        val inputs = deviceHardware.audioInputs()
+        val outputs = deviceHardware.audioOutputs()
+        val current = hardware
+        if (inputs == current.audioInputs && outputs == current.audioOutputs) return false
+        hardware = current.copy(audioInputs = inputs, audioOutputs = outputs)
+        return true
+    }
 
 
     @OptIn(ExperimentalSerializationApi::class)

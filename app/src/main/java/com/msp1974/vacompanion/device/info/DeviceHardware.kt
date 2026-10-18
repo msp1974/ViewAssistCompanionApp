@@ -65,9 +65,14 @@ class DeviceHardware(
         // Same filtering MicInputSensor/AudioOutputSensor apply, so this static snapshot agrees
         // with what those live sensors report rather than also listing tuner inputs, telephony
         // uplink, internal routing buses, etc. that AudioManager reports alongside real mics/speakers.
-        audioInputs = getAudioDevices(AudioManager.GET_DEVICES_INPUTS, AudioInRouter::isUsableMicrophoneType),
-        audioOutputs = getAudioDevices(AudioManager.GET_DEVICES_OUTPUTS, AudioInRouter::isUsableOutputType),
+        audioInputs = audioInputs(),
+        audioOutputs = audioOutputs(),
     )
+
+    // Read live, so a device connected after startup can be picked up (see DeviceInfo.refreshAudioDevices).
+    fun audioInputs() = getAudioDevices(AudioManager.GET_DEVICES_INPUTS, AudioInRouter::isUsableMicrophoneType)
+
+    fun audioOutputs() = getAudioDevices(AudioManager.GET_DEVICES_OUTPUTS, AudioInRouter::isUsableOutputType)
 
     @SuppressLint("HardwareIds")
     private fun getDeviceName(): String {
