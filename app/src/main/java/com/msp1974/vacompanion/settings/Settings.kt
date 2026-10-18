@@ -92,6 +92,18 @@ class APPConfig @Inject constructor(val context: Context) {
     var sendspinPlaying: Boolean = false
     var settingsOpen: Boolean = false
 
+    // Whether each optional service is actually up (as opposed to just enabled in the settings),
+    // set by its manager and shown in Device Info.
+    var rtspServerRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+    var sendspinRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+    var bluetoothProxyRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var hasRecordAudioPermission: Boolean = false
     var hasPostNotificationPermission: Boolean = false
     var hasWriteExternalStoragePermission: Boolean = false

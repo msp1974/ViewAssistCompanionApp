@@ -54,6 +54,7 @@ class SendspinManager(
             serviceName = "vaca-sendspin-${config.uuid}",
             friendlyName = "${config.name} $deviceName",
         ).also { it.start(newPlayer.port) }
+        config.sendspinRunning = true
     }
 
     @Synchronized
@@ -62,6 +63,7 @@ class SendspinManager(
         advertiser = null
         player?.destroy()
         player = null
+        config.sendspinRunning = false
     }
 
     private fun appVersion(): String = try {

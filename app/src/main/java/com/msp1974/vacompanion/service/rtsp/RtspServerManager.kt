@@ -45,6 +45,7 @@ class RtspServerManager(
         server?.stopServer()
         serverJob?.cancel()
         server = null
+        config.rtspServerRunning = false
         job.cancel()
     }
 
@@ -53,6 +54,9 @@ class RtspServerManager(
         val newServer = object : RtspServer(context, deviceManager) {
             override fun onState(state: RtspServerState) {
                 Timber.d("RtspServerManager: state=$state")
+                // Only the current server counts; a replaced one reports STOPPED after the new
+                // one may already be up.
+                if (server === this) config.rtspServerRunning = state == RtspServerState.RUNNING
             }
 
             override fun onClientCountChanged(count: Int) {
@@ -69,6 +73,7 @@ class RtspServerManager(
         server?.stopServer()
         serverJob?.cancel()
         server = null
+        config.rtspServerRunning = false
         if (config.rtspEnabled) {
             scope.launch {
                 delay(300)
@@ -86,6 +91,7 @@ class RtspServerManager(
                     server?.stopServer()
                     serverJob?.cancel()
                     server = null
+                    config.rtspServerRunning = false
                 }
             }
             "rtspPort", "rtspResolution", "rtspFps", "rtspBitrate", "rtspKeyframeIntervalSecs",

@@ -159,6 +159,9 @@ data class State(
     var cameraAvailability: CameraAvailability = CameraAvailability.NO_CAMERA,
     var lastMotionResult: MotionResult? = null,
     var rtspClientCount: Int = 0,
+    var rtspServerRunning: Boolean = false,
+    var sendspinRunning: Boolean = false,
+    var bluetoothProxyRunning: Boolean = false,
     var showRtspStreamingIndicator: Boolean = true,
     var audioOutputId: Int = -1,
     var audioInputId: Int = -1,
@@ -364,6 +367,15 @@ class VAViewModel @Inject constructor(
                 val nowPlaying = event.newValue as? SendspinNowPlaying ?: SendspinNowPlaying()
                 _vacaState.update { currentState ->
                     currentState.copy(sendspinNowPlaying = nowPlaying)
+                }
+            }
+            "rtspServerRunning", "sendspinRunning", "bluetoothProxyRunning" -> {
+                _vacaState.update { currentState ->
+                    currentState.copy(
+                        rtspServerRunning = config.rtspServerRunning,
+                        sendspinRunning = config.sendspinRunning,
+                        bluetoothProxyRunning = config.bluetoothProxyRunning,
+                    )
                 }
             }
             "rtspClientCount" -> {

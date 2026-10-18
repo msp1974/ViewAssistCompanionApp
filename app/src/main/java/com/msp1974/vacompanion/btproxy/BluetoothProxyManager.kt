@@ -125,6 +125,7 @@ class BluetoothProxyManager(
         server = newServer
         advertiser = BtProxyAdvertiser(context, identity).also { it.start(API_PORT) }
         registerAdapterReceiver()
+        config.bluetoothProxyRunning = true
         Timber.i("Bluetooth proxy started as ${identity.nodeName}")
     }
 
@@ -140,6 +141,7 @@ class BluetoothProxyManager(
         gatt = null
         server?.stop()
         server = null
+        config.bluetoothProxyRunning = false
         Timber.i("Bluetooth proxy stopped")
     }
 
