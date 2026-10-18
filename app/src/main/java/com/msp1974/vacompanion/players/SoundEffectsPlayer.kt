@@ -3,6 +3,8 @@ package com.msp1974.vacompanion.players
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -37,10 +39,14 @@ class SoundEffectsPlayer(val context: Context, val config: APPConfig) : EventLis
 
     override fun onEventTriggered(event: Event) {
         if (event.eventName == "audioOutputId") {
-            val device = AudioOutputRouter.resolvePreferredDevice(context, config)
-            players.values.forEach { it.setPreferredAudioDevice(device) }
-            uriPlayers.values.forEach { it.setPreferredAudioDevice(device) }
-            activeAdhocPlayer?.setPreferredAudioDevice(device)
+            // Config events arrive on any thread, but ExoPlayer may only be used from its own
+            // (main) thread.
+            Handler(Looper.getMainLooper()).post {
+                val device = AudioOutputRouter.resolvePreferredDevice(context, config)
+                players.values.forEach { it.setPreferredAudioDevice(device) }
+                uriPlayers.values.forEach { it.setPreferredAudioDevice(device) }
+                activeAdhocPlayer?.setPreferredAudioDevice(device)
+            }
         }
     }
 

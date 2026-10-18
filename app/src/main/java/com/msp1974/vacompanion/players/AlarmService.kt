@@ -6,6 +6,8 @@ import android.content.Intent
 import android.media.AudioManager
 import android.net.Uri
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import androidx.core.net.toUri
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -51,7 +53,11 @@ class AlarmService : Service(), EventListener {
 
     override fun onEventTriggered(event: Event) {
         if (event.eventName == "audioOutputId") {
-            mediaPlayer?.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
+            // Config events arrive on any thread, but ExoPlayer may only be used from its own
+            // (main) thread.
+            Handler(Looper.getMainLooper()).post {
+                mediaPlayer?.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
+            }
         }
     }
 

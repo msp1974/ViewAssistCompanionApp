@@ -49,7 +49,10 @@ class MicInputSensor(private val context: Context) : Sensor {
         }
 
         val inputNames = filteredDevices.map { device ->
-            "${device.productName} (${AudioInRouter.getDeviceTypeName(device.type)})"
+            // The address ("bottom", "back") is what tells apart devices of one type, such as
+            // a tablet's two built-in mics, which would otherwise collapse into one entry.
+            val address = if (device.type == AudioDeviceInfo.TYPE_BUILTIN_MIC && device.address.isNotBlank()) " - ${device.address}" else ""
+            "${device.productName} (${AudioInRouter.getDeviceTypeName(device.type)})$address"
         }.distinct()
 
         val activeInput = AudioInRouter.activeMicInput

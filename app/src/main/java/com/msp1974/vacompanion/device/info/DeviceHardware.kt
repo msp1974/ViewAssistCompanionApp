@@ -32,6 +32,8 @@ data class AudioDeviceSummary(
     val type: Int,
     val typeName: String,
     val productName: String,
+    // HAL address; often tells apart devices of the same type, e.g. two built-in mics.
+    val address: String,
 )
 
 data class DeviceHardwareData(
@@ -70,7 +72,37 @@ class DeviceHardware(
     )
 
     // Read live, so a device connected after startup can be picked up (see DeviceInfo.refreshAudioDevices).
-    fun audioInputs() = getAudioDevices(AudioManager.GET_DEVICES_INPUTS, AudioInRouter::isUsableMicrophoneType)
+    fun audioInputs(): List<AudioDeviceSummary> {
+        logAudioInputDetail()
+        return getAudioDevices(AudioManager.GET_DEVICES_INPUTS, AudioInRouter::isUsableMicrophoneType)
+    }
+
+    // Everything Android reports about each input, to tell apart devices that share a type and
+    // name (e.g. the two built-in mics on some tablets). Debug logging only.
+    private fun logAudioInputDetail() {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        try {
+            audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).forEach {
+                Timber.d(
+                    "Audio input id=${it.id} type=${AudioInRouter.getDeviceTypeName(it.type)} " +
+                        "name='${it.productName}' address='${it.address}' " +
+                        "channels=${it.channelCounts.toList()} rates=${it.sampleRates.toList()} " +
+                        "encodings=${it.encodings.toList()}"
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                audioManager.microphones.forEach {
+                    Timber.d(
+                        "Microphone id='${it.id}' type=${it.type} description='${it.description}' " +
+                            "location=${it.location} group=${it.group} index=${it.indexInTheGroup} position=${it.position} " +
+                            "orientation=${it.orientation} directionality=${it.directionality}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Timber.w(e, "Error reading audio input detail")
+        }
+    }
 
     fun audioOutputs() = getAudioDevices(AudioManager.GET_DEVICES_OUTPUTS, AudioInRouter::isUsableOutputType)
 
@@ -172,6 +204,7 @@ class DeviceHardware(
         type = type,
         typeName = AudioInRouter.getDeviceTypeName(type),
         productName = productName?.toString() ?: "Unknown",
+        address = address,
     )
 
     fun getProximitySensorType(): String {

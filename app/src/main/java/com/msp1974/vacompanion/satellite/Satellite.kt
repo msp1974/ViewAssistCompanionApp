@@ -10,6 +10,7 @@ import android.os.Looper
 import androidx.media3.common.Player
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.audio.AudioDSP
+import com.msp1974.vacompanion.audio.AudioOutputRouter
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.AvailableAlarms
@@ -188,6 +189,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
 
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
+        AudioInRouter.addActiveMicInputListener(activeMicInputListener)
     }
 
     // HA lists the audio inputs and outputs from the capabilities, so tell it when they change.
@@ -197,11 +199,38 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     private val audioDeviceHandler = Handler(Looper.getMainLooper())
     private val audioDevicesChanged = Runnable {
         scope.launch {
-            if (state == SatelliteState.RUNNING && deviceInfo.refreshAudioDevices()) {
-                Timber.d("Audio devices changed - sending capabilities")
-                sendCapabilities()
+            if (state == SatelliteState.RUNNING) {
+                if (deviceInfo.refreshAudioDevices()) {
+                    Timber.d("Audio devices changed - sending capabilities")
+                    sendCapabilities()
+                }
+                // Connecting or removing a device can move the active input/output.
+                sendAudioSettingsIfChanged()
             }
         }
+    }
+
+    // The ids of the input and output in use (AudioDeviceInfo ids, as listed in the
+    // capabilities), so HA can match them to that list. -1 means none could be determined.
+    private fun buildAudioSettings() = buildJsonObject {
+        put("audio_input", AudioInRouter.activeMicInputId)
+        put("audio_output", AudioOutputRouter.activeOutputId(context, config))
+    }
+
+    private var lastAudioSettings: JsonObject? = null
+
+    private fun sendAudioSettingsIfChanged(force: Boolean = false) {
+        val audio = buildAudioSettings()
+        if (!force && audio == lastAudioSettings) return
+        lastAudioSettings = audio
+        sendCustomEvent(WyomingCustomEventType.SETTINGS, buildJsonObject {
+            put("timestamp", isoNow())
+            put("settings", audio)
+        })
+    }
+
+    private val activeMicInputListener: () -> Unit = {
+        if (state == SatelliteState.RUNNING) sendAudioSettingsIfChanged()
     }
     private val audioDeviceCallback = object : AudioDeviceCallback() {
         override fun onAudioDevicesAdded(addedDevices: Array<out AudioDeviceInfo>) = scheduleAudioDeviceCheck()
@@ -263,12 +292,9 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 putJsonObject("media_player") {
                     put("playing", false)
                 }
-                putJsonObject("audio") {
-                    put("input_id", config.audioInputId)
-                    put("output_id", config.audioOutputId)
-                }
             }
         )
+        sendAudioSettingsIfChanged(force = true)
     }
 
     fun prepareSatelliteTakeover(clientId: String) {
@@ -313,6 +339,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         state = SatelliteState.STOPPING
         config.eventBroadcaster.removeListener(this)
         audioManager.unregisterAudioDeviceCallback(audioDeviceCallback)
+        AudioInRouter.removeActiveMicInputListener(activeMicInputListener)
         audioDeviceHandler.removeCallbacks(audioDevicesChanged)
 
         stopAudioPipeline()
@@ -925,16 +952,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             }
             // The selected audio devices (-1 = automatic), whoever changed them - HA or the
             // on-device settings.
-            "audioInputId", "audioOutputId" -> {
-                sendStatus(
-                    buildJsonObject {
-                        putJsonObject("audio") {
-                            put("input_id", config.audioInputId)
-                            put("output_id", config.audioOutputId)
-                        }
-                    }
-                )
-            }
+            "audioInputId", "audioOutputId" -> sendAudioSettingsIfChanged()
             "playRecording" -> {
                 (event.newValue as? Long)?.let { eventId ->
                     audioLogManager.playRecording(eventId)

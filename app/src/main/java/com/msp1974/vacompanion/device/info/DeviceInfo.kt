@@ -64,6 +64,7 @@ class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig
                             put("type", it.type)
                             put("type_name", it.typeName)
                             put("product_name", it.productName)
+                            put("address", it.address)
                         }
                     }
                 }
@@ -74,6 +75,7 @@ class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig
                             put("type", it.type)
                             put("type_name", it.typeName)
                             put("product_name", it.productName)
+                            put("address", it.address)
                         }
                     }
                 }

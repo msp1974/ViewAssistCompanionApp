@@ -55,6 +55,12 @@ class AudioInRouter(
         // Only re-resolved when the input device set changes (see deviceCallback) or a
         // MicrophoneInput (re)starts - there's no periodic recompute - so listeners
         // (MicInputSensor) need an explicit nudge whenever this changes rather than polling it.
+        // Id of the device behind activeMicInput (AudioDeviceInfo.getId), or -1 if none is in use.
+        // Set before activeMicInput so a listener told of the change sees both.
+        @Volatile
+        var activeMicInputId: Int = -1
+            private set
+
         var activeMicInput: String = "None"
             private set(value) {
                 field = value
@@ -369,6 +375,9 @@ class AudioInRouter(
         val success = record.setPreferredDevice(device)
         Timber.d("setPreferredDevice success: $success")
 
+        activeMicInputId = (device
+            ?: audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS)
+                .firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_MIC })?.id ?: -1
         activeMicInput = when {
             device == null -> "Built-in Mic"
             isUsbMic(device) -> "${device.productName} (USB)"
