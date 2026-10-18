@@ -128,6 +128,12 @@ class SoundEffectsPlayer(val context: Context, val config: APPConfig) : EventLis
                         Timber.w("Recovering sound effect player for $uri after previous playback error")
                         player.prepare()
                     }
+                    // These players are created ahead of time (preload), so the output device
+                    // they were given may be stale: Android can renumber its audio devices when
+                    // one such as a Bluetooth speaker connects, and a preferred device that no
+                    // longer matches is ignored, leaving the sound on the new default (the
+                    // speaker). Resolve it again now so the selected output is always honoured.
+                    player.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(context, config))
                     player.seekTo(0)
                     player.play()
                 } else {
