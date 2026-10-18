@@ -80,15 +80,15 @@ fun SettingsLayout(
                 SettingsScreen.MAIN -> {
                     val menuOptions = mutableListOf<MenuOption>()
 
-                    if (!vaUiState.menuOpenedByAction) {
-                        menuOptions.add(
-                            MenuOption(
-                                title = "Unpair Device",
-                                subtitle = "Unpair from current HA server",
-                                icon = Icons.Default.DisabledByDefault,
-                                onClick = { currentDialog = Dialog.CLEAR_PAIRING }
-                            )
+                    menuOptions.add(
+                        MenuOption(
+                            title = "Unpair Device",
+                            subtitle = "Unpair from current HA server",
+                            icon = Icons.Default.DisabledByDefault,
+                            onClick = { currentDialog = Dialog.CLEAR_PAIRING }
                         )
+                    )
+                    if (!vaUiState.menuOpenedByAction) {
                         menuOptions.add(
                             MenuOption(
                                 title = "Edit Device ID",
@@ -192,11 +192,11 @@ fun SettingsLayout(
                     VADialog(
                         onDismissRequest = { currentDialog = Dialog.NONE },
                         onConfirmation = {
-                            viewModel.clearPairedDevice()
+                            viewModel.unpairDevice()
                             currentDialog = Dialog.NONE
                         },
                         dialogTitle = "Clear Paired Device Entry",
-                        dialogText = "This will delete the currently paired Home Assistant server and allow another server to connect and pair to this device.",
+                        dialogText = "This will delete the currently paired Home Assistant server, stop the satellite and allow another server to connect and pair to this device.",
                         confirmText = "Confirm",
                         dismissText = "Cancel",
                     )

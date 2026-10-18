@@ -736,6 +736,12 @@ class VAViewModel @Inject constructor(
         config.alwaysIgnoreSSLErrors = false
     }
 
+    /** Clears the pairing and ends the running satellite, returning to the waiting screen. */
+    fun unpairDevice() {
+        clearPairedDevice()
+        config.eventBroadcaster.notifyEvent(Event("unpairDevice", "", ""))
+    }
+
     fun setUUID(uuid: String = "") {
         // TODO: Add validation
         if (uuid != "" && uuid != config.uuid) {

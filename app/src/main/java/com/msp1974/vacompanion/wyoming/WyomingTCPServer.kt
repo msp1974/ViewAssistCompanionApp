@@ -1,6 +1,8 @@
 package com.msp1974.vacompanion.wyoming
 
 import android.content.Context
+import com.msp1974.vacompanion.utils.Event
+import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.WyomingServerStatus
 import com.msp1974.vacompanion.satellite.Satellite
@@ -56,6 +58,15 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private var serverSocket: ServerSocket? = null
     private var restartIfStopped: Boolean = false
 
+    // The on-device settings menu asks for the satellite to end when the device is unpaired.
+    private val unpairListener = object : EventListener {
+        override fun onEventTriggered(event: Event) {
+            if (event.eventName != "unpairDevice") return
+            Timber.i("Device unpaired - stopping satellite")
+            scope.launch { stopSatellite() }
+        }
+    }
+
     private val infoBuilder: WyomingInfoBuilder = WyomingInfoBuilder(deviceManager)
     private val capabilitiesBuilder: WyomingCapabilitiesBuilder = WyomingCapabilitiesBuilder(deviceManager)
 
@@ -83,6 +94,8 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
             return
         }
 
+
+        config.eventBroadcaster.addListener(unpairListener)
 
         Timber.d("Starting zeroconf")
         try {
@@ -200,6 +213,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
                 withContext(NonCancellable) {
                     Timber.d("Stopping Wyoming TCP Server...")
                     state = ServerState.STOPPING
+                    config.eventBroadcaster.removeListener(unpairListener)
                     stopSatellite()
                     try {
                         if (!clients.isEmpty()) {
