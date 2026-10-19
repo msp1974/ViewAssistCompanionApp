@@ -77,7 +77,15 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
     private val detectionCooldownMs: Long = 2000L
     private var lastWakeDetectionTimestamp = 0L
 
+    private fun hasRecordAudioPermission(): Boolean =
+        Permissions(context, deviceManager).hasPermission(Manifest.permission.RECORD_AUDIO)
+
     suspend fun run() {
+        if (config.wakeWordEngine != "none" && !hasRecordAudioPermission()) {
+            Timber.w("Not starting wake word engine - RECORD_AUDIO permission not granted")
+            state = WakeWordHandlerState.STOPPED
+            return
+        }
         val startTime = System.currentTimeMillis()
         handlerJob = scope.launch (context = Dispatchers.Default) {
             start()
@@ -96,7 +104,9 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     suspend fun start() {
         try {
-            if (config.wakeWordEngine != "none") {
+            if (config.wakeWord != "none" && !hasRecordAudioPermission()) {
+                Timber.w("Not starting wake word engine - RECORD_AUDIO permission not granted")
+            } else if (config.wakeWord != "none") {
                 state = WakeWordHandlerState.STARTING
                 engine = WakeWordEngine(context, deviceManager,
                     when (config.wakeWordEngine) {
@@ -155,13 +165,13 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
 
     fun runWakeWordDetection() {
-        if (!Permissions(context, deviceManager).hasPermission(Manifest.permission.RECORD_AUDIO)) {
+        if (!hasRecordAudioPermission()) {
             Timber.e("Unable to start wake word engine - no audio permission")
             return
         }
 
         //sendDiagnostics(0f, 0f)
-        val flow = engine!!.start()
+        val flow = engine?.start() ?: return
         wakeWordJob = scope.launch {
             try {
                 flow.cancellable().collect {
