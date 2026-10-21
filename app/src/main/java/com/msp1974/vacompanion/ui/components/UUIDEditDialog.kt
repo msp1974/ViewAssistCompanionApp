@@ -39,14 +39,17 @@ fun UUIDEditDialog(
     onClose: () -> Unit,
     initText: String,
     confirmText: String = "OK",
-    dismissText: String = "Cancel",
+    dismissText: String? = "Cancel",
+    title: String = "Edit Device UUID",
+    message: String = UUID_CHANGE_WARNING,
+    dismissible: Boolean = true,
 ) {
     val uuid = rememberTextFieldState(initialText = initText)
     Dialog(
         onDismissRequest = { onDismissRequest() },
         properties = DialogProperties(
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true,
+            dismissOnBackPress = dismissible,
+            dismissOnClickOutside = dismissible,
             usePlatformDefaultWidth = false,
         ),
     ) {
@@ -56,10 +59,15 @@ fun UUIDEditDialog(
             onConfirmation = onConfirmation,
             onClose = onClose,
             confirmText = confirmText,
-            dismissText = dismissText
+            dismissText = dismissText,
+            title = title,
+            message = message,
         )
     }
 }
+
+private const val UUID_CHANGE_WARNING =
+    "WARNING: Changing the UUID will unpair the device and require the VACA and View Assist entries to be deleted and readded."
 
 @Composable
 fun UUIDEditDialogContent(
@@ -68,7 +76,9 @@ fun UUIDEditDialogContent(
     onConfirmation: (uuid: String) -> Unit,
     onClose: () -> Unit,
     confirmText: String,
-    dismissText: String,
+    dismissText: String?,
+    title: String = "Edit Device UUID",
+    message: String = UUID_CHANGE_WARNING,
 ) {
     // Draw a rectangle shape with rounded corners inside the dialog
     Card(
@@ -85,13 +95,13 @@ fun UUIDEditDialogContent(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Edit Device UUID",
+                text = title,
                 fontSize = 18.sp,
                 modifier = Modifier
                     .padding(16.dp),
             )
             Text(
-                text = "WARNING: Changing the UUID will unpair the device and require the VACA and View Assist entries to be deleted and readded.",
+                text = message,
                 fontSize = 12.sp,
                 modifier = Modifier
                     .padding(16.dp),
@@ -115,14 +125,16 @@ fun UUIDEditDialogContent(
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.Bottom
             ) {
-                Button(
-                    onClick = {
-                        onDismissRequest()
-                        onClose()
-                              },
-                    modifier = Modifier.padding(8.dp),
-                ) {
-                    Text(dismissText)
+                if (dismissText != null) {
+                    Button(
+                        onClick = {
+                            onDismissRequest()
+                            onClose()
+                                  },
+                        modifier = Modifier.padding(8.dp),
+                    ) {
+                        Text(dismissText)
+                    }
                 }
                 Button(
                     onClick = {

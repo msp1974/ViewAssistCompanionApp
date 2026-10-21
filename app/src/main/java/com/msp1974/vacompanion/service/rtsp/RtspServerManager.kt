@@ -94,6 +94,10 @@ class RtspServerManager(
                     config.rtspServerRunning = false
                 }
             }
+            // Camera permission granted after startup (the server was skipped without it).
+            "hasCameraPermission" -> {
+                if (event.newValue == true && config.rtspEnabled && !config.rtspServerRunning) restartServer()
+            }
             "rtspPort", "rtspResolution", "rtspFps", "rtspBitrate", "rtspKeyframeIntervalSecs",
             "rtspUsername", "rtspPassword" -> {
                 if (config.rtspEnabled) restartServer()

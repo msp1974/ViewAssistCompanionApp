@@ -50,6 +50,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private val scope = CoroutineScope(Dispatchers.IO + job)
     private var satelliteStatusListenerJob: Job? = null
     private var pauseSatelliteTimeoutJob: Job? = null
+    private var disconnectionMonitorJob: Job? = null
 
     private var runServer: Boolean = true
     var satellite: Satellite? = null
@@ -58,12 +59,22 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private var serverSocket: ServerSocket? = null
     private var restartIfStopped: Boolean = false
 
-    // The on-device settings menu asks for the satellite to end when the device is unpaired.
+    // The on-device UI asks for the satellite to end when the device is unpaired, or when the
+    // user chooses to leave the disconnected dashboard for the connection screen.
     private val unpairListener = object : EventListener {
         override fun onEventTriggered(event: Event) {
-            if (event.eventName != "unpairDevice") return
-            Timber.i("Device unpaired - stopping satellite")
-            scope.launch { stopSatellite() }
+            when (event.eventName) {
+                "unpairDevice" -> {
+                    Timber.i("Device unpaired - stopping satellite")
+                    scope.launch { stopSatellite() }
+                }
+                "stopSatellite" -> {
+                    Timber.i("Stop satellite requested - ending disconnection monitor and stopping satellite")
+                    disconnectionMonitorJob?.cancel()
+                    disconnectionMonitorJob = null
+                    scope.launch { stopSatellite() }
+                }
+            }
         }
     }
 
@@ -239,7 +250,8 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     fun disconnectionMonitor() {
         val timeout = DISCONNECTION_TIMEOUT_MINS
         val startTime = System.currentTimeMillis()
-        scope.launch {
+        disconnectionMonitorJob?.cancel()
+        disconnectionMonitorJob = scope.launch {
             // Stop satellite if connection lost for more than timeout
             while (clients.isEmpty()) {
                 delay(1.seconds)
@@ -367,10 +379,10 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
 
         val serverIP = clients[clientId]?.handler?.clientIP ?: ""
 
-        if (config.pairedDeviceID.isEmpty()) {
-            config.pairedDeviceID = serverIP
+        if (config.pairedDeviceId.isEmpty()) {
+            config.pairedDeviceId = serverIP
         } else if (!isValidServer(serverIP)) {
-            Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceID}, attempting server: $serverIP")
+            Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceId}, attempting server: $serverIP")
             return
         }
 
@@ -438,7 +450,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     }
 
     private fun isValidServer(ipAddr: String): Boolean {
-        return config.pairedDeviceID == "" || config.pairedDeviceID == ipAddr
+        return config.pairedDeviceId == "" || config.pairedDeviceId == ipAddr
     }
 
     private suspend fun stopSatellite() {

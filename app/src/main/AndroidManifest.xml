@@ -15,9 +15,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!--Bluetooth proxy: BLE scanning. No neverForLocation flag, as that would hide beacons from
-        the scan results Home Assistant expects. Pre-Android 12 BLE scans need location instead.-->
+        the scan results Home Assistant expects. Without that flag the Bluetooth stack also
+        requires ACCESS_FINE_LOCATION on Android 12+, as well as on earlier versions.-->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -64,7 +65,7 @@
     <application
         android:name=".VACAApplication"
         android:usesCleartextTraffic="true"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"

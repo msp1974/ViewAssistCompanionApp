@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.device
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.admin.DevicePolicyManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
@@ -10,6 +11,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import com.msp1974.vacompanion.VACADeviceAdminReceiver
 import android.view.Display
 import android.view.View
 import android.view.Window
@@ -280,7 +282,16 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
 
     fun lockScreen() {
         val dpm = getSystemService(DEVICE_POLICY_SERVICE) as DevicePolicyManager
-        dpm.lockNow()
+        val admin = ComponentName(applicationContext, VACADeviceAdminReceiver::class.java)
+        if (!dpm.isAdminActive(admin)) {
+            log.w("Unable to lock screen - device admin not granted")
+            return
+        }
+        try {
+            dpm.lockNow()
+        } catch (e: SecurityException) {
+            log.w("Unable to lock screen: ${e.message}")
+        }
     }
 
     fun canWriteScreenSetting(): Boolean {

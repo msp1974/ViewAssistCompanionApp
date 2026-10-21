@@ -1,6 +1,9 @@
 package com.msp1974.vacompanion.ui.layouts
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -56,64 +59,70 @@ fun ConfigurationLayout(
         onClose = onBack,
         modifier = modifier
     ) {
-        SectionHeader("Audio Input")
-        AudioDeviceDropdown(
-            label = "Input device",
-            devices = deviceInfo.hardware.audioInputs,
-            selectedId = vaUiState.audioInputId,
-            onSelect = { viewModel.setAudioInputId(it) }
-        )
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            SectionHeader("Audio Input")
+            AudioDeviceDropdown(
+                label = "Input device",
+                devices = deviceInfo.hardware.audioInputs,
+                selectedId = vaUiState.audioInputId,
+                onSelect = { viewModel.setAudioInputId(it) }
+            )
 
-        SectionHeader("Audio Output")
-        AudioDeviceDropdown(
-            label = "Output device",
-            devices = deviceInfo.hardware.audioOutputs,
-            selectedId = vaUiState.audioOutputId,
-            onSelect = { viewModel.setAudioOutputId(it) }
-        )
+            SectionHeader("Audio Output")
+            AudioDeviceDropdown(
+                label = "Output device",
+                devices = deviceInfo.hardware.audioOutputs,
+                selectedId = vaUiState.audioOutputId,
+                onSelect = { viewModel.setAudioOutputId(it) }
+            )
 
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        SectionHeader("Sendspin")
-        SwitchOptionItem(
-            label = "Sendspin Player",
-            subtitle = "Let Music Assistant play synchronised audio on this device",
-            checked = vaUiState.sendspinEnabled,
-            icon = Icons.Default.Speaker,
-            onCheckedChange = { viewModel.onToggleSendspin(it) }
-        )
-        SwitchOptionItem(
-            label = "Media Player Overlay",
-            subtitle = "Show the now-playing player on screen while Sendspin audio plays",
-            checked = vaUiState.sendspinOverlayEnabled,
-            icon = Icons.Default.MusicNote,
-            onCheckedChange = { viewModel.onToggleSendspinOverlay(it) }
-        )
-
-        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-        SectionHeader("Bluetooth Proxy")
-        SwitchOptionItem(
-            label = "Bluetooth Proxy",
-            subtitle = "Let Home Assistant use this device's Bluetooth to reach BLE devices (add it via the ESPHome integration, no encryption key)",
-            checked = vaUiState.bluetoothProxyEnabled,
-            icon = Icons.Default.Bluetooth,
-            onCheckedChange = { viewModel.onToggleBluetoothProxy(it) }
-        )
-
-        if (deviceInfo.hardware.hasFrontCamera) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-            SectionHeader("Camera")
+            SectionHeader("Sendspin")
             SwitchOptionItem(
-                label = "Camera Streaming Icon",
-                subtitle = "Shown on screen while the camera stream is active",
-                checked = vaUiState.showRtspStreamingIndicator,
-                icon = Icons.Default.Videocam,
-                onCheckedChange = { viewModel.onToggleRtspStreamingIndicator(it) }
+                label = "Sendspin Player",
+                subtitle = "Let Music Assistant play synchronised audio on this device",
+                checked = vaUiState.sendspinEnabled,
+                icon = Icons.Default.Speaker,
+                onCheckedChange = { viewModel.onToggleSendspin(it) }
             )
-            RotationDropdown(
-                label = "Camera image rotation",
-                selectedDegrees = vaUiState.cameraRotationOffset,
-                onSelect = { viewModel.setCameraRotationOffset(it) }
+            SwitchOptionItem(
+                label = "Media Player Overlay",
+                subtitle = "Show the now-playing player on screen while Sendspin audio plays",
+                checked = vaUiState.sendspinOverlayEnabled,
+                icon = Icons.Default.MusicNote,
+                onCheckedChange = { viewModel.onToggleSendspinOverlay(it) }
             )
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            SectionHeader("Bluetooth Proxy")
+            SwitchOptionItem(
+                label = "Bluetooth Proxy",
+                subtitle = "Let Home Assistant use this device's Bluetooth to reach BLE devices (add it via the ESPHome integration, no encryption key)",
+                checked = vaUiState.bluetoothProxyEnabled,
+                icon = Icons.Default.Bluetooth,
+                onCheckedChange = { viewModel.onToggleBluetoothProxy(it) }
+            )
+
+            if (deviceInfo.hardware.hasFrontCamera) {
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                SectionHeader("Camera")
+                SwitchOptionItem(
+                    label = "Camera Streaming Icon",
+                    subtitle = "Shown on screen while the camera stream is active",
+                    checked = vaUiState.showRtspStreamingIndicator,
+                    icon = Icons.Default.Videocam,
+                    onCheckedChange = { viewModel.onToggleRtspStreamingIndicator(it) }
+                )
+                RotationDropdown(
+                    label = "Camera image rotation",
+                    selectedDegrees = vaUiState.cameraRotationOffset,
+                    onSelect = { viewModel.setCameraRotationOffset(it) }
+                )
+            }
         }
     }
 }
@@ -155,7 +164,8 @@ private fun SwitchOptionItem(
     )
 }
 
-private fun deviceLabel(device: AudioDeviceSummary): String = "${device.productName} (${device.typeName})"
+private fun deviceLabel(device: AudioDeviceSummary): String =
+    "${device.productName} (${device.typeName})" + if (device.address.isNotBlank()) " - ${device.address}" else ""
 
 @Composable
 private fun SectionHeader(title: String) {

@@ -86,7 +86,8 @@ class VAForegroundService @Inject constructor() : LifecycleService(), EventListe
         // Do the work that the service needs to do here
         when (action) {
             Actions.START.toString() -> {
-                if (!checkIfPermissionIsGranted()) return START_STICKY
+                // Permissions are only requested during onboarding, so the service always
+                // starts; foregroundServiceTypes() only declares the types that are granted.
                 val notification =
                     NotificationCompat.Builder(this, "VACAForegroundServiceChannelId")
                         .setSmallIcon(R.mipmap.ic_launcher)
@@ -130,6 +131,7 @@ class VAForegroundService @Inject constructor() : LifecycleService(), EventListe
                     Timber.i("Background Service Started")
                     config.backgroundTaskRunning = true
                     config.backgroundTaskStatus = BackgroundTaskStatus.STARTED
+                    config.onboarded = true
                 }
             }
 
@@ -169,7 +171,7 @@ class VAForegroundService @Inject constructor() : LifecycleService(), EventListe
         // required-at-boot permission) - repromote so background RTSP/motion detection works
         // without needing an app restart. hasCameraPermission is only ever set true on a grant,
         // so this never fires for a revoke (Android kills/restarts the process on revoke anyway).
-        if (event.eventName == "hasCameraPermission" && event.newValue == true) {
+        if ((event.eventName == "hasCameraPermission" && event.newValue == true) || event.eventName == "recordAudioPermissionGranted") {
             val notification = activeNotification ?: return
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 try {
@@ -208,11 +210,6 @@ class VAForegroundService @Inject constructor() : LifecycleService(), EventListe
         val pendingIntent = PendingIntent.getService(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
         return pendingIntent
     }
-
-    private fun checkIfPermissionIsGranted() = ActivityCompat.checkSelfPermission(
-        this,
-        Manifest.permission.RECORD_AUDIO
-    ) == PackageManager.PERMISSION_GRANTED
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)

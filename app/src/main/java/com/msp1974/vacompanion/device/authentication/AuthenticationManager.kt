@@ -6,6 +6,7 @@ import io.ktor.client.call.body
 import io.ktor.http.isSuccess
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import timber.log.Timber
 import java.net.URL
 
 class AuthenticationManager(
@@ -13,6 +14,10 @@ class AuthenticationManager(
 ) {
     private val authenticationService = AuthenticationService(ignoreSslErrors = { config.ignoreSSLErrors })
     private val sessionMutex = Mutex()
+
+    // Consecutive refreshes HA has rejected with HTTP 400 invalid_request. Only touched while
+    // holding sessionMutex.
+    private var invalidRequestCount = 0
 
     suspend fun buildBearerToken(): String {
         ensureValidSession()
@@ -60,11 +65,24 @@ class AuthenticationManager(
                 url = getBaseUrl(),
                 refreshToken = refreshToken,
             ).let { refreshedToken ->
+                invalidRequestCount = 0
                 config.accessToken = refreshedToken.accessToken
                 config.tokenExpiry = System.currentTimeMillis() + (refreshedToken.expiresIn * 1000)
                 return@let
             }
         } catch (e: AuthenticationException) {
+            if (e.httpCode == 400 && e.errorBody?.contains("invalid_request") == true) {
+                invalidRequestCount++
+                if (invalidRequestCount >= MAX_INVALID_REQUEST_COUNT) {
+                    // HA keeps rejecting this refresh token outright - drop it so the caller
+                    // sends the user back to the HA login screen.
+                    Timber.w("Refresh token rejected with invalid_request $invalidRequestCount times, clearing it")
+                    invalidRequestCount = 0
+                    config.refreshToken = ""
+                    config.accessToken = ""
+                    config.tokenExpiry = 0
+                }
+            }
             if (e.message?.contains("invalid_grant") == true) {
                 // The refresh credential is no longer usable. Clear the local session
                 // without making another request with the already-invalid token.
@@ -72,6 +90,10 @@ class AuthenticationManager(
             }
             throw e
         }
+    }
+
+    companion object {
+        private const val MAX_INVALID_REQUEST_COUNT = 2
     }
 
     suspend fun revokeSession() {

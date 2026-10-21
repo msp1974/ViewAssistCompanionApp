@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.satellite
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioDeviceCallback
@@ -15,6 +16,7 @@ import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
+import com.msp1974.vacompanion.device.camera.CameraAvailability
 import com.msp1974.vacompanion.device.camera.MotionDetector
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.VolumeObserver
@@ -887,6 +889,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         // Start motion sensor
         if (deviceInfo.hardware.hasFrontCamera) {
             if (config.motionDetectionMode != "none") {
+                if (deviceManager.camera.currentAvailability() == CameraAvailability.NO_PERMISSION) {
+                    Timber.w("Motion detection enabled but camera permission not granted, requesting")
+                    BroadcastSender.sendBroadcast(context, BroadcastSender.OPEN_PERMISSION_SCREEN, Manifest.permission.CAMERA)
+                    return
+                }
                 delay(delay.seconds)  // Add delay to camera start to let app start up
                 // Reuse the existing detector rather than leaking it - this can be called again
                 // (e.g. on screenOn) while one is already running.
@@ -953,6 +960,17 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             // The selected audio devices (-1 = automatic), whoever changed them - HA or the
             // on-device settings.
             "audioInputId", "audioOutputId" -> sendAudioSettingsIfChanged()
+            // Granted after the satellite started (it is not requested outside onboarding), so
+            // the wake word engine was skipped at startup - start it now.
+            // Camera granted after startup - motion detection was skipped without it.
+            "hasCameraPermission" -> {
+                if (event.newValue == true) scope.launch { startMotionDetection() }
+            }
+            "recordAudioPermissionGranted" -> {
+                if (wakeWordHandler?.state != WakeWordHandlerState.RUNNING) {
+                    scope.launch { restartWakeWordDetection() }
+                }
+            }
             "playRecording" -> {
                 (event.newValue as? Long)?.let { eventId ->
                     audioLogManager.playRecording(eventId)

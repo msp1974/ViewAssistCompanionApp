@@ -82,7 +82,11 @@ data class PermissionsStatus(
     var writeExternalStorage: Boolean = false,
     var writeSettings: Boolean = false,
     var notificationPolicy: Boolean = false,
-    var deviceAdmin: Boolean = false
+    var deviceAdmin: Boolean = false,
+    // Bluetooth proxy: BLUETOOTH_SCAN + BLUETOOTH_CONNECT (Android 12+) and location.
+    var bluetoothScan: Boolean = false,
+    var bluetoothConnect: Boolean = false,
+    var location: Boolean = false
 )
 
 data class DiagnosticInfo(
@@ -145,6 +149,8 @@ data class State(
     var updates: UpdateStatus = UpdateStatus(),
     var webViewPageLoadingStage: PageLoadingStage = PageLoadingStage.NOT_STARTED,
     var showUUIDChangeDialog: Boolean = false,
+    // Non-null while the first-run device ID prompt is showing; holds the suggested default.
+    var onboardingDeviceId: String? = null,
     var isNetworkConnected: Boolean = true,
     // Mirrors WyomingServerStatus.connected - whether Home Assistant currently has a client
     // connected to this device's Wyoming server. Only meaningful when isNetworkConnected is
@@ -625,7 +631,7 @@ class VAViewModel @Inject constructor(
                     "IP Address" to (if (Helpers.isNetworkAvailable(config.context)) Helpers.getIpv4HostAddress() else ""),
                     "Port" to APPConfig.SERVER_PORT.toString(),
                     "Device ID" to config.uuid,
-                    "Paired to" to config.pairedDeviceID,
+                    "Paired to" to config.pairedDeviceId,
                 )
            )
        }
@@ -699,7 +705,10 @@ class VAViewModel @Inject constructor(
                     } else true,
                     writeSettings = permissions.hasWriteSettingsPermission(),
                     notificationPolicy = permissions.hasNotificationAccessPolicyPermission(),
-                    deviceAdmin = permissions.isDeviceAdmin()
+                    deviceAdmin = permissions.isDeviceAdmin(),
+                    bluetoothScan = permissions.hasPermission(android.Manifest.permission.BLUETOOTH_SCAN),
+                    bluetoothConnect = permissions.hasPermission(android.Manifest.permission.BLUETOOTH_CONNECT),
+                    location = permissions.hasPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)
                 )
             )
         }
@@ -741,7 +750,7 @@ class VAViewModel @Inject constructor(
     }
 
     fun clearPairedDevice() {
-        config.pairedDeviceID = ""
+        config.pairedDeviceId = ""
         config.accessToken = ""
         config.refreshToken = ""
         config.tokenExpiry = 0
@@ -754,6 +763,11 @@ class VAViewModel @Inject constructor(
         config.eventBroadcaster.notifyEvent(Event("unpairDevice", "", ""))
     }
 
+    /** Ends the running satellite (and its disconnection monitor), returning to the connection screen. */
+    fun stopSatellite() {
+        config.eventBroadcaster.notifyEvent(Event("stopSatellite", "", ""))
+    }
+
     fun setUUID(uuid: String = "") {
         // TODO: Add validation
         if (uuid != "" && uuid != config.uuid) {
@@ -762,6 +776,21 @@ class VAViewModel @Inject constructor(
             buildAppInfo()
             config.eventBroadcaster.notifyEvent(Event("restartZeroconf", "", ""))
         }
+    }
+
+    fun showOnboarding() {
+        _vacaState.update { currentState ->
+            currentState.copy(
+                onboardingDeviceId = currentState.onboardingDeviceId ?: Helpers.getDefaultDeviceId(config.context)
+            )
+        }
+    }
+
+    /** First-run device ID. Always persisted, as the unset default is not stored. */
+    fun completeOnboardingDeviceId(deviceId: String) {
+        config.uuid = deviceId.ifBlank { _vacaState.value.onboardingDeviceId ?: Helpers.getDefaultDeviceId(config.context) }
+        buildAppInfo()
+        _vacaState.update { it.copy(onboardingDeviceId = null) }
     }
 
     fun setShowMenu(show: Boolean) {

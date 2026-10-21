@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.ui.layouts
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
@@ -111,6 +112,42 @@ fun PermissionsLayout(
                 isGranted = vaUiState.permissions.writeExternalStorage,
                 isCore = false,
                 onClick = { viewModel.togglePermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) }
+            )
+        )
+    }
+
+    // Bluetooth proxy permissions
+    if (viewModel.config.context.packageManager.hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            permissionItems.add(
+                PermissionItem(
+                    title = "Bluetooth Scan",
+                    description = "Optional: Required for the Bluetooth proxy to scan for devices",
+                    permission = Manifest.permission.BLUETOOTH_SCAN,
+                    isGranted = vaUiState.permissions.bluetoothScan,
+                    isCore = false,
+                    onClick = { viewModel.togglePermission(Manifest.permission.BLUETOOTH_SCAN) }
+                )
+            )
+            permissionItems.add(
+                PermissionItem(
+                    title = "Bluetooth Connect",
+                    description = "Optional: Required for the Bluetooth proxy to connect to devices",
+                    permission = Manifest.permission.BLUETOOTH_CONNECT,
+                    isGranted = vaUiState.permissions.bluetoothConnect,
+                    isCore = false,
+                    onClick = { viewModel.togglePermission(Manifest.permission.BLUETOOTH_CONNECT) }
+                )
+            )
+        }
+        permissionItems.add(
+            PermissionItem(
+                title = "Location",
+                description = "Optional: Required by Android for the Bluetooth proxy to scan for devices",
+                permission = Manifest.permission.ACCESS_FINE_LOCATION,
+                isGranted = vaUiState.permissions.location,
+                isCore = false,
+                onClick = { viewModel.togglePermission(Manifest.permission.ACCESS_FINE_LOCATION) }
             )
         )
     }

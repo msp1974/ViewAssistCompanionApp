@@ -7,6 +7,7 @@ import android.content.Context.CONNECTIVITY_SERVICE
 import android.net.ConnectivityManager
 import android.net.wifi.WifiManager
 import android.os.Build
+import android.provider.Settings
 import androidx.annotation.RequiresPermission
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -28,6 +29,24 @@ class Helpers {
             val release = Build.VERSION.RELEASE
             val sdkVersion = Build.VERSION.SDK_INT
             return "SDK: $sdkVersion ($release)"
+        }
+
+        /** Default device ID: make_model_xxxx - lowercase, hyphens removed, underscores between words. */
+        @SuppressLint("HardwareIds")
+        fun getDefaultDeviceId(context: Context): String {
+            // The last 4 characters of the Android ID keep the suffix stable for a device (so
+            // re-onboarding suggests the same ID); a random one is only used if it isn't available.
+            val androidId = Settings.Secure.getString(context.applicationContext.contentResolver, Settings.Secure.ANDROID_ID)
+                ?.replace("-", "")
+                ?.takeIf { it.length >= 4 }
+            val suffix = (androidId ?: java.util.UUID.randomUUID().toString().replace("-", "")).takeLast(4)
+            return "${Build.MANUFACTURER} ${Build.MODEL} $suffix"
+                .lowercase()
+                .replace("-", "")
+                .trim()
+                .split(Regex("\\s+"))
+                .joinToString("_") { word -> word.filter { it.isLetterOrDigit() || it == '_' } }
+                .replace(Regex("_+"), "_")
         }
 
         @SuppressLint("HardwareIds")

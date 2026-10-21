@@ -141,6 +141,14 @@ class CustomWebView @JvmOverloads constructor(
             }
         } catch (ex: AuthenticationException) {
             Timber.e(ex, "AuthenticationException: Error authenticating with HA")
+            if (config.refreshToken.isBlank()) {
+                // The refresh token was cleared after repeated rejections - show HA's login.
+                Timber.w("Refresh token cleared, loading HA login screen")
+                withContext(Dispatchers.Main) {
+                    view.loadUrl(deviceManager.authenticationManager.getExternalAuthUrl())
+                }
+                return
+            }
             BroadcastSender.sendBroadcast(
                 config.context,
                 BroadcastSender.TOAST_MESSAGE,

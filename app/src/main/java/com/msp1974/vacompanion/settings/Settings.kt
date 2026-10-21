@@ -209,11 +209,6 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var pairedDeviceID: String by Delegates.observable(pairedDeviceId) { property, oldValue, newValue ->
-        pairedDeviceId = newValue
-        onValueChangedListener(property, oldValue, newValue)
-    }
-
     var zoomLevel: Int by Delegates.observable(0) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -365,27 +360,26 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("startOnBoot", false)
         set(value) = this.sharedPrefs.edit { putBoolean("startOnBoot", value) }
 
+    // True once the background services have started for the first time. Installs that pre-date
+    // this setting already have a uuid stored, so they are marked onboarded on first read.
+    var onboarded: Boolean
+        get() {
+            if (!this.sharedPrefs.contains("onboarded") && pairedDeviceId.isNotEmpty()) {
+                this.sharedPrefs.edit { putBoolean("onboarded", true) }
+            }
+            return this.sharedPrefs.getBoolean("onboarded", false)
+        }
+        set(value) = this.sharedPrefs.edit { putBoolean("onboarded", value) }
+
     var uuid: String
-        get() = this.sharedPrefs.getString("uuid", getUUID()) ?: ""
+        get() = this.sharedPrefs.getString("uuid", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("uuid", value) }
-
-    /*
-    var accessToken: String
-        get() = this.sharedPrefs.getString("auth_token", "") ?: ""
-        set(value) = this.sharedPrefs.edit { putString("auth_token", value) }
-
-        var tokenExpiry: Long
-        get() = this.sharedPrefs.getLong("token_expiry", 0)
-        set(value) = this.sharedPrefs.edit { putLong("token_expiry", value) }
-    */
 
     var refreshToken: String
         get() = this.sharedPrefs.getString("refresh_token", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("refresh_token", value) }
 
-
-
-    private var pairedDeviceId: String
+    var pairedDeviceId: String
         get() = this.sharedPrefs.getString("paired_device_id", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("paired_device_id", value) }
 
@@ -524,6 +518,19 @@ class APPConfig @Inject constructor(val context: Context) {
         val uid = UUID.randomUUID().toString()
         return uid.slice(0..8)
 
+    }
+
+    // Before onboarding existed the uuid defaulted to getUUID() without ever being saved, so
+    // upgraded installs can have no stored value yet still be using that derived id. Adopt and
+    // persist it for any install that is already onboarded or has been paired, so its identity
+    // is kept. Fresh installs return "" and go through onboarding.
+    fun storedOrLegacyUuid(): String {
+        val stored = this.sharedPrefs.getString("uuid", "") ?: ""
+        if (stored.isNotEmpty()) return stored
+        val alreadyOnboarded = this.sharedPrefs.getBoolean("onboarded", false)
+        val legacyInstall = !this.sharedPrefs.contains("onboarded") && this.sharedPrefs.contains("paired_device_id")
+        if (!alreadyOnboarded && !legacyInstall) return ""
+        return getUUID().also { id -> this.sharedPrefs.edit { putString("uuid", id) } }
     }
 
     fun onSharedPreferenceChangedListener(prefs: SharedPreferences, key: String?) {

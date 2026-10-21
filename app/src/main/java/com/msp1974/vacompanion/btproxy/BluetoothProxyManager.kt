@@ -228,8 +228,13 @@ class BluetoothProxyManager(
     // --- Permissions ---
 
     private fun requiredPermissions(): List<String> =
+        // Scanning without the neverForLocation flag needs location on every Android version.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+            listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
         } else {
             listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         }

@@ -36,6 +36,7 @@ import com.msp1974.vacompanion.ui.components.DiagnosticBar
 import com.msp1974.vacompanion.ui.components.IconStatusBlock
 import com.msp1974.vacompanion.ui.components.NowPlayingOverlay
 import com.msp1974.vacompanion.ui.components.QuickActionsSheet
+import com.msp1974.vacompanion.ui.components.VADialog
 import com.msp1974.vacompanion.utils.CustomWebView
 import com.msp1974.vacompanion.utils.WebViewGestureDetector
 
@@ -44,6 +45,7 @@ import com.msp1974.vacompanion.utils.WebViewGestureDetector
 fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel()) {
     val vaUiState by vaViewModel.vacaState.collectAsState()
     var showBottomSheet by remember { mutableStateOf(false) }
+    var showServerDisconnectedDialog by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState()
     val density = LocalDensity.current
 
@@ -155,9 +157,24 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
             } else if (!vaUiState.isServerConnected) {
                 IconStatusBlock(
                     message = "Server Disconnected",
-                    icon = "noserver"
+                    icon = "noserver",
+                    onClick = { showServerDisconnectedDialog = true }
                 )
             }
+        }
+
+        if (showServerDisconnectedDialog) {
+            VADialog(
+                onDismissRequest = { showServerDisconnectedDialog = false },
+                onConfirmation = {
+                    showServerDisconnectedDialog = false
+                    vaViewModel.stopSatellite()
+                },
+                dialogTitle = "Server Disconnected",
+                dialogText = "Home Assistant is not connected to this device. Do you want to stop waiting and display the connection screen?",
+                confirmText = "Yes",
+                dismissText = "No",
+            )
         }
 
         if (showBottomSheet && vaViewModel.config.enableQuickActions) {

@@ -57,6 +57,7 @@ import com.msp1974.vacompanion.settings.BackgroundTaskStatus
 import com.msp1974.vacompanion.settings.PageLoadingStage
 import com.msp1974.vacompanion.ui.VADialog
 import com.msp1974.vacompanion.ui.VAViewModel
+import com.msp1974.vacompanion.ui.components.UUIDEditDialog
 import com.msp1974.vacompanion.ui.components.VADialog
 import com.msp1974.vacompanion.ui.layouts.BlackScreen
 import com.msp1974.vacompanion.ui.layouts.ConnectionScreen
@@ -193,6 +194,20 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                             }
                         }
 
+                        vaUiState.onboardingDeviceId?.let { defaultId ->
+                            UUIDEditDialog(
+                                onDismissRequest = {},
+                                onConfirmation = { onOnboardingDeviceIdSet(it) },
+                                onClose = {},
+                                initText = defaultId,
+                                confirmText = "Continue",
+                                dismissText = null,
+                                title = "Welcome to VACA",
+                                message = "Set a unique ID for this device. It is used to identify it in Home Assistant.",
+                                dismissible = false,
+                            )
+                        }
+
                         when {
                             vaUiState.alertDialog != null -> {
                                 VADialog(
@@ -230,7 +245,31 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             setFirebaseUserProperties()
         }
 
-        // Check and get required user permissions
+        // Status only - nothing is requested here once onboarded.
+        updatePermissionStatus()
+
+        if (!config.onboarded) {
+            // First run - get the device ID before any permission requests or service start.
+            Timber.i("First time app run: Onboarding device...")
+            screenOffStartUp = false
+            setScreenSettings()
+            viewModel.showOnboarding()
+        } else {
+            Timber.i("App previously onboarded.  Initialising...")
+            if (config.pairedDeviceId.isNotEmpty()) {
+                config.uuid = config.storedOrLegacyUuid()
+            }
+            initialise()
+        }
+    }
+
+    private fun onOnboardingDeviceIdSet(deviceId: String) {
+        viewModel.completeOnboardingDeviceId(deviceId)
+        requestPermissionsAndInitialise()
+    }
+
+    // Only used on first run - once onboarded, no permission requests are made at startup.
+    private fun requestPermissionsAndInitialise() {
         Timber.d("Checking permissions")
         updatePermissionStatus()
         if (!viewModel.vacaState.value.permissions.hasCorePermissions || !viewModel.vacaState.value.permissions.hasOptionalPermissions) {
@@ -243,7 +282,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             Timber.d("All permissions already granted")
             initialise()
         }
-
     }
 
     private fun currentScreenMode(): ScreenOnMode {
@@ -324,12 +362,6 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             screen.setScreenAlwaysOn(window, true)
         }
 
-        if (!viewModel.vacaState.value.permissions.hasCorePermissions) {
-            setStatus(getString(R.string.status_no_permissions))
-            applyScreenMode(ScreenOnMode.ON)
-            return
-        }
-        Timber.d("Permissions OK")
         hasNetwork = Helpers.isNetworkAvailable(this)
         while (!hasNetwork) {
             setStatus(getString(R.string.status_waiting_for_network))
@@ -493,6 +525,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             webView.onResume()
             webView.resumeTimers()
         }
+
+        // Permissions can be changed in system settings while the app is backgrounded.
+        updatePermissionStatus()
 
         // Catch if background tasks not running
         if (initialised && Helpers.isNetworkAvailable(this) && config.backgroundTaskStatus == BackgroundTaskStatus.NOT_STARTED ) {
@@ -774,6 +809,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                     updatePermissionStatus()
                     if (granted) {
                         BroadcastSender.sendBroadcast(this, BroadcastSender.PERMISSION_GRANTED, permission)
+                        if (permission == Manifest.permission.CAMERA) {
+                            config.hasCameraPermission = true
+                        }
+                        if (permission == Manifest.permission.RECORD_AUDIO) {
+                            config.hasRecordAudioPermission = true
+                            config.eventBroadcaster.notifyEvent(Event("recordAudioPermissionGranted", "", ""))
+                        }
                     }
                 }
             }

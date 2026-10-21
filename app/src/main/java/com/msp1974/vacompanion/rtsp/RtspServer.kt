@@ -1,7 +1,9 @@
 package com.msp1974.vacompanion.rtsp
 
+import android.Manifest
 import android.content.Context
 import com.msp1974.vacompanion.device.DeviceManager
+import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.camera.CameraAvailability
 import com.msp1974.vacompanion.settings.APPConfig
 import io.ktor.network.selector.ActorSelectorManager
@@ -119,6 +121,11 @@ abstract class RtspServer(private val context: Context, val deviceManager: Devic
         }
         if (deviceManager.camera.currentAvailability() == CameraAvailability.NO_CAMERA) {
             Timber.d("RtspServer: no front camera, not starting")
+            return
+        }
+        if (deviceManager.camera.currentAvailability() == CameraAvailability.NO_PERMISSION) {
+            Timber.w("RtspServer: camera permission not granted, requesting")
+            BroadcastSender.sendBroadcast(context, BroadcastSender.OPEN_PERMISSION_SCREEN, Manifest.permission.CAMERA)
             return
         }
 

@@ -114,6 +114,9 @@ class AuthenticationService(ignoreSslErrors: () -> Boolean = { false }) : IAuthe
                 return result
             }
             throw AuthenticationException("Failed to refresh token", response.status.value, response.body<String>())
+        } catch (e: AuthenticationException) {
+            // Already carries the HTTP status and body - don't re-wrap, or callers lose them.
+            throw e
         } catch (e: Exception) {
             // Network/TLS failures (e.g. a misconfigured HA URL whose certificate doesn't cover
             // the configured host) must surface as AuthenticationException like getToken() does,

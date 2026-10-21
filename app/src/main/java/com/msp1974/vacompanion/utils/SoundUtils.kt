@@ -34,15 +34,19 @@ class SoundControl(private val context: Context) {
     // Set the Sound Mode
     fun setSoundMode(mode: Int) {
         if (hasPermission) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-                // For Android versions 7.0 (Nougat) to 8.1 (Oreo)
-                audioManager.setRingerMode(mode)
-            } else {
-                // For Android versions 9 (Pie) and above
-                Settings.Global.putInt(context.getContentResolver(), "zen_mode", mode)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+                    // For Android versions 7.0 (Nougat) to 8.1 (Oreo)
+                    audioManager.setRingerMode(mode)
+                } else {
+                    // For Android versions 9 (Pie) and above
+                    Settings.Global.putInt(context.getContentResolver(), "zen_mode", mode)
+                }
+            } catch (e: SecurityException) {
+                log.w("Set sound mode - not permitted: ${e.message}")
             }
         } else {
             log.i("Set sound mode - Permissions not granted")

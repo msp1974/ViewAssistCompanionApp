@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Note
-import androidx.compose.material.icons.filled.CloudOff
+import androidx.compose.material.icons.filled.MobiledataOff
 import androidx.compose.material.icons.filled.PermScanWifi
 import androidx.compose.material.icons.filled.SignalWifiStatusbarNull
 import androidx.compose.material.icons.filled.Videocam
@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -40,6 +41,7 @@ fun IconStatusBlock(
     message: String,
     icon: String,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     // Deliberately NOT fillMaxWidth(): this sits in a Box on top of the WebView, and a full-width
     // row - even an invisible one - claims Compose's hit-testing for that whole strip (because of
@@ -52,8 +54,10 @@ fun IconStatusBlock(
         modifier = modifier
             .zIndex(2f)
             .background(Color.Transparent)
-            .pointerInput(Unit) {
-                // Prevent propagation of click
+            .pointerInput(onClick) {
+                // Taps are consumed here (so they don't reach the WebView) and passed on to
+                // onClick when the icon is interactive.
+                detectTapGestures(onTap = { onClick?.invoke() })
             }
     ) {
         Column(
@@ -81,7 +85,7 @@ fun IconStatusBlock(
 private fun getIcon(name: String): ImageVector {
     return when (name) {
         "nowifi" -> Icons.Filled.WifiOff
-        "noserver" -> Icons.Filled.CloudOff
+        "noserver" -> Icons.Filled.MobiledataOff
         "camera" -> Icons.Filled.Videocam
         else -> Icons.AutoMirrored.Filled.Note
     }
