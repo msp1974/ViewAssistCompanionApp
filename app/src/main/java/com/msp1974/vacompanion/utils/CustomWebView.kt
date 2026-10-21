@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.utils
 
+import androidx.core.net.toUri
 import android.annotation.SuppressLint
 import kotlin.jvm.JvmOverloads
 import android.content.Context
@@ -28,6 +29,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.json.JSONObject
 import timber.log.Timber
 
 @SuppressLint("SetJavaScriptEnabled", "ViewConstructor")
@@ -125,6 +127,7 @@ class CustomWebView @JvmOverloads constructor(
             }
         }
     }
+    
 
     suspend fun requestAuthorisation(forceRefresh: Boolean = false, view: WebView = this) {
         try {
@@ -309,6 +312,64 @@ class CustomWebView @JvmOverloads constructor(
         val url = deviceManager.authenticationManager.getHAUrl()
         log.d("CustomWebView - refresh -> Loading URL: $url")
         loadUrl(url)
+    }
+
+    /**
+     * Navigates to [target]. A full URL (one with a scheme and host) is loaded as given.
+     *
+     * Anything else is a path within Home Assistant. If a Home Assistant page is already showing,
+     * the frontend's own router is asked to change location via JS, which transitions between
+     * views without reloading the page or re-authenticating. Otherwise (nothing loaded yet, or
+     * some other site is showing) the path is appended to the HA base URL and loaded, with
+     * external_auth=1 so the frontend authenticates through the app as it does for [refresh].
+     */
+    fun navigate(target: String) {
+        val trimmed = target.trim()
+        if (trimmed.isEmpty()) return
+
+        val parsed = trimmed.toUri()
+        if (parsed.scheme != null && !parsed.host.isNullOrEmpty()) {
+            log.d("CustomWebView - navigate -> Loading URL: $trimmed")
+            post { loadUrl(trimmed) }
+            return
+        }
+
+        val path = "/" + trimmed.trimStart('/')
+        post {
+            if (isShowingHomeAssistant()) {
+                log.d("CustomWebView - navigate -> Changing HA location to: $path")
+                // Same mechanism the HA frontend's own navigate() uses: push the new location
+                // and notify its router.
+                evaluateJavascript(
+                    "(function(){" +
+                        "history.pushState(null, \"\", ${JSONObject.quote(path)});" +
+                        "window.dispatchEvent(new CustomEvent(\"location-changed\", {detail: {replace: false}}));" +
+                        "})();",
+                    null
+                )
+            } else {
+                val base = deviceManager.authenticationManager.getBaseUrl().toString().removeSuffix("/")
+                val full = "$base$path".toUri()
+                val url = if (full.getQueryParameter("external_auth") == null) {
+                    full.buildUpon().appendQueryParameter("external_auth", "1").build().toString()
+                } else {
+                    full.toString()
+                }
+                log.d("CustomWebView - navigate -> Loading URL: $url")
+                loadUrl(url)
+            }
+        }
+    }
+
+    // True if the page currently in the WebView is served by the configured HA server.
+    private fun isShowingHomeAssistant(): Boolean {
+        val current = url?.toUri() ?: return false
+        val ha = deviceManager.authenticationManager.getBaseUrl()
+        val haPort = if (ha.port != -1) ha.port else ha.defaultPort
+        val currentPort = if (current.port != -1) current.port else if (current.scheme == "https") 443 else 80
+        return current.scheme == ha.protocol &&
+            current.host.equals(ha.host, ignoreCase = true) &&
+            currentPort == haPort
     }
 
     companion object {

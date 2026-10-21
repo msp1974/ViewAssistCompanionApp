@@ -725,6 +725,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     val payload = Json.parseToJsonElement(payloadStr).jsonObject
                     handleAlarmAction(payload["activate"]?.jsonPrimitive?.booleanOrNull ?: false)
                 }
+                "navigate" -> if (payloadStr.isNotEmpty()) {
+                    val url = Json.parseToJsonElement(payloadStr).jsonObject["url"]?.jsonPrimitive?.content ?: ""
+                    if (url.isNotEmpty()) config.eventBroadcaster.notifyEvent(Event("navigate", "", url))
+                }
             }
         }.onFailure { Timber.e("Failed to handle custom action $action: $it") }
     }
