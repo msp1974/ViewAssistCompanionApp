@@ -48,8 +48,6 @@ class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig
             put("has_front_camera", hardware.hasFrontCamera)
             put("has_rtsp", hardware.hasFrontCamera)
             put("rtsp_url", rtspUrl())
-            put("has_webrtc", hardware.hasFrontCamera)
-            put("webrtc_url", webrtcUrl())
             put("has_dnd", features.supportsDND)
             put("proximity_sensor_type", hardware.proximitySensorType)
             putJsonObject("audio") {
@@ -100,13 +98,5 @@ class DeviceInfo @Inject constructor(val context: Context, val config: APPConfig
         val ip = Helpers.getIpv4HostAddress()
         if (ip.isEmpty()) return ""
         return "rtsp://$ip:${config.rtspPort}/camera"
-    }
-
-    /** The WHEP endpoint, as go2rtc/Home Assistant take it: `webrtc:<url>#format=whep`. */
-    private fun webrtcUrl(): String {
-        if (!hardware.hasFrontCamera) return ""
-        val ip = Helpers.getIpv4HostAddress()
-        if (ip.isEmpty()) return ""
-        return "http://$ip:${config.webrtcPort}/camera/whep"
     }
 }

@@ -139,7 +139,7 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
 
         // Stacked (rather than overlapping) bottom-right status icons, in priority order.
         Column(modifier = Modifier.align(Alignment.BottomEnd)) {
-            if ((vaUiState.rtspClientCount > 0 || vaUiState.webrtcClientCount > 0) && vaUiState.showRtspStreamingIndicator) {
+            if (vaUiState.rtspClientCount > 0 && vaUiState.showRtspStreamingIndicator) {
                 IconStatusBlock(
                     message = "Camera Streaming",
                     icon = "camera"

@@ -243,12 +243,6 @@ fun DeviceInfoLayout(
                         enabled = viewModel.config.rtspEnabled
                     )
                     ServiceStatusItem(
-                        icon = Icons.Default.Videocam,
-                        label = "WebRTC Server",
-                        running = vaUiState.webrtcServerRunning,
-                        enabled = viewModel.config.webrtcEnabled
-                    )
-                    ServiceStatusItem(
                         icon = Icons.Default.Speaker,
                         label = "Sendspin Player",
                         running = vaUiState.sendspinRunning,

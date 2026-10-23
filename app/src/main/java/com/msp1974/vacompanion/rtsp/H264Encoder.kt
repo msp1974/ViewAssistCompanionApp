@@ -30,11 +30,6 @@ data class EncodedFrame(val nals: List<ByteArray>, val ptsUs: Long, val isKeyFra
 class H264Encoder(
     private val cameraController: CameraController,
     private val config: APPConfig,
-    // Each encoder is its own output on the camera tee, so two running together need distinct ids.
-    private val outputId: String = OUTPUT_ID,
-    // Constrained Baseline, which is what WebRTC offers and every decoder handles. Left to itself
-    // this device's encoder produces High profile.
-    private val baseline: Boolean = false,
 ) {
     private var codec: MediaCodec? = null
     private val job = SupervisorJob()
@@ -51,12 +46,6 @@ class H264Encoder(
     @Volatile private var spsPps: ByteArray? = null
     private var configReady = CompletableDeferred<Unit>()
 
-    /** The size being encoded, once started. */
-    @Volatile var width: Int = 0
-        private set
-    @Volatile var height: Int = 0
-        private set
-
     fun isRunning(): Boolean = running.get()
 
     fun start() {
@@ -64,18 +53,12 @@ class H264Encoder(
         // Same shape as the camera's own, so nothing is cropped or stretched unless the image is
         // turned a quarter-turn.
         val (w, h) = cameraController.streamResolution().let { it.width to it.height }
-        width = w
-        height = h
 
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, config.rtspBitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, config.rtspFps)
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, config.rtspKeyframeIntervalSecs)
-            if (baseline) {
-                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileBaseline)
-                setInteger(MediaFormat.KEY_LEVEL, MediaCodecInfo.CodecProfileLevel.AVCLevel31)
-            }
+            setFloat(MediaFormat.KEY_I_FRAME_INTERVAL, config.rtspKeyframeIntervalSecs)
         }
 
         val mediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
@@ -89,7 +72,7 @@ class H264Encoder(
 
         cameraController.setEncoderFps(config.rtspFps)
         cameraController.addSurfaceOutput(
-            TeeOutput(id = outputId, surface = inputSurface, width = w, height = h, mirror = false)
+            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false)
         )
 
         scope.launch { drainOutput(mediaCodec) }
@@ -119,7 +102,7 @@ class H264Encoder(
 
     fun stop() {
         if (!running.getAndSet(false)) return
-        cameraController.removeSurfaceOutput(outputId)
+        cameraController.removeSurfaceOutput(OUTPUT_ID)
         job.cancelChildren()
         try {
             codec?.stop()
