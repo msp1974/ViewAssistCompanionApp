@@ -7,6 +7,7 @@ import com.msp1974.vacompanion.data.AvailableWakeSounds
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.sendspin.SendspinManager
 import com.msp1974.vacompanion.service.rtsp.RtspServerManager
+  import com.msp1974.vacompanion.service.webrtc.WebRtcServerManager
 import com.msp1974.vacompanion.wakeword.AvailableWakeWords
 import com.msp1974.vacompanion.wyoming.ServerState
 import com.msp1974.vacompanion.wyoming.WyomingTCPServer
@@ -23,6 +24,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
     private var server: WyomingTCPServer? = null
     private val config = deviceManager.config
     private val rtspServerManager = RtspServerManager(context, deviceManager)
+    private val webRtcServerManager = WebRtcServerManager(context, deviceManager)
     private val sendspinManager = SendspinManager(context, deviceManager)
     private val bluetoothProxyManager = BluetoothProxyManager(context, deviceManager)
 
@@ -31,6 +33,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
         // Runs for the lifetime of the background task, independent of whether a Wyoming/HA
         // satellite session is connected - the camera stream is useful on its own.
         rtspServerManager.start()
+        webRtcServerManager.start()
         sendspinManager.start()
         bluetoothProxyManager.start()
 
@@ -91,6 +94,7 @@ internal class BackgroundTaskController (private val context: Context, val devic
         Timber.i("Shutting down")
         server?.stopServer()
         rtspServerManager.shutdown()
+        webRtcServerManager.shutdown()
         sendspinManager.shutdown()
         bluetoothProxyManager.shutdown()
     }

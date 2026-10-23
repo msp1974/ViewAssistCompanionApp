@@ -166,6 +166,8 @@ data class State(
     var lastMotionResult: MotionResult? = null,
     var rtspClientCount: Int = 0,
     var rtspServerRunning: Boolean = false,
+    var webrtcClientCount: Int = 0,
+    var webrtcServerRunning: Boolean = false,
     var sendspinRunning: Boolean = false,
     var bluetoothProxyRunning: Boolean = false,
     var showRtspStreamingIndicator: Boolean = true,
@@ -375,10 +377,11 @@ class VAViewModel @Inject constructor(
                     currentState.copy(sendspinNowPlaying = nowPlaying)
                 }
             }
-            "rtspServerRunning", "sendspinRunning", "bluetoothProxyRunning" -> {
+            "rtspServerRunning", "webrtcServerRunning", "sendspinRunning", "bluetoothProxyRunning" -> {
                 _vacaState.update { currentState ->
                     currentState.copy(
                         rtspServerRunning = config.rtspServerRunning,
+                        webrtcServerRunning = config.webrtcServerRunning,
                         sendspinRunning = config.sendspinRunning,
                         bluetoothProxyRunning = config.bluetoothProxyRunning,
                     )
@@ -388,6 +391,12 @@ class VAViewModel @Inject constructor(
                 val count = event.newValue as? Int ?: 0
                 _vacaState.update { currentState ->
                     currentState.copy(rtspClientCount = count)
+                }
+            }
+            "webrtcClientCount" -> {
+                val count = event.newValue as? Int ?: 0
+                _vacaState.update { currentState ->
+                    currentState.copy(webrtcClientCount = count)
                 }
             }
             "audioOutputId" -> {

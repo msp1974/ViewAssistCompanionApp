@@ -27,3 +27,4 @@
 -dontwarn org.conscrypt.OpenSSLProvider
 
 -keep class ai.onnxruntime.** { *; }
+-keep class org.webrtc.** { *; }

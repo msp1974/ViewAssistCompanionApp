@@ -97,6 +97,9 @@ class APPConfig @Inject constructor(val context: Context) {
     var rtspServerRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
+    var webrtcServerRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
     var sendspinRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -304,6 +307,16 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    // WebRTC (WHEP) camera feed - the preferred alternative to RTSP. It shares the resolution, fps,
+    // bitrate and credentials settings above, so there is one set of stream settings.
+    var webrtcEnabled: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    var webrtcPort: Int by Delegates.observable(DEFAULT_WEBRTC_PORT) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var rtspResolution: String by Delegates.observable(DEFAULT_RTSP_RESOLUTION) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -482,6 +495,8 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
+        settings["webrtc_enabled"]?.jsonPrimitive?.booleanOrNull?.let { webrtcEnabled = it }
+        settings["webrtc_port"]?.jsonPrimitive?.intOrNull?.let { webrtcPort = it }
         settings["rtsp_enabled"]?.jsonPrimitive?.booleanOrNull?.let { rtspEnabled = it }
         settings["rtsp_port"]?.jsonPrimitive?.intOrNull?.let { rtspPort = it }
         settings["rtsp_resolution"]?.jsonPrimitive?.contentOrNull?.let { rtspResolution = it }
@@ -566,6 +581,7 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0
         const val DEFAULT_RTSP_PORT = 8554
+        const val DEFAULT_WEBRTC_PORT = 8889
         const val DEFAULT_RTSP_RESOLUTION = "720p"
         const val DEFAULT_RTSP_FPS = 15
         const val DEFAULT_RTSP_BITRATE = 2_000_000

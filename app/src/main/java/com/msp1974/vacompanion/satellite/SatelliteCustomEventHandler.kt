@@ -185,6 +185,15 @@ class SatelliteCustomEventHandler(
                     }
                 )
             }
+            "webrtcClientCount" -> {
+                satellite.sendStatus(
+                    buildJsonObject {
+                        putJsonObject("sensors", {
+                            put("webrtc_clients", event.newValue as Int)
+                        })
+                    }
+                )
+            }
             "updateAvailableWakeWords" -> {
                 val infoBuilder = WyomingInfoBuilder(deviceManager)
                 satellite.sendEvent("info", infoBuilder.buildInfo())
