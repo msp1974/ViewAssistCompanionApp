@@ -50,7 +50,9 @@ class H264Encoder(
 
     fun start() {
         if (running.get()) return
-        val (w, h) = resolutionFor(config.rtspResolution)
+        // Same shape as the camera's own, so nothing is cropped or stretched unless the image is
+        // turned a quarter-turn.
+        val (w, h) = cameraController.streamResolution().let { it.width to it.height }
 
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
@@ -70,9 +72,7 @@ class H264Encoder(
 
         cameraController.setEncoderFps(config.rtspFps)
         cameraController.addSurfaceOutput(
-            // fit: a portrait image (device turned upright) is pillarboxed in the landscape
-            // stream rather than stretched across it.
-            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false, fit = true)
+            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false)
         )
 
         scope.launch { drainOutput(mediaCodec) }
@@ -160,12 +160,6 @@ class H264Encoder(
                 break
             }
         }
-    }
-
-    private fun resolutionFor(name: String): Pair<Int, Int> = when (name) {
-        "480p" -> 854 to 480
-        "1080p" -> 1920 to 1080
-        else -> 1280 to 720
     }
 
     companion object {

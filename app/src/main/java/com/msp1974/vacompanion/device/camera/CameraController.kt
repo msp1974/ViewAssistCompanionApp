@@ -438,12 +438,17 @@ class CameraController(
         }
     }
 
-    private fun streamResolution(): Size {
-        return when (config.rtspResolution) {
-            "480p" -> Size(854, 480)
-            "1080p" -> Size(1920, 1080)
-            else -> Size(1280, 720)
+    /** The stream size: the configured height, with the width from the camera's own shape (16:9 if
+     *  that can't be read), rounded to a multiple of 16 as encoders prefer. */
+    fun streamResolution(): Size {
+        val height = when (config.rtspResolution) {
+            "480p" -> 480
+            "1080p" -> 1080
+            else -> 720
         }
+        val aspect = orientation.sensorAspect ?: (16f / 9)
+        val width = (Math.round(height * aspect / 16f) * 16).coerceAtLeast(16)
+        return Size(width, height)
     }
 
     private suspend fun unbind() {

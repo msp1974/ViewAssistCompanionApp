@@ -30,8 +30,8 @@ import java.util.concurrent.Future
  * mirror=false the output is true-to-life - what a remote RTSP viewer expects.
  *
  * Once the image is turned upright it can be a different shape from the output (a portrait image
- * going to a landscape encoder). By default it is stretched to fill the output; with [fit] it keeps
- * its proportions and is centred with black bars instead.
+ * going to a landscape output). It always keeps its proportions and is centre-cropped to fill the
+ * output - never stretched, and never letterboxed.
  */
 class TeeOutput(
     val id: String,
@@ -39,7 +39,6 @@ class TeeOutput(
     val width: Int,
     val height: Int,
     val mirror: Boolean = false,
-    val fit: Boolean = false,
 )
 
 /**
@@ -303,12 +302,8 @@ class SurfaceTee : Preview.SurfaceProvider {
             if (state.eglSurface == EGL14.EGL_NO_SURFACE) continue
             EGL14.eglMakeCurrent(eglDisplay, state.eglSurface, state.eglSurface, eglContext)
             val output = state.output
-            if (output.fit) {
-                val (x, y, w, h) = fitViewport(output.width, output.height, rotation)
-                GLES20.glViewport(x, y, w, h)
-            } else {
-                GLES20.glViewport(0, 0, output.width, output.height)
-            }
+            val (x, y, w, h) = fillViewport(output.width, output.height, rotation)
+            GLES20.glViewport(x, y, w, h)
             computeAdjustMatrix(output.mirror, rotation)
             Matrix.multiplyMM(finalMatrix, 0, adjustMatrix, 0, stMatrix, 0)
             drawQuad()
@@ -321,12 +316,13 @@ class SurfaceTee : Preview.SurfaceProvider {
     }
 
     /**
-     * The part of an output the upright image covers when it keeps its proportions: a quarter-turn
-     * swaps the camera frame's width and height, so a landscape frame becomes a portrait image and
-     * is centred in a landscape output with bars either side. (drawQuad clears the whole surface
-     * first, so the bars are black.)
+     * The viewport that makes the upright image cover an output without changing its proportions.
+     * A quarter-turn swaps the camera frame's width and height, so a landscape frame becomes a
+     * portrait image; to fill a landscape output it is drawn larger than the output and centred, so
+     * the overhang (top and bottom) is clipped off by the surface. The origin is therefore negative
+     * on the cropped axis, which GL allows.
      */
-    private fun fitViewport(outWidth: Int, outHeight: Int, rotation: Int): IntArray {
+    private fun fillViewport(outWidth: Int, outHeight: Int, rotation: Int): IntArray {
         val bw = bufferWidth
         val bh = bufferHeight
         if (bw <= 0 || bh <= 0) return intArrayOf(0, 0, outWidth, outHeight)
@@ -334,11 +330,11 @@ class SurfaceTee : Preview.SurfaceProvider {
         val imageAspect = if (quarterTurn) bh.toFloat() / bw else bw.toFloat() / bh
         val outAspect = outWidth.toFloat() / outHeight
         return if (imageAspect > outAspect) {
-            val h = (outWidth / imageAspect).toInt()
-            intArrayOf(0, (outHeight - h) / 2, outWidth, h)
-        } else {
             val w = (outHeight * imageAspect).toInt()
             intArrayOf((outWidth - w) / 2, 0, w, outHeight)
+        } else {
+            val h = (outWidth / imageAspect).toInt()
+            intArrayOf(0, (outHeight - h) / 2, outWidth, h)
         }
     }
 

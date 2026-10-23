@@ -109,6 +109,23 @@ class CameraOrientation(context: Context, cameraId: String?) {
     }
 
     /**
+     * The camera sensor's own shape as width / height, always 1 or more (landscape): the active
+     * pixel array, which is how the camera frames the world before any turning. Null if the camera
+     * can't be read.
+     */
+    val sensorAspect: Float? by lazy {
+        try {
+            resolvedCameraId
+                ?.let { cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.SENSOR_INFO_ACTIVE_ARRAY_SIZE) }
+                ?.takeIf { it.width() > 0 && it.height() > 0 }
+                ?.let { maxOf(it.width(), it.height()).toFloat() / minOf(it.width(), it.height()) }
+        } catch (e: Exception) {
+            Timber.w("CameraOrientation: couldn't read the sensor size: $e")
+            null
+        }
+    }
+
+    /**
      * The camera output size, for a SurfaceTexture, closest to [target]: the same shape if the
      * camera offers one, otherwise the nearest in area. The direct backend has no CameraX to pick
      * a size for it.
