@@ -14,8 +14,6 @@ import com.msp1974.vacompanion.device.FunctionClasses
 import com.msp1974.vacompanion.device.UnsupportedFunctionsDevice
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 
 object AudioEnhancerSource {
     const val UNAVAILABLE = "Unavailable"
@@ -76,6 +74,12 @@ class MicrophoneInput (
     private val audioRecordLock = Any()
     private var audioRecord: AudioRecord? = null
 
+    // Set (under audioRecordLock) by close(). Route-change callbacks arrive on the main thread
+    // and can race a close() on another thread - without this, one that had already passed its
+    // null check would still recreate the AudioRecord after close() released it, leaving the
+    // microphone open for good.
+    private var closed = false
+
     private var ns: NoiseSuppressor? = null
     private var agc: AutomaticGainControl? = null
     private var aec: AcousticEchoCanceler? = null
@@ -102,7 +106,7 @@ class MicrophoneInput (
     @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     fun start() {
         synchronized(audioRecordLock) {
-            if (audioRecord == null) {
+            if (!closed && audioRecord == null) {
                 micController.start()
                 audioRecord = createAudioRecord()
             }
@@ -152,6 +156,7 @@ class MicrophoneInput (
     @SuppressLint("MissingPermission")
     private fun recreateAudioRecord() {
         synchronized(audioRecordLock) {
+            if (closed || audioRecord == null) return
             agc?.release()
             agc = null
             ns?.release()
@@ -164,15 +169,6 @@ class MicrophoneInput (
             audioRecord = null
             audioRecord = createAudioRecord()
         }
-    }
-
-    fun readBytes(): ByteBuffer {
-        val audioShortBuffer = readShort(bufferSize)
-        val buffer = ByteBuffer.allocateDirect(audioShortBuffer.size * 2)
-        buffer.order(ByteOrder.LITTLE_ENDIAN)
-        buffer.asShortBuffer().put(audioShortBuffer)
-        buffer.rewind()
-        return buffer
     }
 
     fun readShort(bufferSize: Int = VACAAudioFormat.DEFAULT_BUFFER_SIZE_IN_SHORTS, applyEnhancement: Boolean = true): ShortArray {
@@ -279,22 +275,35 @@ class MicrophoneInput (
     }
 
     override fun close() {
-        micController.stop()
-        audioEnhancer.release()
+        // Stop route-change callbacks from recreating the AudioRecord before releasing it.
+        synchronized(audioRecordLock) { closed = true }
+
+        // Each step is isolated so that a failure in one can never leave the AudioRecord (and so
+        // the microphone) held open.
+        runCatching { micController.stop() }
+            .onFailure { Timber.w(it, "Error stopping microphone controller") }
+        runCatching { audioEnhancer.release() }
+            .onFailure { Timber.w(it, "Error releasing audio enhancer") }
 
         synchronized(audioRecordLock) {
-            agc?.release()
+            runCatching { agc?.release() }
+                .onFailure { Timber.w(it, "Error releasing AGC") }
             agc = null
 
-            ns?.release()
+            runCatching { ns?.release() }
+                .onFailure { Timber.w(it, "Error releasing noise suppressor") }
             ns = null
 
             audioRecord?.let {
-                if (isRecording) {
-                    it.stop()
+                try {
+                    if (isRecording) it.stop()
+                } catch (e: Exception) {
+                    Timber.w(e, "Error stopping AudioRecord")
+                } finally {
+                    runCatching { it.release() }
+                        .onFailure { e -> Timber.w(e, "Error releasing AudioRecord") }
+                    audioRecord = null
                 }
-                it.release()
-                audioRecord = null
             }
         }
     }

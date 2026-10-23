@@ -8,10 +8,16 @@ import com.msp1974.vacompanion.wakeword.microwakeword.MicroWakeWordEngine
 import com.msp1974.vacompanion.wakeword.microwakeword.providers.MicroWakeWordAssetProvider
 import com.msp1974.vacompanion.wakeword.models.WakeWordWithId
 import com.msp1974.vacompanion.wakeword.openwakeword.OpenWakeWordEngine
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import timber.log.Timber
 
-open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager, val engine: WakeWordEngineModel) {
+open class WakeWordEngine(
+    val context: Context,
+    val deviceManager: DeviceManager,
+    val engine: WakeWordEngineModel,
+    private val audio: Flow<ShortArray>,
+) {
 
     private var activeWakeWords: List<String> = listOf()
     private var activeStopWords: List<String> = listOf()
@@ -54,6 +60,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     activeStopWords=activeStopWords,
                     availableWakeWords=availableWakeWords,
                     availableStopWords=availableStopWords,
+                    audio = audio,
                     muted = requestedMuted)
             }
             WakeWordEngineModel.OPENWAKEWORD -> {
@@ -63,6 +70,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     engine = WakeWordEngineModel.OPENWAKEWORD,
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
+                    audio = audio,
                     detectionCooldownMs = 1500L,
                     muted = requestedMuted
                 )
@@ -74,6 +82,7 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
                     engine = WakeWordEngineModel.OPENWAKEWORD_RT,
                     activeWakeWords = activeWakeWords,
                     availableWakeWords = availableWakeWords,
+                    audio = audio,
                     detectionCooldownMs = 1500L,
                     muted = requestedMuted
                 )
@@ -92,19 +101,6 @@ open class WakeWordEngine(val context: Context, val deviceManager: DeviceManager
 
     fun setActiveStopWords(value: List<String>) {
         activeStopWords = value
-    }
-
-    fun setStreaming(stream: Boolean) {
-        if (engineInstance != null) {
-            engineInstance!!.isStreaming = stream
-        }
-    }
-
-    fun isStreaming(): Boolean {
-        if (engineInstance != null) {
-            return engineInstance!!.isStreaming
-        }
-        return false
     }
 
     fun setMuted(value: Boolean) {

@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.satellite
 
 import android.Manifest
 import android.content.Context
+import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.FirebaseManager
@@ -31,7 +32,7 @@ enum class WakeWordHandlerState {
 
 interface IWakeWordHandler {
     fun onStateChange(state: WakeWordHandlerState)
-    suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio, streamAudio: Boolean)
+    suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio)
     suspend fun onWakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection)
 
     suspend fun onStopWordDetected(detection: WakeWordEngineProvider.WakeWordDetection)
@@ -44,7 +45,12 @@ interface IWakeWordHandler {
     fun onEngineFailure(error: Throwable)
 }
 
-abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager: DeviceManager, val scope: CoroutineScope): IWakeWordHandler {
+abstract class SatelliteWakeWorkHandler(
+    val context: Context,
+    val deviceManager: DeviceManager,
+    val scope: CoroutineScope,
+    val microphone: MicrophoneAudioStream,
+): IWakeWordHandler {
 
     companion object {
         // Safety-net ceiling for stop() to actually observe the old engine's native teardown
@@ -63,8 +69,6 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
             field = value
             onStateChange(value)
         }
-
-    var streamAudio: Boolean = false
 
     // The coroutine running start()/awaitCancellation() - the handler's overall lifetime.
     private var handlerJob: Job? = null
@@ -113,7 +117,8 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
                         "openwakeword" -> WakeWordEngineModel.OPENWAKEWORD
                         "openwakeword_rt" -> WakeWordEngineModel.OPENWAKEWORD_RT
                         else -> WakeWordEngineModel.MICROWAKEWORD
-                    }
+                    },
+                    microphone.audio
                 )
                 engine?.setActiveWakeWords(listOf(config.wakeWord))
                 engine?.setActiveStopWords(listOf("stop"))
@@ -184,7 +189,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
                                 if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
                                     Timber.i("Wake word detected: ${it.detection.wakeWord}")
-                                    wakeWordDetected(it.detection, engine!!.isStreaming())
+                                    wakeWordDetected(it.detection)
                                     detectionCooldowns[it.detection.wakeWordId] = now
                                 }
                             }
@@ -210,7 +215,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
                         is WakeWordEngineProvider.AudioResult.Audio -> {
                             if (it.audio.isNotEmpty()) {
-                                onAudio(it, engine!!.isStreaming())
+                                onAudio(it)
                             }
                         }
 
@@ -250,7 +255,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
 
     }
 
-    private suspend fun wakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection, isStreaming: Boolean) {
+    private suspend fun wakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
         Timber.i("${detection.wakeWord} wake word detected at ${detection.score}, threshold is ${config.wakeWordThreshold}")
         lastWakeDetectionTimestamp = detection.timestamp
         firebase.logEvent(
@@ -273,9 +278,7 @@ abstract class SatelliteWakeWorkHandler(val context: Context, val deviceManager:
             }
             holdDetectionLevelJob = scope.launch {
                 delay(duration.milliseconds)
-                if (!streamAudio) {
-                    lastWakeWordDetectionScore = 0f
-                }
+                lastWakeWordDetectionScore = 0f
             }
         }
     }

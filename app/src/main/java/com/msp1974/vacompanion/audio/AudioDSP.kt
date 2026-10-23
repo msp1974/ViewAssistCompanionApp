@@ -7,12 +7,6 @@ import kotlin.math.log10
 
 class AudioDSP {
 
-    fun audioLevel(audioBuffer: ByteArray): Float {
-        val shortArray = byteArrayToShortArray(audioBuffer)
-        val floatArray = normaliseAudioBuffer(shortArray)
-        return floatArray.map { i -> abs(i) }.average().toFloat()
-    }
-
     fun audioLevel(audioBuffer: FloatArray): Float {
         return audioBuffer.map { i -> abs(i) }.average().toFloat()
     }

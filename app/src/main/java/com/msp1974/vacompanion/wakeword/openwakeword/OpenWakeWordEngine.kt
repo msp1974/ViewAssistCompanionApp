@@ -1,13 +1,9 @@
 package com.msp1974.vacompanion.wakeword.openwakeword
 
-import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.AssetManager
-import androidx.annotation.RequiresPermission
 import com.msp1974.vacompanion.audio.AudioDSP
-import com.msp1974.vacompanion.audio.MicrophoneInput
-import com.msp1974.vacompanion.audio.VACAAudioFormat
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
@@ -36,6 +32,7 @@ class OpenWakeWordEngine(
     //val activeStopWords: List<String>,
     val availableWakeWords: List<WakeWordWithId>,
     //val availableStopWords: List<WakeWordWithId>,
+    private val audio: Flow<ShortArray>,
     muted: Boolean = false,
     private val detectionCooldownMs: Long = 2000L,
 ): WakeWordEngineProvider() {
@@ -152,48 +149,36 @@ class OpenWakeWordEngine(
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun start() = muted.flatMapLatest {
+        // Unsubscribe from the microphone when muted
         if (it) emptyFlow()
         else flow {
             val wakeWords = activeWakeWords
-            val microphoneInput = MicrophoneInput(context, deviceManager)
             try {
-                microphoneInput.start()
                 emit(AudioResult.EngineStatus("Started"))
-                while (true) {
-                    val audio = microphoneInput.readShort()
+                audio.collect { frame ->
                     val frameTimestamp = System.currentTimeMillis()
 
-                    if (audio.isNotEmpty()) {
-
-                        if (config.diagnosticsEnabled) {
-                            val normalisedAudio = audioDSP.normaliseAudioBuffer(audio)
-                            emit(AudioResult.AudioLevel(AudioDSP().audioLevel(normalisedAudio)))
-                        }
-
-                        if (isStreaming || config.recordingWakewordEnabled) {
-                            val audioBytes = AudioDSP().shortArrayToByteBuffer(audio)
-                            emit(
-                                AudioResult.Audio(
-                                    audioBytes,
-                                    timestamp = frameTimestamp
-                                )
-                            )
-                        }
-
-                        val detections = processAudio(audioDSP.shortArrayTo16BitPCMFloat(audio), frameTimestamp)
-                        for (detection in detections) {
-                            val lastScore = lastScores[detection.wakeWordId] ?: 0f
-                            if (detection.score > 0.1f || lastScore > 0.1f) {
-                                if (detection.wakeWordId in wakeWords) {
-                                    emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
-                                }
-                            }
-                            lastScores[detection.wakeWordId] = detection.score
-                        }
+                    if (config.diagnosticsEnabled) {
+                        val normalisedAudio = audioDSP.normaliseAudioBuffer(frame)
+                        emit(AudioResult.AudioLevel(AudioDSP().audioLevel(normalisedAudio)))
                     }
-                    yield()
+
+                    // Only for the wake word recording log, which needs a rolling history
+                    if (config.recordingWakewordEnabled) {
+                        emit(AudioResult.Audio(frame, timestamp = frameTimestamp))
+                    }
+
+                    val detections = processAudio(audioDSP.shortArrayTo16BitPCMFloat(frame), frameTimestamp)
+                    for (detection in detections) {
+                        val lastScore = lastScores[detection.wakeWordId] ?: 0f
+                        if (detection.score > 0.1f || lastScore > 0.1f) {
+                            if (detection.wakeWordId in wakeWords) {
+                                emit(AudioResult.WakeDetected(detection.copy(timestamp = frameTimestamp)))
+                            }
+                        }
+                        lastScores[detection.wakeWordId] = detection.score
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -205,7 +190,6 @@ class OpenWakeWordEngine(
                 Timber.e("Runtime exception thrown by wake word engine: $e")
                 throw e
             } finally {
-                microphoneInput.close()
                 emit(AudioResult.EngineStatus("Stopped"))
             }
         }

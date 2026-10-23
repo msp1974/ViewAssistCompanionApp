@@ -12,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.data.AvailableAlarms
@@ -103,6 +104,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     // (see onEngineFailure below). Reset once the engine reports RUNNING again, so a transient
     // fault gets a fresh budget next time rather than exhausting it permanently.
     private var wakeWordEngineRestartAttempts = 0
+
+    // The only owner of the microphone. The wake word engine and any listening audio pipeline
+    // subscribe to it; it is open only while at least one of them is.
+    private val microphone = MicrophoneAudioStream(context, deviceManager, scope)
 
     private var soundEffectFinishTime: Long = 0
     private var currentWakeWordSoundUri: android.net.Uri? = null
@@ -399,7 +404,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         Timber.d("Starting Wake Word Detection")
         sendDiagnostics(0f, 0f)
         withContext(Dispatchers.Default) {
-            wakeWordHandler = object : SatelliteWakeWorkHandler(context, deviceManager, scope) {
+            wakeWordHandler = object : SatelliteWakeWorkHandler(context, deviceManager, scope, microphone) {
                 override fun onStateChange(state: WakeWordHandlerState) {
                     Timber.d("Wake word handler state: $state")
                     if (state == WakeWordHandlerState.RUNNING) {
@@ -411,11 +416,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     scope.launch { handleWakeWordEngineFailure(error) }
                 }
 
-                override suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio, streamAudio: Boolean) {
-                    if (streamAudio) {
-                        sendAudio(audio)
-                    }
-                    audioLogManager.onAudio(AudioDSP().byteArrayToShortArray(audio.audio))
+                override suspend fun onAudio(audio: WakeWordEngineProvider.AudioResult.Audio) {
+                    audioLogManager.onAudio(audio.audio)
                 }
 
                 override suspend fun onWakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
@@ -615,7 +617,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             audioPipeline?.stop()
             audioPipeline = null
         }
-        audioPipeline = object: SatelliteAudioPipeline(context, scope, config, eventId, mediaManager) {
+        audioPipeline = object: SatelliteAudioPipeline(context, scope, config, eventId, mediaManager, microphone.audio) {
             override fun sendMessage(packet: WyomingPacket) {
                 sendSatelliteMessage(clientId, packet.type, packet.data, packet.payload)
             }
@@ -623,16 +625,19 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             override fun onStateChange(state: PipelineStage) {
                 Timber.d("Audio pipeline state: $state")
                 audioPipelineLastStateChange = System.currentTimeMillis()
-                when (state) {
-                    PipelineStage.LISTENING -> {
-                        wakeWordHandler?.engine?.setStreaming(true)
-                    }
-                    PipelineStage.VOICE_STOPPED -> { wakeWordHandler?.engine?.setStreaming(false) }
-                    PipelineStage.ENDED -> {
-                        wakeWordHandler?.engine?.setStreaming(false)
-                    }
-                    else -> {}
+                // Refresh the diagnostics mode (detect/stream). Without a wake word engine there
+                // are no level updates to piggyback on, and the level drops to zero once the
+                // pipeline stops listening.
+                if (config.diagnosticsEnabled) {
+                    val stoppedListening = state.ordinal > PipelineStage.VOICE_STARTED.ordinal
+                    val noEngine = wakeWordHandler?.engine == null
+                    sendDiagnostics(if (noEngine && stoppedListening) 0f else lastAudioLevel, lastDetectionLevel)
                 }
+            }
+
+            override fun onAudioLevel(level: Float) {
+                // With a wake word engine running its own level updates already cover this.
+                if (wakeWordHandler?.engine == null) sendDiagnostics(level, lastDetectionLevel)
             }
 
             override fun onRequestTranscript(pipelineId: Long, text: String) {
@@ -665,7 +670,6 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     audioPipeline = null
 
                 }
-                wakeWordHandler?.engine?.setStreaming(false)
                 if (reason == PipelineEndReason.ERRORED && config.wakeWordSound != "none") {
                     playErrorSound()
                 }
@@ -673,12 +677,6 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
         }.also {
             it.run(startStage)
-        }
-    }
-
-    suspend fun sendAudio(audio: WakeWordEngineProvider.AudioResult.Audio) {
-        if (audioPipeline != null) {
-            audioPipeline?.sendMicAudio(audio)
         }
     }
 
@@ -933,12 +931,14 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 detectionThreshold = config.wakeWordThreshold * 10,
                 wakeWord = wakeWordName,
                 muted = config.isMuted,
-                mode = if (wakeWordHandler?.state != WakeWordHandlerState.RUNNING) {
-                    AudioRouteOption.NONE
-                } else if (wakeWordHandler?.engine?.isStreaming() ?: false) {
+                // Detecting only applies while a wake word engine is actually running - with no
+                // wake word set the mic is only open to stream, so otherwise nothing is shown.
+                mode = if (audioPipeline?.isListening == true) {
                     AudioRouteOption.STREAM
-                } else {
+                } else if (wakeWordHandler?.state == WakeWordHandlerState.RUNNING && wakeWordHandler?.engine != null) {
                     AudioRouteOption.DETECT
+                } else {
+                    AudioRouteOption.NONE
                 },
                 motionDetectionMode = config.motionDetectionMode,
                 activeMic = AudioInRouter.activeMicInput,

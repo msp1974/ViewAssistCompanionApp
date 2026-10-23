@@ -1,13 +1,12 @@
 package com.msp1974.vacompanion.wakeword
 
 import kotlinx.coroutines.flow.Flow
-import java.util.concurrent.atomic.AtomicBoolean
 
 abstract class WakeWordEngineProvider {
 
     sealed class AudioResult {
         data class EngineStatus(val status: String): AudioResult()
-        data class Audio(val audio: ByteArray, val timestamp: Long = System.currentTimeMillis()) : AudioResult()
+        data class Audio(val audio: ShortArray, val timestamp: Long = System.currentTimeMillis()) : AudioResult()
         data class AudioLevel(val level: Float): AudioResult()
         data class WakeDetected(val detection: WakeWordDetection) : AudioResult()
         data class StopDetected(val detection: WakeWordDetection) : AudioResult()
@@ -21,11 +20,6 @@ abstract class WakeWordEngineProvider {
         var vadScore: Float = 1.0f,
         val timestamp: Long = System.currentTimeMillis()
     )
-
-    private val _isStreaming = AtomicBoolean(false)
-    var isStreaming: Boolean
-        get() = _isStreaming.get()
-        set(value) = _isStreaming.set(value)
 
     open fun start(): Flow<AudioResult>? {
         return null

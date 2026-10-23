@@ -1,26 +1,24 @@
 package com.msp1974.vacompanion.wakeword.microwakeword
 
-import android.Manifest
 import android.content.Context
-import androidx.annotation.RequiresPermission
 import com.msp1974.vacompanion.wakeword.microwakeword.microwakeword.MicroWakeWord
 import com.msp1974.vacompanion.wakeword.microwakeword.microwakeword.MicroWakeWordDetector
 import com.msp1974.vacompanion.wakeword.models.WakeWordWithId
 import com.msp1974.vacompanion.audio.AudioDSP
-import com.msp1974.vacompanion.audio.MicrophoneInput
-import com.msp1974.vacompanion.audio.VACAAudioFormat
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.yield
 import timber.log.Timber
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.collections.plus
 
 open class MicroWakeWordEngine (
@@ -30,13 +28,14 @@ open class MicroWakeWordEngine (
     activeStopWords: List<String>,
     val availableWakeWords: List<WakeWordWithId>,
     val availableStopWords: List<WakeWordWithId>,
+    private val audio: Flow<ShortArray>,
     muted: Boolean = false
 ): WakeWordEngineProvider() {
     private val config: APPConfig = deviceManager.config
     private val _availableWakeWords = availableWakeWords.associateBy { it.id }
     private val _availableStopWords = availableStopWords.associateBy { it.id }
 
-    private val detector: MicroWakeWordDetector? = null
+    private val audioDSP = AudioDSP()
 
     private val _activeWakeWords = MutableStateFlow(activeWakeWords)
     val activeWakeWords = _activeWakeWords.asStateFlow()
@@ -61,53 +60,38 @@ open class MicroWakeWordEngine (
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    @RequiresPermission(Manifest.permission.RECORD_AUDIO)
     override fun start() = muted.flatMapLatest {
-        // Stop microphone when muted
+        // Unsubscribe from the microphone when muted
         if (it) emptyFlow()
         else flow {
-            val microphoneInput = MicrophoneInput(context, deviceManager)
             var wakeWords = activeWakeWords.value
             var stopWords = activeStopWords.value
+            var detector: MicroWakeWordDetector? = null
 
             try {
-                var detector = createDetector(wakeWords, stopWords)
-                microphoneInput.start()
+                detector = createDetector(wakeWords, stopWords)
                 emit(AudioResult.EngineStatus("Started"))
-                while (true) {
+                audio.collect { frame ->
                     if (wakeWords != activeWakeWords.value || stopWords != activeStopWords.value) {
                         wakeWords = activeWakeWords.value
                         stopWords = activeStopWords.value
-                        detector.close()
+                        detector?.close()
                         detector = createDetector(wakeWords, stopWords)
                     }
 
-                    val audio = microphoneInput.readBytes()
                     val frameTimestamp = System.currentTimeMillis()
 
                     if (config.diagnosticsEnabled) {
-                        val audioBytes = ByteArray(audio.remaining())
-                        audio.get(audioBytes)
-                        audio.rewind()
-                        emit(AudioResult.AudioLevel(AudioDSP().audioLevel(audioBytes)))
+                        emit(AudioResult.AudioLevel(audioDSP.audioLevel(audioDSP.normaliseAudioBuffer(frame))))
                     }
 
-                    // Emit audio result even if not streaming so that the controller can maintain a rolling history buffer
-                    if (isStreaming || config.recordingWakewordEnabled) {
-                        val audioBytes = ByteArray(audio.remaining())
-                        audio.get(audioBytes)
-                        emit(
-                            AudioResult.Audio(
-                                audioBytes,
-                                timestamp = frameTimestamp
-                            )
-                        )
-                        audio.rewind()
+                    // Only for the wake word recording log, which needs a rolling history
+                    if (config.recordingWakewordEnabled) {
+                        emit(AudioResult.Audio(frame, timestamp = frameTimestamp))
                     }
 
-                    // Always run audio through the models, even if not currently streaming, to keep
-                    // their internal state up to date
-                    val detections = detector.detect(audio)
+                    // Always run audio through the models to keep their internal state up to date
+                    val detections = detector!!.detect(toByteBuffer(frame))
                     for (detection in detections) {
                         if (detection.score > 0.1f) {
                             if (detection.wakeWordId in wakeWords) {
@@ -117,10 +101,6 @@ open class MicroWakeWordEngine (
                             }
                         }
                     }
-
-                    // yield to ensure upstream emissions and
-                    // cancellation have a chance to occur
-                    yield()
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -132,11 +112,17 @@ open class MicroWakeWordEngine (
                 throw e
             } finally {
                 Timber.i("Stopping MicroWakeWordEngine")
-                microphoneInput.close()
                 detector?.close()
-                //emit(AudioResult.EngineStatus("Stopped"))
             }
         }
+    }
+
+    // The detector's native frontend reads from a direct little-endian buffer.
+    private fun toByteBuffer(frame: ShortArray): ByteBuffer {
+        val buffer = ByteBuffer.allocateDirect(frame.size * 2).order(ByteOrder.LITTLE_ENDIAN)
+        buffer.asShortBuffer().put(frame)
+        buffer.rewind()
+        return buffer
     }
 
     private suspend fun createDetector(

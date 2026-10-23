@@ -1,20 +1,22 @@
 package com.msp1974.vacompanion.satellite
 
 import android.content.Context
+import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.satellite.Satellite.Companion.isoNow
 import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.utils.Event
-import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
 import com.msp1974.vacompanion.wyoming.WyomingEvent
 import com.msp1974.vacompanion.wyoming.WyomingPacket
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -71,6 +73,9 @@ interface IAudioPipeline {
 
     fun onErrorMessage(pipelineId: Long, text: String)
 
+    // Level (linear 0..1) of the audio being streamed, only reported while diagnostics are on.
+    fun onAudioLevel(level: Float)
+
     fun onFinish(reason: PipelineEndReason, continueConversation: Boolean)
 }
 
@@ -80,6 +85,8 @@ abstract class SatelliteAudioPipeline(
     val config: APPConfig,
     val pipelineId: Long,
     val mediaManager: SatelliteMediaManager,
+    // The shared microphone stream - subscribed to only while this pipeline is listening.
+    val microphone: Flow<ShortArray>,
 ): IAudioPipeline {
 
     companion object {
@@ -89,7 +96,8 @@ abstract class SatelliteAudioPipeline(
     private val json = Json { ignoreUnknownKeys = true }
     private var pipelineRunning = CompletableDeferred<PipelineEndReason>()
     private var audioInMessageQueue = Channel<WyomingPacket>(capacity = 1000)
-    private var audioOutQueue = Channel<WakeWordEngineProvider.AudioResult.Audio>(capacity = 1000)
+    private var micJob: Job? = null
+    private val audioDSP = AudioDSP()
     private var lastRequestTranscript = ""
     private var result: PipelineEndReason = PipelineEndReason.NONE
     private var shouldContinueConversation = config.continueConversation
@@ -101,9 +109,33 @@ abstract class SatelliteAudioPipeline(
             if (value.ordinal > pipelineStage.ordinal) {
                 field = value
                 stageStartTime = System.currentTimeMillis()
+                updateMicSubscription(value)
                 onStateChange(value)
             }
         }
+
+    val isListening
+        get() = pipelineStage == PipelineStage.LISTENING || pipelineStage == PipelineStage.VOICE_STARTED
+
+    // Stages only ever increase, so the microphone is subscribed to once on entering LISTENING
+    // and released for good as soon as the pipeline moves past VOICE_STARTED (or ends).
+    private fun updateMicSubscription(stage: PipelineStage) {
+        if (stage == PipelineStage.LISTENING && micJob == null) {
+            Timber.d("Pipeline [$pipelineId] subscribing to microphone")
+            micJob = scope.launch(Dispatchers.Default) {
+                microphone.collect { frame ->
+                    sendMessage(buildAudioPacketMessage(audioDSP.shortArrayToByteBuffer(frame)))
+                    if (config.diagnosticsEnabled) {
+                        onAudioLevel(audioDSP.audioLevel(audioDSP.normaliseAudioBuffer(frame)))
+                    }
+                }
+            }
+        } else if (stage.ordinal > PipelineStage.VOICE_STARTED.ordinal) {
+            if (micJob != null) Timber.d("Pipeline [$pipelineId] unsubscribing from microphone at stage $stage")
+            micJob?.cancel()
+            micJob = null
+        }
+    }
 
     private val isContinuation
         get() = pipelineStartMode == PipelineStartMode.CONTINUE_CONVERSATION
@@ -152,7 +184,6 @@ abstract class SatelliteAudioPipeline(
 
                 mediaManager.voicePlayer.start()
                 scope.launch { audioInMessageHandler() }
-                scope.launch { audioOutHandler() }
                 watchDogTimer()
                 pipelineStage = PipelineStage.STARTED
 
@@ -250,37 +281,6 @@ abstract class SatelliteAudioPipeline(
         job.cancel()
         Timber.d("Audio message handler stopped.")
 
-    }
-
-    private suspend fun audioOutHandler() {
-        val job = scope.launch(Dispatchers.Default) {
-            Timber.d("AudioOut handler started.")
-            try {
-                while (true) {
-                    val audio = audioOutQueue.receive()
-                    val audioByteArray = audio.audio
-                    val packet = buildAudioPacketMessage(audioByteArray)
-                    sendMessage(packet)
-                    yield()
-                }
-            } finally {
-                withContext(NonCancellable) {
-                    Timber.d("Ending audio message handler.")
-                    audioOutQueue.cancel()
-                }
-            }
-        }
-        result = pipelineRunning.await()
-        job.cancelAndJoin()
-        Timber.d("AudioOut handler stopped.")
-    }
-
-    suspend fun sendMicAudio(audio: WakeWordEngineProvider.AudioResult.Audio): Boolean {
-        if (pipelineStage == PipelineStage.LISTENING  || pipelineStage == PipelineStage.VOICE_STARTED) {
-            audioOutQueue.send(audio)
-            return true
-        }
-        return false
     }
 
     internal fun handleTranscribe() {
