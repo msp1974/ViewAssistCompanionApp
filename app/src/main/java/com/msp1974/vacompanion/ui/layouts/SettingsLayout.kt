@@ -10,7 +10,6 @@ import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -36,8 +35,7 @@ enum class SettingsScreen {
     CUSTOM_FILES,
     PERMISSIONS_INFO,
     CAMERA_STREAM,
-    DEVICE_INFO,
-    CONFIGURATION
+    DEVICE_INFO
 }
 
 enum class Dialog {
@@ -126,14 +124,6 @@ fun SettingsLayout(
                     }
                     menuOptions.add(
                         MenuOption(
-                            title = "Configuration",
-                            subtitle = "Select audio input and output devices",
-                            icon = Icons.Default.Tune,
-                            onClick = { currentScreen = SettingsScreen.CONFIGURATION }
-                        )
-                    )
-                    menuOptions.add(
-                        MenuOption(
                             title = "Device Info",
                             subtitle = "View device capabilities and sensors",
                             icon = Icons.Default.Info,
@@ -167,12 +157,6 @@ fun SettingsLayout(
                 }
                 SettingsScreen.DEVICE_INFO -> {
                     DeviceInfoLayout(
-                        viewModel = viewModel,
-                        onBack = { currentScreen = SettingsScreen.MAIN }
-                    )
-                }
-                SettingsScreen.CONFIGURATION -> {
-                    ConfigurationLayout(
                         viewModel = viewModel,
                         onBack = { currentScreen = SettingsScreen.MAIN }
                     )

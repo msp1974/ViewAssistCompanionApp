@@ -134,8 +134,6 @@ data class State(
     var satelliteRunning: Boolean = false,
     var darkMode: Boolean = false,
     var isDND: Boolean = false,
-    var isBluetoothMicEnabled: Boolean = false,
-    var isBluetoothMicConnected: Boolean = false,
     var screenBlank: Boolean = true,
 
     var appInfo: Map<String, String> = mapOf(),
@@ -170,11 +168,7 @@ data class State(
     var bluetoothProxyRunning: Boolean = false,
     var showRtspStreamingIndicator: Boolean = true,
     var audioOutputId: Int = -1,
-    var audioInputId: Int = -1,
-    var sendspinEnabled: Boolean = false,
     var sendspinOverlayEnabled: Boolean = true,
-    var bluetoothProxyEnabled: Boolean = false,
-    var cameraRotationOffset: Int = 0,
     var sendspinNowPlaying: SendspinNowPlaying = SendspinNowPlaying()
     )
 
@@ -220,7 +214,6 @@ class VAViewModel @Inject constructor(
                         webViewPageLoadingStage = status.webViewPageLoadingStage,
                         cameraStreamActive = status.cameraStreamActive,
                         screenBlank = status.screenBlank,
-                        isBluetoothMicConnected = status.bluetoothMicConnected,
                         cameraAvailability = status.cameraAvailability,
                         diagnosticInfo = currentState.diagnosticInfo.copy(
                             muted = status.isMuted
@@ -249,14 +242,9 @@ class VAViewModel @Inject constructor(
                 launchOnBoot = config.startOnBoot,
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
-                isBluetoothMicEnabled = config.bluetoothMicEnabled,
                 showRtspStreamingIndicator = config.showRtspStreamingIndicator,
                 audioOutputId = config.audioOutputId,
-                audioInputId = config.audioInputId,
-                sendspinEnabled = config.sendspinEnabled,
                 sendspinOverlayEnabled = config.sendspinOverlayEnabled,
-                bluetoothProxyEnabled = config.bluetoothProxyEnabled,
-                cameraRotationOffset = config.cameraRotationOffset,
                 // TODO: Move this into a dedicated configuration observer pattern to handle live updates.
                 diagnosticInfo = currentState.diagnosticInfo.copy(
                     show = config.diagnosticsEnabled,
@@ -329,14 +317,6 @@ class VAViewModel @Inject constructor(
             "doNotDisturb" -> {
                 deviceManager.updateDNDStatus(event.newValue as Boolean)
             }
-            "bluetooth_mic_enabled" -> {
-                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
-                _vacaState.update { currentState ->
-                    currentState.copy(
-                        isBluetoothMicEnabled = config.bluetoothMicEnabled
-                    )
-                }
-            }
             "show_rtsp_streaming_indicator" -> {
                 // SharedPreferences-backed, so the event carries no typed newValue - read it back.
                 _vacaState.update { currentState ->
@@ -345,28 +325,10 @@ class VAViewModel @Inject constructor(
                     )
                 }
             }
-            "sendspin_enabled" -> {
-                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
-                _vacaState.update { currentState ->
-                    currentState.copy(sendspinEnabled = config.sendspinEnabled)
-                }
-            }
             "sendspin_overlay_enabled" -> {
                 // SharedPreferences-backed, so the event carries no typed newValue - read it back.
                 _vacaState.update { currentState ->
                     currentState.copy(sendspinOverlayEnabled = config.sendspinOverlayEnabled)
-                }
-            }
-            "bluetooth_proxy_enabled" -> {
-                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
-                _vacaState.update { currentState ->
-                    currentState.copy(bluetoothProxyEnabled = config.bluetoothProxyEnabled)
-                }
-            }
-            "camera_rotation_offset" -> {
-                // SharedPreferences-backed, so the event carries no typed newValue - read it back.
-                _vacaState.update { currentState ->
-                    currentState.copy(cameraRotationOffset = config.cameraRotationOffset)
                 }
             }
             "sendspinNowPlaying" -> {
@@ -394,12 +356,6 @@ class VAViewModel @Inject constructor(
                 val id = event.newValue as? Int ?: -1
                 _vacaState.update { currentState ->
                     currentState.copy(audioOutputId = id)
-                }
-            }
-            "audioInputId" -> {
-                val id = event.newValue as? Int ?: -1
-                _vacaState.update { currentState ->
-                    currentState.copy(audioInputId = id)
                 }
             }
             "diagnosticsEnabled" -> {
@@ -527,41 +483,9 @@ class VAViewModel @Inject constructor(
         config.diagnosticsEnabled = show
     }
 
-    fun onToggleBluetoothMic(enabled: Boolean) {
-        config.bluetoothMicEnabled = enabled
-    }
-
-    fun onToggleRtspStreamingIndicator(enabled: Boolean) {
-        config.showRtspStreamingIndicator = enabled
-    }
-
     /** A transport button on the now-playing overlay: "play", "pause", "next" or "previous". */
     fun onSendspinCommand(command: String) {
         config.eventBroadcaster.notifyEvent(Event("sendspinCommand", "", command))
-    }
-
-    fun setCameraRotationOffset(degrees: Int) {
-        config.cameraRotationOffset = degrees
-    }
-
-    fun onToggleSendspinOverlay(enabled: Boolean) {
-        config.sendspinOverlayEnabled = enabled
-    }
-
-    fun onToggleSendspin(enabled: Boolean) {
-        config.sendspinEnabled = enabled
-    }
-
-    fun onToggleBluetoothProxy(enabled: Boolean) {
-        config.bluetoothProxyEnabled = enabled
-    }
-
-    fun setAudioOutputId(id: Int) {
-        config.audioOutputId = id
-    }
-
-    fun setAudioInputId(id: Int) {
-        config.audioInputId = id
     }
 
     fun onToggleDND(enabled: Boolean) {

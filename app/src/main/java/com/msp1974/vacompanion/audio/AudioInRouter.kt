@@ -160,9 +160,6 @@ class AudioInRouter(
             }
         }
 
-        // Shared with DeviceManager, which tracks whether a Bluetooth mic is physically
-        // connected (independent of the bluetoothMicEnabled setting) so the UI can hide the
-        // quick-actions toggle when there's nothing to route to.
         fun isBluetoothMic(device: AudioDeviceInfo): Boolean {
             return device.isSource && (
                 device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||

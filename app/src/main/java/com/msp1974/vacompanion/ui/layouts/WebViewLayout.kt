@@ -188,10 +188,7 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                     !vaViewModel.config.diagnosticsEnabled
                 )},
                 isDNDEnabled = vaUiState.isDND,
-                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) },
-                isBluetoothMicEnabled = vaUiState.isBluetoothMicEnabled,
-                onToggleBluetoothMic = { vaViewModel.onToggleBluetoothMic(!vaUiState.isBluetoothMicEnabled) },
-                isBluetoothMicConnected = vaUiState.isBluetoothMicConnected
+                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) }
             )
         }
     }

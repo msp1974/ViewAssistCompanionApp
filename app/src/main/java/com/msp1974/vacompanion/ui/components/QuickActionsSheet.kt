@@ -3,13 +3,18 @@ package com.msp1974.vacompanion.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.DoNotDisturbOn
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -25,24 +30,29 @@ fun QuickActionsSheet(
     onToggleDiagnostics: () -> Unit,
     isDNDEnabled: Boolean,
     onToggleDND: () -> Unit,
-    isBluetoothMicEnabled: Boolean,
-    onToggleBluetoothMic: () -> Unit,
-    isBluetoothMicConnected: Boolean,
     sheetState: SheetState = rememberModalBottomSheetState(),
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState
     ) {
+        // The sheet lives in its own dialog window, which doesn't inherit the activity's
+        // immersive flags: on some devices (e.g. Echo Show 5) the nav bar re-appears over the
+        // sheet while reporting a zero inset. Hide it for the dialog window.
+        val view = LocalView.current
+        SideEffect {
+            (view.parent as? DialogWindowProvider)?.window?.let { window ->
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                WindowInsetsControllerCompat(window, view).apply {
+                    hide(WindowInsetsCompat.Type.navigationBars())
+                    systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                }
+            }
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                // The sheet is edge-to-edge, so on devices where the system nav bar stays
-                // visible (e.g. 3-button nav), a fixed bottom padding isn't enough on small
-                // screens where the bar still overlaps the last row of tiles - pad by the
-                // actual nav bar inset first, then the usual breathing room on top of it.
-                .navigationBarsPadding(),
+                .padding(start = 16.dp, end = 16.dp, top = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
@@ -80,16 +90,6 @@ fun QuickActionsSheet(
                         onToggleDiagnostics()
                     }
                 )
-                if (isBluetoothMicConnected) {
-                    QuickActionButton(
-                        icon = Icons.Default.Bluetooth,
-                        label = "BT Mic",
-                        isSelected = isBluetoothMicEnabled,
-                        onClick = {
-                            onToggleBluetoothMic()
-                        }
-                    )
-                }
                 QuickActionButton(
                     icon = Icons.Default.Settings,
                     label = "Settings",
