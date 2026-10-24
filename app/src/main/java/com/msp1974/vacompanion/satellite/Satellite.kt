@@ -433,16 +433,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 }
 
                 override suspend fun onStopWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
-                    if (audioPipeline != null && audioPipeline?.pipelineStage == PipelineStage.STREAMING_TTS) {
-                        audioPipeline?.stop()
-                        audioPipeline = null
-                    }
-
-                    if (mediaManager.alarmPlayer.isSounding()) {
-                        handleAlarmAction(false)
-                    }
-
                     Timber.d("Stop word detected: $detection")
+                    handleStopWord()
                 }
 
                 override fun onDiagnostics(level: Float, lastDetectionLevel: Float) {
@@ -704,6 +696,17 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         }
     }
 
+    private suspend fun handleStopWord() {
+        if (audioPipeline != null && audioPipeline?.pipelineStage == PipelineStage.STREAMING_TTS) {
+            audioPipeline?.stop()
+            audioPipeline = null
+        }
+
+        if (mediaManager.alarmPlayer.isSounding()) {
+            handleAlarmAction(false)
+        }
+    }
+
     fun stopAudioPipeline() {
         audioPipeline?.stop()
         audioPipeline = null
@@ -732,6 +735,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 "toast-message" -> if (payloadStr.isNotEmpty()) {
                     val msg = Json.parseToJsonElement(payloadStr).jsonObject["message"]?.jsonPrimitive?.content ?: ""
                     BroadcastSender.sendBroadcast(context, BroadcastSender.TOAST_MESSAGE, msg)
+                }
+                "interrupt" -> {
+                    Timber.d("Interrupt received - treating as stop word")
+                    handleStopWord()
+                    BroadcastSender.sendBroadcast(context, BroadcastSender.STOP_WORD_DETECTED)
                 }
                 "refresh" -> config.eventBroadcaster.notifyEvent(Event("refresh", "", ""))
                 "wake" -> scope.launch {
