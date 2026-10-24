@@ -8,14 +8,15 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.core.location.LocationManagerCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
-import com.msp1974.vacompanion.utils.Helpers
 import timber.log.Timber
 import java.security.MessageDigest
 
@@ -106,13 +107,17 @@ class BluetoothProxyManager(
 
         // Everything the server calls back into must exist before it accepts its first client.
         gatt = GattManager(context, adapter, newServer)
-        scanner = object : BleScanner(adapter) {
+        scanner = object : BleScanner(adapter, { isLocationEnabled() }) {
             override fun onAdvertisements(ads: List<BleAdvertisement>) {
                 newServer.sendAdvertisements(ads)
             }
 
             override fun onStateChanged() {
                 newServer.broadcastScannerState(scannerStatePayload())
+            }
+
+            override fun onLocationStateChanged(off: Boolean) {
+                config.bluetoothProxyLocationOff = off
             }
         }
         if (!newServer.start(API_PORT)) {
@@ -142,6 +147,7 @@ class BluetoothProxyManager(
         server?.stop()
         server = null
         config.bluetoothProxyRunning = false
+        config.bluetoothProxyLocationOff = false
         Timber.i("Bluetooth proxy stopped")
     }
 
@@ -185,6 +191,13 @@ class BluetoothProxyManager(
         }
     }
 
+    // BLE scan results are only delivered while system Location is on (the manifest does not
+    // declare neverForLocation, as that would hide beacons from Home Assistant).
+    private fun isLocationEnabled(): Boolean {
+        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return true
+        return LocationManagerCompat.isLocationEnabled(lm)
+    }
+
     private fun scannerStatePayload(): ByteArray {
         val s = scanner
         return ApiMessages.scannerState(
@@ -198,7 +211,6 @@ class BluetoothProxyManager(
 
     private fun buildIdentity(): ProxyIdentity {
         val suffix = config.uuid.filter { it.isLetterOrDigit() }.lowercase().take(8)
-        val deviceName = Helpers.getDeviceName() ?: Build.MODEL
         // Home Assistant has no way to read this device's real Bluetooth address (Android hides
         // it), so derive a stable, locally administered one from the app's UUID. It is only used
         // to identify this proxy in Home Assistant.
@@ -208,7 +220,7 @@ class BluetoothProxyManager(
         val btMac = mac.copyOf().also { it[5] = (it[5] + 1).toByte() }
         return ProxyIdentity(
             nodeName = "vaca-btproxy-$suffix",
-            friendlyName = "${config.name} $deviceName Bluetooth Proxy",
+            friendlyName = "VACA ${config.uuid} BT Proxy",
             mac = formatMac(mac),
             bluetoothMac = formatMac(btMac),
             model = Build.MODEL,

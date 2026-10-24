@@ -15,9 +15,17 @@ import timber.log.Timber
  * Android has no passive scan, so "passive" maps to a balanced scan and "active" to low latency.
  * Results are batched for [FLUSH_MS] and de-duplicated: an unchanged payload from the same device
  * is only re-sent every [REPEAT_MS] so RSSI still refreshes without flooding the network.
+ *
+ * Android silently delivers no results to an unfiltered scan while system Location is off (the
+ * Bluetooth stack logs "Cannot start unfiltered scan in location-off"), so the scan is not started
+ * until Location is on: that is reported through [onLocationStateChanged] and re-checked every
+ * [LOCATION_RECHECK_MS], rather than restarting a scan that can never see anything.
  */
 @SuppressLint("MissingPermission")
-abstract class BleScanner(private val adapter: BluetoothAdapter?) {
+abstract class BleScanner(
+    private val adapter: BluetoothAdapter?,
+    private val isLocationEnabled: () -> Boolean,
+) {
 
     private val thread = HandlerThread("btproxy-scan").apply { start() }
     private val handler = Handler(thread.looper)
@@ -43,15 +51,29 @@ abstract class BleScanner(private val adapter: BluetoothAdapter?) {
     /** The scanner state or mode changed. */
     abstract fun onStateChanged()
 
+    /** The scan cannot run because system Location is off ([off] = true), or that was fixed. */
+    open fun onLocationStateChanged(off: Boolean) {}
+
+    // Whether a scan is wanted, so it can start by itself once Location is turned on.
+    private var wanted = false
+    private var locationOff = false
+
     val isScanning: Boolean get() = callback != null
 
-    fun start(active: Boolean) = handler.post { startInternal(active) }
+    fun start(active: Boolean) = handler.post {
+        wanted = true
+        startInternal(active)
+    }
 
-    fun stop() = handler.post { stopInternal() }
+    fun stop() = handler.post {
+        wanted = false
+        stopInternal()
+    }
 
     /** Releases the scanner thread; the scanner cannot be used afterwards. */
     fun shutdown() {
         handler.post {
+            wanted = false
             stopInternal()
             thread.quitSafely()
         }
@@ -76,6 +98,15 @@ abstract class BleScanner(private val adapter: BluetoothAdapter?) {
             setState(ScannerState.FAILED)
             return
         }
+        if (!isLocationEnabled()) {
+            Timber.w("Bluetooth proxy: system Location is off, so Android will not deliver BLE scan results - waiting")
+            setLocationOff(true)
+            setState(ScannerState.FAILED)
+            handler.removeCallbacks(locationRecheck)
+            handler.postDelayed(locationRecheck, LOCATION_RECHECK_MS)
+            return
+        }
+        setLocationOff(false)
         setState(ScannerState.STARTING)
 
         val settings = ScanSettings.Builder()
@@ -111,7 +142,19 @@ abstract class BleScanner(private val adapter: BluetoothAdapter?) {
         }
     }
 
+    private fun setLocationOff(off: Boolean) {
+        if (locationOff != off) {
+            locationOff = off
+            onLocationStateChanged(off)
+        }
+    }
+
+    private val locationRecheck = Runnable {
+        if (wanted && callback == null) startInternal(activeMode)
+    }
+
     private fun stopInternal() {
+        handler.removeCallbacks(locationRecheck)
         val cb = callback ?: run {
             if (state != ScannerState.STOPPED) setState(ScannerState.STOPPED)
             return
@@ -194,6 +237,7 @@ abstract class BleScanner(private val adapter: BluetoothAdapter?) {
 
     companion object {
         private const val WATCHDOG_MS = 30_000L
+        private const val LOCATION_RECHECK_MS = 5_000L
         private const val FLUSH_MS = 100L
         private const val REPEAT_MS = 2_000L
         private const val MAX_BATCH = 16
