@@ -100,6 +100,10 @@ class APPConfig @Inject constructor(val context: Context) {
     var sendspinRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
+
+    // Id of the Sendspin group the player currently belongs to; blank when not in one. Transient.
+    @Volatile
+    var sendspinGroupId: String = ""
     var bluetoothProxyRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -168,6 +172,11 @@ class APPConfig @Inject constructor(val context: Context) {
     var duckingVolume: Int by Delegates.observable(DEFAULT_DUCKING_VOLUME) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
+
+    // Home Assistant area this device is in, pushed by HA. Used to scope VACA UDP broadcasts.
+    var area: String
+        get() = this.sharedPrefs.getString("area", "") ?: ""
+        set(value) = this.sharedPrefs.edit { putString("area", value.trim()) }
 
     var mediaPlayerGain: Int by Delegates.observable(0) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -451,6 +460,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["music_volume"]?.jsonPrimitive?.floatOrNull?.let { musicVolume = it.toInt() }
         settings["alarm_volume"]?.jsonPrimitive?.floatOrNull?.let { alarmVolume = it.toInt() }
         settings["ducking_volume"]?.jsonPrimitive?.floatOrNull?.let { duckingVolume = it.toInt() }
+        settings["area"]?.jsonPrimitive?.contentOrNull?.let { area = it }
         settings["mic_gain"]?.jsonPrimitive?.intOrNull?.let { micGain = it }
         settings["mute"]?.jsonPrimitive?.booleanOrNull?.let { isMuted = it }
         settings["screen_brightness"]?.jsonPrimitive?.floatOrNull?.let { screenBrightness = it / 100 }

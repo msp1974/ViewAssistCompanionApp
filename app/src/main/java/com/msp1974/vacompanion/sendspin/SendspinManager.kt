@@ -64,6 +64,7 @@ class SendspinManager(
         player?.destroy()
         player = null
         config.sendspinRunning = false
+        config.sendspinGroupId = ""
     }
 
     private fun appVersion(): String = try {

@@ -93,6 +93,10 @@ class VoicePlayerService : Service(), EventListener {
 
     fun start(rate: Int, width: Int, channels: Int) {
         Timber.d("Playing voice audio")
+        // Each AudioTrack holds buffer memory from a small per-process pool in AudioFlinger, so
+        // a track replaced without release() leaks that memory until GC finalises it - enough
+        // of them and the music player can no longer create its own track (error -12).
+        releaseTrack()
         mediaPlayer = createPlayer(rate, width, channels)
         mediaPlayer?.setVolume(1.0f)
 
@@ -130,15 +134,25 @@ class VoicePlayerService : Service(), EventListener {
                 } else {
                     track.stop()
                 }
-                isReady = false
-                isPlaying = false
-
-                track.release()
-                abandonAudioFocus()
-                mediaPlayer = null
             } catch (e: Exception) {
                 Timber.w("Error stopping voice audio: ${e.message}")
             }
+            // Always release, even if pause/flush/stop threw - otherwise the track (and its
+            // buffer memory) is orphaned.
+            releaseTrack()
+            abandonAudioFocus()
+        }
+    }
+
+    private fun releaseTrack() {
+        isReady = false
+        isPlaying = false
+        val track = mediaPlayer ?: return
+        mediaPlayer = null
+        try {
+            track.release()
+        } catch (e: Exception) {
+            Timber.w("Error releasing voice audio track: ${e.message}")
         }
     }
 

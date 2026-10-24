@@ -188,6 +188,7 @@ public:
     jmethodID on_metadata_mid = nullptr;
     jmethodID on_metadata_clear_mid = nullptr;
     jmethodID on_playback_state_mid = nullptr;
+    jmethodID on_group_id_mid = nullptr;
     jmethodID on_controller_mid = nullptr;
     jmethodID on_colors_mid = nullptr;
 
@@ -486,12 +487,21 @@ public:
     // --- SendspinClientListener ---------------------------------------------
 
     void on_group_update(const sendspin::GroupUpdateObject& group) override {
-        if (!group.playback_state) return;
+        if (!group.playback_state && !group.group_id) return;
         JNIEnv* env = env_for_this_thread();
         if (env == nullptr) return;
-        const bool playing = *group.playback_state == sendspin::SendspinPlaybackState::PLAYING;
-        env->CallVoidMethod(callbacks, on_playback_state_mid, static_cast<jboolean>(playing));
-        clear_exception(env);
+        // Updates are deltas: either field may be absent.
+        if (group.group_id) {
+            jstring id = env->NewStringUTF(group.group_id->c_str());
+            env->CallVoidMethod(callbacks, on_group_id_mid, id);
+            clear_exception(env);
+            env->DeleteLocalRef(id);
+        }
+        if (group.playback_state) {
+            const bool playing = *group.playback_state == sendspin::SendspinPlaybackState::PLAYING;
+            env->CallVoidMethod(callbacks, on_playback_state_mid, static_cast<jboolean>(playing));
+            clear_exception(env);
+        }
     }
 
     // --- SendspinNetworkProvider --------------------------------------------
@@ -532,12 +542,14 @@ extern "C" JNIEXPORT jlong JNICALL Java_com_msp1974_sendspin_NativeSendspin_nati
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JJI)V");
     bridge->on_metadata_clear_mid = find_method(env, cls, "onMetadataCleared", "()V");
     bridge->on_playback_state_mid = find_method(env, cls, "onPlaybackStateChanged", "(Z)V");
+    bridge->on_group_id_mid = find_method(env, cls, "onGroupChanged", "(Ljava/lang/String;)V");
     bridge->on_controller_mid =
         find_method(env, cls, "onControllerState", "(Ljava/lang/String;ZLjava/lang/String;)V");
     bridge->on_colors_mid = find_method(env, cls, "onColors", "(IIII)V");
     env->DeleteLocalRef(cls);
     if (bridge->on_metadata_mid == nullptr || bridge->on_metadata_clear_mid == nullptr ||
-        bridge->on_playback_state_mid == nullptr || bridge->on_controller_mid == nullptr ||
+        bridge->on_playback_state_mid == nullptr || bridge->on_group_id_mid == nullptr ||
+        bridge->on_controller_mid == nullptr ||
         bridge->on_colors_mid == nullptr ||
         bridge->on_audio_write_mid == nullptr || bridge->on_stream_start_mid == nullptr ||
         bridge->on_stream_end_mid == nullptr || bridge->on_volume_mid == nullptr ||

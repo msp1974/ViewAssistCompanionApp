@@ -15,6 +15,7 @@ import com.msp1974.vacompanion.audio.AudioOutputRouter
 import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.audio.MicrophoneInput
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
+import com.msp1974.vacompanion.broadcasts.VacaUdpBroadcast
 import com.msp1974.vacompanion.data.AvailableAlarms
 import com.msp1974.vacompanion.data.AvailableWakeSounds
 import com.msp1974.vacompanion.device.camera.CameraAvailability
@@ -488,6 +489,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         restartWakeWordDetection()
     }
 
+    @Volatile private var arbitratingWakeWord = false
+
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
         if (clientId.isEmpty()) {
             Timber.e("Unable to run audio pipeline. Satellite not connected to HA")
@@ -513,6 +516,23 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         }
 
         if (startNewPipeline) {
+            // Tell other VACA devices (so they duck their music) and, if several heard the same
+            // wake word, agree which one runs the pipeline - the others must stay out of it.
+            if (arbitratingWakeWord) return
+            arbitratingWakeWord = true
+            val won = try {
+                VacaUdpBroadcast.instance?.arbitrateWakeWord(
+                    detection.score,
+                    contest = detection.wakeWordId != "manual_wake",
+                ) ?: true
+            } finally {
+                arbitratingWakeWord = false
+            }
+            if (!won) {
+                Timber.i("Another device is nearer to the speaker, not starting audio pipeline")
+                return
+            }
+
             if (audioPipeline != null) {
                 audioPipeline?.stop()
                 audioPipeline = null
@@ -654,6 +674,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
                 Timber.i("Pipeline ended.  Restarting: $continueConversation")
+                // A continuing conversation keeps other devices ducked until it really finishes.
+                if (!(reason == PipelineEndReason.END_OF_PIPELINE && continueConversation)) {
+                    config.eventBroadcaster.notifyEvent(Event(VacaUdpBroadcast.EVENT_PIPELINE_COMPLETED, "", ""))
+                }
                 if (reason == PipelineEndReason.END_OF_PIPELINE) {
                     if (continueConversation) {
                         scope.launch {

@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.players
 
 import android.annotation.SuppressLint
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.os.IBinder
@@ -16,14 +17,20 @@ import androidx.media3.common.Player
 import androidx.media3.common.audio.AudioFocusRequestCompat
 import androidx.media3.common.audio.AudioManagerCompat
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioTrackBufferSizeProvider
 import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.broadcasts.VacaBroadcastMessage
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.device.DeviceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -78,6 +85,8 @@ class MusicPlayerService : Service(), EventListener {
         // malformed/malicious redirect chain (e.g. one that cycles between distinct URLs) must
         // still be bounded, same as any real HTTP client would cap it.
         private const val MAX_REDIRECTS = 5
+
+        private const val REMOTE_DUCK_TIMEOUT_MS = 60_000L
     }
 
     val audioAttributes: AudioAttributes = AudioAttributes.Builder()
@@ -99,7 +108,44 @@ class MusicPlayerService : Service(), EventListener {
             Handler(Looper.getMainLooper()).post {
                 mediaPlayer?.setPreferredAudioDevice(AudioOutputRouter.resolvePreferredDevice(this, config))
             }
+        } else if (event.eventName == "sendspinPlaybackStarted") {
+            // Sendspin began streaming: stop the music player so the two don't play together.
+            Handler(Looper.getMainLooper()).post {
+                if (mediaPlayer?.isPlaying == true) {
+                    Timber.d("Music player: stopping, Sendspin started playing")
+                    abandonAudioFocus()
+                    stop()
+                }
+            }
+        } else if (event.eventName == "remoteWakeWordDetected") {
+            // Another VACA device in our area or Sendspin group heard a wake word (UDP broadcast) - duck if we're playing.
+            Handler(Looper.getMainLooper()).post {
+                if (isRelevantTo(event) && mediaPlayer?.isPlaying == true) {
+                    duckVolume()
+                    remoteDuckTimeout?.cancel()
+                    // Failsafe in case the matching "pipeline completed" broadcast is lost.
+                    remoteDuckTimeout = scope.launch {
+                        delay(REMOTE_DUCK_TIMEOUT_MS.milliseconds)
+                        withContext(Dispatchers.Main) { remoteUnduck() }
+                    }
+                }
+            }
+        } else if (event.eventName == "remotePipelineCompleted") {
+            Handler(Looper.getMainLooper()).post { if (isRelevantTo(event)) remoteUnduck() }
         }
+    }
+
+    // Same rule as the Sendspin player: the sender is in our Sendspin group or our area.
+    private fun isRelevantTo(event: Event): Boolean =
+        (event.newValue as? VacaBroadcastMessage)
+            ?.isRelevantTo(config.sendspinGroupId, config.area) == true
+
+    private var remoteDuckTimeout: Job? = null
+
+    private fun remoteUnduck() {
+        remoteDuckTimeout?.cancel()
+        remoteDuckTimeout = null
+        if (ducked && VoicePlayerService.sInstance?.hasAudioFocus != true) unDuckVolume()
     }
 
     val mediaPlayerListener = object : Player.Listener {
@@ -194,8 +240,30 @@ class MusicPlayerService : Service(), EventListener {
         }
     }
 
+    // ExoPlayer's default AudioTrack buffer for a 44.1kHz stream is ~750ms, which with the other
+    // tracks this process keeps alive can exceed AudioFlinger's small per-process buffer pool on
+    // low-memory devices (createTrack error -12). 400ms is plenty for a network stream, which
+    // ExoPlayer buffers separately upstream of the track.
+    private fun createRenderersFactory() = object : DefaultRenderersFactory(this) {
+        override fun buildAudioSink(
+            context: Context,
+            enableFloatOutput: Boolean,
+            enableAudioTrackPlaybackParams: Boolean,
+        ): AudioSink = DefaultAudioSink.Builder(context)
+            .setEnableFloatOutput(enableFloatOutput)
+            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+            .setAudioTrackBufferSizeProvider(
+                DefaultAudioTrackBufferSizeProvider.Builder()
+                    .setMaxPcmBufferDurationUs(400_000)
+                    .build()
+            )
+            .build()
+    }
+
     private fun createMediaPlayer() {
-        mediaPlayer = ExoPlayer.Builder(this)
+        // Never leave a previous player alive: each holds an AudioTrack's buffer memory.
+        if (mediaPlayer != null) stop()
+        mediaPlayer = ExoPlayer.Builder(this, createRenderersFactory())
             .setAudioAttributes(audioAttributes, false)
             .build().apply {
                 repeatMode = Player.REPEAT_MODE_OFF
@@ -217,6 +285,10 @@ class MusicPlayerService : Service(), EventListener {
         // budget - see the fields' own comment for why this is the only place that resets them.
         retryCount = 0
         redirectCount = 0
+        // Only one source at a time: tell the Sendspin player to stop (no-op if it isn't playing).
+        if (url.isNotEmpty()) {
+            config.eventBroadcaster.notifyEvent(Event("musicPlayerStarting", "", ""))
+        }
         play(url)
         return START_STICKY
     }
@@ -281,14 +353,14 @@ class MusicPlayerService : Service(), EventListener {
             // native resources (decoder, surfaces) right in the one case (error recovery) this
             // cleanup most needs to be reliable for.
             try {
-                player.removeListener(mediaPlayerListener)
-            } catch (e: Exception) {
-                Timber.e("Error removing media player listener: $e")
-            }
-            try {
                 player.stop()
             } catch (e: Exception) {
                 Timber.e("Error stopping player: $e")
+            }
+            try {
+                player.removeListener(mediaPlayerListener)
+            } catch (e: Exception) {
+                Timber.e("Error removing media player listener: $e")
             }
             try {
                 player.release()

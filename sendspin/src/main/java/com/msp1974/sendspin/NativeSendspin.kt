@@ -47,6 +47,9 @@ interface NativeSendspinCallbacks {
     /** The group's playback state: true while it is playing. */
     fun onPlaybackStateChanged(playing: Boolean)
 
+    /** The id of the group this player belongs to, as reported by the server. */
+    fun onGroupChanged(groupId: String)
+
     /**
      * The server's playback controls: [commands] is the comma-separated names of the commands it
      * currently accepts (e.g. "play,pause,next,shuffle,repeat_all"), [shuffle] whether shuffle is

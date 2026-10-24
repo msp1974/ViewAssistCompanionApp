@@ -11,6 +11,7 @@ import android.os.SystemClock
 import android.util.Patterns
 import com.msp1974.sendspin.NativeSendspin
 import com.msp1974.sendspin.NativeSendspinCallbacks
+import com.msp1974.vacompanion.broadcasts.VacaBroadcastMessage
 import com.msp1974.vacompanion.audio.AudioOutputRouter
 import com.msp1974.vacompanion.players.VoicePlayerService
 import com.msp1974.vacompanion.settings.APPConfig
@@ -219,6 +220,8 @@ class SendspinPlayer(
         Timber.d("Sendspin: stream start rate=$sampleRate channels=$channels bitDepth=$bitDepth")
         synchronized(nowPlayingLock) { streamActive = true }
         publishNowPlaying()
+        // Only one source at a time: the music player yields to Sendspin.
+        config.eventBroadcaster.notifyEvent(Event("sendspinPlaybackStarted", "", ""))
         if (!output.start(sampleRate, channels, bitDepth)) return
         // The voice assistant may already hold focus; a fresh request then wins outright rather
         // than ducking us, so start ducked ourselves and let onVoicePlaybackEnded() release it.
@@ -262,6 +265,7 @@ class SendspinPlayer(
             output.pause()
             abandonAudioFocus()
             resetNowPlaying()
+            config.sendspinGroupId = ""
         }
     }
 
@@ -289,6 +293,10 @@ class SendspinPlayer(
 
     override fun onMetadataCleared() {
         resetNowPlaying()
+    }
+
+    override fun onGroupChanged(groupId: String) {
+        config.sendspinGroupId = groupId
     }
 
     override fun onPlaybackStateChanged(playing: Boolean) {
@@ -458,6 +466,36 @@ class SendspinPlayer(
             // ducked (see onStreamStart), so release the duck here.
             "voicePlaybackEnded" -> mainHandler.post { if (!voiceHoldsFocus()) unduck() }
             "duckingVolume" -> mainHandler.post { if (ducked) duck() }
+            // The music player was asked to play: stop Sendspin so the two don't play over each other.
+            "musicPlayerStarting" -> {
+                val h = handle
+                val active = synchronized(nowPlayingLock) { streamActive || groupPlaying }
+                if (h != 0L && active) NativeSendspin.nativeSendCommand(h, "stop", 0)
+            }
+            // Another VACA device heard a wake word / finished its pipeline (UDP broadcast).
+            // React if we're in the sender's Sendspin group or in the sender's area.
+            "remoteWakeWordDetected" -> mainHandler.post {
+                if (isRelevantTo(event) && isGroupPlaying()) {
+                    duck()
+                    // Failsafe in case the matching "pipeline completed" broadcast is lost.
+                    mainHandler.removeCallbacks(remoteUnduck)
+                    mainHandler.postDelayed(remoteUnduck, REMOTE_DUCK_TIMEOUT_MS)
+                }
+            }
+            "remotePipelineCompleted" -> mainHandler.post { if (isRelevantTo(event)) remoteUnduck.run() }
+        }
+    }
+
+    private fun isRelevantTo(event: Event): Boolean =
+        (event.newValue as? VacaBroadcastMessage)
+            ?.isRelevantTo(config.sendspinGroupId, config.area) == true
+
+    private fun isGroupPlaying(): Boolean = synchronized(nowPlayingLock) { groupPlaying }
+
+    private val remoteUnduck: Runnable = object : Runnable {
+        override fun run() {
+            mainHandler.removeCallbacks(this)
+            if (ducked && !voiceHoldsFocus()) unduck()
         }
     }
 
@@ -476,5 +514,6 @@ class SendspinPlayer(
 
         private const val UNDUCK_STEP = 0.1f
         private const val UNDUCK_INTERVAL_MS = 100L
+        private const val REMOTE_DUCK_TIMEOUT_MS = 60_000L
     }
 }
