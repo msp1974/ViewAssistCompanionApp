@@ -5,7 +5,6 @@ import android.content.pm.PackageManager
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
-import com.msp1974.vacompanion.utils.Helpers
 import timber.log.Timber
 
 /**
@@ -36,12 +35,12 @@ class SendspinManager(
     @Synchronized
     private fun startPlayer() {
         if (player != null) return
-        val deviceName = Helpers.getDeviceName() ?: config.uuid
+        val playerName = "VACA ${config.uuid} Sendspin Player"
         val newPlayer = SendspinPlayer(
             context = context,
             config = config,
             clientId = "vaca-${config.uuid}",
-            playerName = "${config.name} $deviceName",
+            playerName = playerName,
             softwareVersion = appVersion(),
         )
         if (!newPlayer.isRunning) {
@@ -52,7 +51,7 @@ class SendspinManager(
         advertiser = SendspinAdvertiser(
             context = context,
             serviceName = "vaca-sendspin-${config.uuid}",
-            friendlyName = "${config.name} $deviceName",
+            friendlyName = playerName,
         ).also { it.start(newPlayer.port) }
         config.sendspinRunning = true
     }
