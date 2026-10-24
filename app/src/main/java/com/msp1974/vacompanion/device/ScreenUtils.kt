@@ -329,23 +329,36 @@ class ScreenUtils (val context: Context, val config: APPConfig) : ContextWrapper
         return false
     }
 
-    fun hideSystemUI(window: Window) {
+    /** Hides the navigation bar, and the status bar too unless [hideStatusBar] is false. */
+    fun hideSystemUI(window: Window, hideStatusBar: Boolean = true) {
+        // The theme sets windowFullscreen, which keeps the status bar hidden; clear it when shown.
+        if (hideStatusBar) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             WindowCompat.setDecorFitsSystemWindows(window, false)
             WindowInsetsControllerCompat(window, window.decorView).let { controller ->
-                controller.hide(WindowInsetsCompat.Type.systemBars())
+                if (hideStatusBar) {
+                    controller.hide(WindowInsetsCompat.Type.systemBars())
+                } else {
+                    controller.show(WindowInsetsCompat.Type.statusBars())
+                    controller.hide(WindowInsetsCompat.Type.navigationBars())
+                }
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
             val decorView: View = window.decorView
-            decorView.setSystemUiVisibility(
-                (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                        or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                        or View.SYSTEM_UI_FLAG_FULLSCREEN)
-            )
+            var flags = (View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION)
+            if (hideStatusBar) {
+                flags = flags or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_FULLSCREEN
+            }
+            decorView.setSystemUiVisibility(flags)
         }
     }
 }

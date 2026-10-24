@@ -406,6 +406,12 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getBoolean("show_rtsp_streaming_indicator", true)
         set(value) = this.sharedPrefs.edit { putBoolean("show_rtsp_streaming_indicator", value) }
 
+    // Whether the Android status bar is shown. Off (hidden) is the kiosk default. HA-pushed only.
+    // The navigation bar stays hidden either way.
+    var showStatusBar: Boolean
+        get() = this.sharedPrefs.getBoolean("show_status_bar", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("show_status_bar", value) }
+
     // Whether to run the Sendspin player (this device appears as a synchronised audio output to
     // Music Assistant / Home Assistant). On-device preference that can also be pushed by HA, so it
     // is persisted rather than only held in memory.
@@ -508,6 +514,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["sendspin_overlay_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinOverlayEnabled = it }
         settings["bluetooth_proxy_enabled"]?.jsonPrimitive?.booleanOrNull?.let { bluetoothProxyEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
+        settings["show_status_bar"]?.jsonPrimitive?.booleanOrNull?.let { showStatusBar = it }
 
         initSettings = true
         firebase.addToCrashLog("Settings update")

@@ -321,7 +321,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     fun setScreenSettings() {
         // Hide system bars
         Timber.d("Setting screen settings: Initialised: $initialised, ScreenOffStart: $screenOffStartUp, Sat Running: ${viewModel.vacaState.value.satelliteRunning}")
-        screen.hideSystemUI(window)
+        screen.hideSystemUI(window, !config.showStatusBar)
     }
 
     fun initWebView() {
@@ -672,7 +672,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
                         }
                     }
                     "screenTimeout" -> screen.setScreenTimeout(config.screenTimeout)
-                    "hideSystemUI" -> screen.hideSystemUI(window)
+                    "hideSystemUI", "show_status_bar" -> screen.hideSystemUI(window, !config.showStatusBar)
                     else -> consumed = false
                 }
                 if (consumed) {
