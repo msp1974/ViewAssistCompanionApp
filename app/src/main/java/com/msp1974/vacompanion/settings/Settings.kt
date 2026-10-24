@@ -101,9 +101,18 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    // Port the Sendspin player is listening on (it takes the first free one from a small range, so
+    // it isn't fixed); 0 while the player isn't running. Set by SendspinManager.
+    @Volatile
+    var sendspinPort: Int = 0
+
     // Id of the Sendspin group the player currently belongs to; blank when not in one. Transient.
     @Volatile
     var sendspinGroupId: String = ""
+    // True while the Bluetooth proxy cannot scan because system Location is off. Set by the scanner.
+    var bluetoothProxyLocationOff: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
     var bluetoothProxyRunning: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -587,7 +596,7 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_RTSP_RESOLUTION = "720p"
         const val DEFAULT_RTSP_FPS = 15
         const val DEFAULT_RTSP_BITRATE = 2_000_000
-        const val DEFAULT_RTSP_KEYFRAME_INTERVAL_SECS = 0.5f
+        const val DEFAULT_RTSP_KEYFRAME_INTERVAL_SECS = 1f
         const val DEFAULT_AUDIO_OUTPUT_ID = -1
         const val DEFAULT_AUDIO_INPUT_ID = -1
         const val GITHUB_API_URL = "https://api.github.com/repos/msp1974/ViewAssist_Companion_App/releases"

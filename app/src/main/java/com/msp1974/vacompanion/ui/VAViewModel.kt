@@ -479,6 +479,14 @@ class VAViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Tell Home Assistant a setting was changed on the device. [key] is the HA settings key and
+     * [value] is in the units HA uses; the Satellite sends it if it is connected.
+     */
+    fun sendSettingToHA(key: String, value: Any) {
+        config.eventBroadcaster.notifyEvent(Event("sendSettingToHA", key, value))
+    }
+
     fun onShowDiagnostics(show: Boolean) {
         config.diagnosticsEnabled = show
     }

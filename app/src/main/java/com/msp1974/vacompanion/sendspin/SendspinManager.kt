@@ -53,6 +53,7 @@ class SendspinManager(
             serviceName = "vaca-sendspin-${config.uuid}",
             friendlyName = playerName,
         ).also { it.start(newPlayer.port) }
+        config.sendspinPort = newPlayer.port
         config.sendspinRunning = true
     }
 
@@ -62,6 +63,7 @@ class SendspinManager(
         advertiser = null
         player?.destroy()
         player = null
+        config.sendspinPort = 0
         config.sendspinRunning = false
         config.sendspinGroupId = ""
     }

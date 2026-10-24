@@ -984,6 +984,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     override fun onEventTriggered(event: Event) {
         when (event.eventName) {
+            // A setting changed on the device (Configuration screen): tell HA, under its settings key.
+            "sendSettingToHA" -> {
+                val key = event.oldValue as? String
+                if (key != null && state == SatelliteState.RUNNING) sendSetting(key, event.newValue)
+            }
             "requestSettings" -> {
                 scope.launch {
                     if (clientId != "") {

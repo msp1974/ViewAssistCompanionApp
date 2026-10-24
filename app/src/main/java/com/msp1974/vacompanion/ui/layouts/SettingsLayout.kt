@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -35,7 +35,7 @@ enum class SettingsScreen {
     CUSTOM_FILES,
     PERMISSIONS_INFO,
     CAMERA_STREAM,
-    DEVICE_INFO
+    CONFIGURATION
 }
 
 enum class Dialog {
@@ -124,10 +124,10 @@ fun SettingsLayout(
                     }
                     menuOptions.add(
                         MenuOption(
-                            title = "Device Info",
-                            subtitle = "View device capabilities and sensors",
-                            icon = Icons.Default.Info,
-                            onClick = { currentScreen = SettingsScreen.DEVICE_INFO }
+                            title = "Configuration",
+                            subtitle = "View the settings provided by Home Assistant",
+                            icon = Icons.Default.Tune,
+                            onClick = { currentScreen = SettingsScreen.CONFIGURATION }
                         )
                     )
 
@@ -155,8 +155,8 @@ fun SettingsLayout(
                         onBack = { currentScreen = SettingsScreen.MAIN }
                     )
                 }
-                SettingsScreen.DEVICE_INFO -> {
-                    DeviceInfoLayout(
+                SettingsScreen.CONFIGURATION -> {
+                    ConfigurationLayout(
                         viewModel = viewModel,
                         onBack = { currentScreen = SettingsScreen.MAIN }
                     )
