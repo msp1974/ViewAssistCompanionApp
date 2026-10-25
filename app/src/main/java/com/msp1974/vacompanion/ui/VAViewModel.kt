@@ -153,6 +153,8 @@ data class State(
     // connected to this device's Wyoming server. Only meaningful when isNetworkConnected is
     // true - see WebViewLayout's "wifi icon wins" ordering for why.
     var isServerConnected: Boolean = true,
+    // False when the system clock is not synchronised to a time server (breaks authentication).
+    var clockSynchronised: Boolean = true,
     var showSettings: Boolean = false,
     var customFiles: CustomFilesState = CustomFilesState(),
     var cameraStreamActive: Boolean = false,
@@ -196,6 +198,16 @@ class VAViewModel @Inject constructor(
 
         config.eventBroadcaster.addListener(this)
         initValues()
+
+        // Re-check periodically until the clock is in sync, then stop.
+        viewModelScope.launch {
+            while (true) {
+                val synced = com.msp1974.vacompanion.utils.ClockCheck.isClockSynchronised()
+                _vacaState.update { it.copy(clockSynchronised = synced) }
+                if (synced) break
+                kotlinx.coroutines.delay(30_000)
+            }
+        }
 
         viewModelScope.launch {
             deviceManager.status.collect { status ->

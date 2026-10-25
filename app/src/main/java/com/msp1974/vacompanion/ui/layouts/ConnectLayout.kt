@@ -166,8 +166,14 @@ fun ConnectionContent(
 
         StatusText(
             statusMessage = vaUiState.statusMessage,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = if (vaUiState.clockSynchronised) 0.dp else 56.dp)
         )
+
+        if (!vaUiState.clockSynchronised) {
+            ClockWarningBanner(modifier = Modifier.align(Alignment.BottomCenter))
+        }
 
         AppFloatingActionButton(
             onClick = onSettingsClick,
@@ -255,6 +261,26 @@ fun StatusText(statusMessage: String, modifier: Modifier = Modifier) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
             style = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+
+@Composable
+fun ClockWarningBanner(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(CustomColours.RED)
+            .navigationBarsPadding()
+            .padding(start = 16.dp, end = 80.dp, top = 12.dp, bottom = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "The system clock is not synchronised to a time server. This may cause authentication to fail.",
+            color = Color.White,
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium
         )
     }
 }
