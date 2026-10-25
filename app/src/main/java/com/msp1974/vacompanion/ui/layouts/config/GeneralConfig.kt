@@ -1,6 +1,9 @@
 package com.msp1974.vacompanion.ui.layouts.config
 
 import android.app.Application
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.provider.Settings
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.filled.*
@@ -9,7 +12,7 @@ import com.msp1974.vacompanion.utils.Helpers
 
 
 private const val BEHAVIOUR = "Behaviour"
-private const val DEVICE = "Device"
+private const val INFO = "Info"
 private const val NETWORK = "Network"
 
 fun generalConfig(vm: VAViewModel): ConfigSection {
@@ -19,14 +22,23 @@ fun generalConfig(vm: VAViewModel): ConfigSection {
     val state = { vm.vacaState.value }
     return ConfigSection(
         "General", Icons.Default.Tune, listOf(
-            ConfigItem.Info(DEVICE, "UUID", "Identifies this device to Home Assistant", Icons.Default.Fingerprint,
+            ConfigItem.Info(INFO, "UUID", "Identifies this device to Home Assistant", Icons.Default.Fingerprint,
                 value = { c.uuid.ifBlank { "Not set" } }),
-            ConfigItem.Info(DEVICE, "App Version", null, Icons.Default.Info,
+            ConfigItem.Info(INFO, "App Version", null, Icons.Default.Info,
                 value = { deviceInfo.software.appVersion }),
-            ConfigItem.Info(DEVICE, "Android Version", null, Icons.Default.Android,
+            ConfigItem.Info(INFO, "Android Version", null, Icons.Default.Android,
                 value = { deviceInfo.software.release }),
-            ConfigItem.Info(DEVICE, "WebView Version", null, Icons.Default.Code,
+            ConfigItem.Info(INFO, "WebView Version", null, Icons.Default.Code,
                 value = { deviceInfo.software.webViewVersion }),
+            ConfigItem.Action(INFO, "Default launcher app", "Lets the app launch on boot. Tap to change in Android settings",
+                Icons.Default.Home,
+                value = { if (isDefaultLauncher(context)) "Yes" else "No" },
+                valueColor = { yesNoColor(isDefaultLauncher(context)) },
+                onClick = {
+                    context.startActivity(
+                        Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                }),
 
             ConfigItem.Info(NETWORK, "Wi-Fi Network (SSID)", null, Icons.Default.Wifi,
                 // Looked up again if the network connects or drops.
@@ -35,4 +47,10 @@ fun generalConfig(vm: VAViewModel): ConfigSection {
                 value = { state().isNetworkConnected; Helpers.getIpv4HostAddress().ifBlank { "Not available" } }),
         )
     )
+}
+
+private fun isDefaultLauncher(context: Application): Boolean {
+    val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    val default = context.packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)
+    return default?.activityInfo?.packageName == context.packageName
 }
