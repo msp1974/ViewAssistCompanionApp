@@ -1,6 +1,5 @@
 package com.msp1974.vacompanion.ui.layouts
 
-import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -63,16 +62,6 @@ private fun installedApps(context: Context): List<LauncherApp> {
         .sortedBy { it.label.lowercase() }
 }
 
-/** The device's other launcher (home) apps: what the page contains until the user edits it. */
-private fun otherLauncherPackages(context: Context): List<String> {
-    val pm = context.packageManager
-    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-    return pm.queryIntentActivities(intent, 0)
-        .map { it.activityInfo.packageName }
-        .filter { it != context.packageName }
-        .distinct()
-}
-
 /** The app for [packageName], or null if it has since been uninstalled. */
 private fun appFor(context: Context, packageName: String): LauncherApp? = try {
     val pm = context.packageManager
@@ -112,9 +101,8 @@ private fun AppIcon(packageName: String, size: androidx.compose.ui.unit.Dp) {
 }
 
 /**
- * A page of tiles that launch apps chosen from those installed on the device. The list is kept in
- * shared preferences only (it is not shared with Home Assistant); until it is first edited it holds
- * the device's other launcher apps.
+ * A page of tiles that launch apps chosen from those installed on the device. The list starts empty and is
+ * kept in shared preferences only (it is not shared with Home Assistant).
  */
 @Composable
 fun AppLauncherLayout(
@@ -124,7 +112,7 @@ fun AppLauncherLayout(
     val context = LocalContext.current
     val config = viewModel.config
     var selected by remember {
-        mutableStateOf(config.launcherApps ?: otherLauncherPackages(viewModel.getApplication<Application>()))
+        mutableStateOf(config.launcherApps)
     }
     var picking by remember { mutableStateOf(false) }
 

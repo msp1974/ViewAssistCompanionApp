@@ -374,12 +374,9 @@ class APPConfig @Inject constructor(val context: Context) {
         set(value) = this.sharedPrefs.edit { putBoolean("can_set_screen_write_permission", value) }
 
     // Packages shown on the app launcher page, in order. Local to this device (not shared with HA).
-    // Null until the user first edits the page, when it defaults to the device's other launcher apps.
-    var launcherApps: List<String>?
-        get() = this.sharedPrefs.getString("launcher_apps", null)?.split('\n')?.filter { it.isNotBlank() }
-        set(value) = this.sharedPrefs.edit {
-            if (value == null) remove("launcher_apps") else putString("launcher_apps", value.joinToString("\n"))
-        }
+    var launcherApps: List<String>
+        get() = this.sharedPrefs.getString("launcher_apps", "")?.split('\n')?.filter { it.isNotBlank() } ?: emptyList()
+        set(value) = this.sharedPrefs.edit { putString("launcher_apps", value.joinToString("\n")) }
 
     var canSetNotificationPolicyAccess: Boolean
         get() = this.sharedPrefs.getBoolean("can_set_notification_policy_access", true)
