@@ -27,6 +27,7 @@ import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Helpers
+import com.msp1974.vacompanion.utils.LogcatReader
 import com.msp1974.vacompanion.wakeword.AvailableWakeWords
 import com.msp1974.vacompanion.utils.EventListener
 import com.msp1974.vacompanion.utils.CustomFileDownloader
@@ -59,6 +60,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -743,6 +745,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                     BroadcastSender.sendBroadcast(context, BroadcastSender.STOP_WORD_DETECTED)
                 }
                 "refresh" -> config.eventBroadcaster.notifyEvent(Event("refresh", "", ""))
+                "get-logs" -> scope.launch { handleGetLogs(payloadStr) }
                 "wake" -> scope.launch {
                     handleWakeWordDetection(WakeWordEngineProvider.WakeWordDetection(
                         wakeWordId = "manual_wake",
@@ -762,6 +765,33 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 }
             }
         }.onFailure { Timber.e("Failed to handle custom action $action: $it") }
+    }
+
+    // Action "get-logs", optional payload: {"lines": 500, "level": "V|D|I|W|E|F", "request_id": "..."}.
+    // Replies with a custom event of type "logs": data {timestamp, request_id, lines, level, error?}
+    // and the log text (UTF-8) as the binary payload.
+    private suspend fun handleGetLogs(payloadStr: String) {
+        val req = if (payloadStr.isNotEmpty()) Json.parseToJsonElement(payloadStr).jsonObject else null
+        val requestId = req?.get("request_id")?.jsonPrimitive?.contentOrNull ?: ""
+        val lines = req?.get("lines")?.jsonPrimitive?.intOrNull ?: LogcatReader.DEFAULT_LINES
+        val level = req?.get("level")?.jsonPrimitive?.contentOrNull ?: "V"
+
+        try {
+            val result = LogcatReader.read(lines, level)
+            sendCustomEvent(WyomingCustomEventType.LOGS, buildJsonObject {
+                put("timestamp", isoNow())
+                put("request_id", requestId)
+                put("lines", result.lines)
+                put("level", result.level)
+            }, result.text.toByteArray(Charsets.UTF_8))
+        } catch (e: Exception) {
+            sendCustomEvent(WyomingCustomEventType.LOGS, buildJsonObject {
+                put("timestamp", isoNow())
+                put("request_id", requestId)
+                put("lines", 0)
+                put("error", e.message ?: e.toString())
+            })
+        }
     }
 
     private suspend fun handleMediaPlayerAction(action: String, payloadStr: String) {
@@ -873,11 +903,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         sendSatelliteMessage(clientId, type, data, payload)
     }
 
-    fun sendCustomEvent(type: String, data: JsonObject) {
+    fun sendCustomEvent(type: String, data: JsonObject, payload: ByteArray = ByteArray(0)) {
         sendSatelliteMessage(clientId, WyomingEvent.CUSTOM_EVENT, buildJsonObject {
             put(EVENT_TYPE, type)
             put("data", data)
-        })
+        }, payload)
     }
 
 
