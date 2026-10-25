@@ -42,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -155,7 +157,7 @@ fun ConnectionContent(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(48.dp))
-                LogoImage(Modifier.padding(horizontal = 48.dp, vertical = 8.dp))
+                LogoImage(Modifier.padding(vertical = 8.dp).fillMaxWidth(0.5f))
                 Spacer(modifier = Modifier.height(40.dp))
                 details()
                 Spacer(modifier = Modifier.height(120.dp)) // Space for Status and FAB
@@ -190,9 +192,15 @@ fun LogoImage(modifier: Modifier = Modifier) {
 /** Device/app details. Values never wrap: they stay on one line and ellipsize only as a last resort. */
 @Composable
 fun InfoCard(infoItems: Map<String, String>) {
+    // In light mode the background is a mid blue, so the card is a lighter shade of it rather than
+    // the near-white surface colour, which is too stark against it.
+    val background = MaterialTheme.colorScheme.background
+    val isLight = background.luminance() > 0.18f
+    val cardColor = if (isLight) lerp(background, Color.White, 0.3f) else MaterialTheme.colorScheme.surfaceContainer
+    val labelColor = if (isLight) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = cardColor,
         modifier = Modifier
             .widthIn(min = 280.dp, max = 520.dp)
             .fillMaxWidth()
@@ -211,7 +219,7 @@ fun InfoCard(infoItems: Map<String, String>) {
                     Text(
                         text = label,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = labelColor,
                         maxLines = 1,
                         softWrap = false
                     )
@@ -254,7 +262,7 @@ fun StatusText(statusMessage: String, modifier: Modifier = Modifier) {
 @Composable
 fun LaunchOnBootHint() {
     Text(
-        text = "To launch on boot, set this app as the launcher",
+        text = "To launch on boot, set this app as the launcher in the configuration menu",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = 16.dp),
