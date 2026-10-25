@@ -3,7 +3,6 @@
 
     <style name="Base.Theme.VACompanion" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:windowFullscreen">true</item>
-        <item name="android:windowIsTranslucent">true</item>
         <item name="android:windowBackground">@color/blue</item>
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
