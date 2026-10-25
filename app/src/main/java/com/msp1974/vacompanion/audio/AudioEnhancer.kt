@@ -104,19 +104,33 @@ class AudioEnhancer(
 class AutomaticGainController(
     sampleRate: Int,
     var targetLevelDbfs: Float = BASE_TARGET_LEVEL_DBFS,
-    var maxGainDb: Float = 50f,
+    var maxGainDb: Float = 30f,
     var maxAttenuationDb: Float = 30f,
     var noiseGateMarginDb: Float = 6f,
     var minNoiseGateThresholdDbfs: Float = -65f,
     var maxNoiseGateThresholdDbfs: Float = -20f,
     envelopeAttackMs: Float = 3f,
-    envelopeReleaseMs: Float = 250f,
+    envelopeReleaseMs: Float = 600f,
     noiseFloorRiseMs: Float = 5000f,
+    noiseFloorRiseWhileSpeechMs: Float = 60000f,
+    gateHoldMs: Float = 700f,
+    heldGainDecayMs: Float = 1500f,
 ) {
     private val attackCoeff = timeConstantToCoeff(envelopeAttackMs, sampleRate)
     private val releaseCoeff = timeConstantToCoeff(envelopeReleaseMs, sampleRate)
     private val noiseFloorRiseCoeff = timeConstantToCoeff(noiseFloorRiseMs, sampleRate)
+    private val noiseFloorSpeechRiseCoeff = timeConstantToCoeff(noiseFloorRiseWhileSpeechMs, sampleRate)
+    private val heldGainDecayCoeff = timeConstantToCoeff(heldGainDecayMs, sampleRate)
+    private val gateHoldSamples = (gateHoldMs / 1000f * sampleRate).toInt()
     private var envelope = 0f
+
+    // Samples remaining before a gate that has stopped detecting signal is allowed to close.
+    private var holdRemaining = 0
+
+    // Gain applied while the gate was last fully open. The gate fades *to this* (which then decays
+    // slowly towards 0 dB) rather than straight to 0 dB, so the tail of a phrase isn't dropped by
+    // the full amount of boost that was being applied to the rest of it.
+    private var heldGainDb = 0f
 
     /** Per-device ambient noise floor estimate (dBFS) the gate threshold is calibrated against. */
     private var noiseFloorDb = Float.POSITIVE_INFINITY
@@ -139,19 +153,36 @@ class AutomaticGainController(
             // Auto-calibrating noise floor - see the class doc. Float.POSITIVE_INFINITY as the
             // initial value means the very first sample always takes the instant-drop branch,
             // seeding the estimate immediately rather than climbing up to it from some arbitrary
-            // fixed starting point.
+            // fixed starting point. While the signal is well above the floor (i.e. speech) the
+            // floor is all but frozen, otherwise it creeps up through a long phrase, raising the
+            // gate threshold until the quieter end of the phrase falls below it.
             noiseFloorDb = if (levelDb < noiseFloorDb) {
                 levelDb
             } else {
-                noiseFloorDb + (levelDb - noiseFloorDb) * noiseFloorRiseCoeff
+                val coeff = if (levelDb < noiseFloorDb + noiseGateMarginDb) noiseFloorRiseCoeff else noiseFloorSpeechRiseCoeff
+                noiseFloorDb + (levelDb - noiseFloorDb) * coeff
             }
             val adaptiveGateThresholdDbfs = (noiseFloorDb + noiseGateMarginDb)
                 .coerceIn(minNoiseGateThresholdDbfs, maxNoiseGateThresholdDbfs)
 
             // Fade the correction out smoothly below the gate threshold instead of an on/off
-            // step, so there's no audible click as speech resumes.
-            val gateOpenness = ((levelDb - adaptiveGateThresholdDbfs) / GATE_TRANSITION_DB).coerceIn(0f, 1f)
-            val gainDb = computedGainDb * gateOpenness
+            // step, so there's no audible click as speech resumes. Hold the gate open for
+            // gateHoldMs after the signal last cleared the threshold, to ride through the quiet
+            // trailing syllables of a phrase.
+            var gateOpenness = ((levelDb - adaptiveGateThresholdDbfs) / GATE_TRANSITION_DB).coerceIn(0f, 1f)
+            if (gateOpenness > 0f) {
+                holdRemaining = gateHoldSamples
+            } else if (holdRemaining > 0) {
+                holdRemaining--
+                gateOpenness = 1f
+            }
+
+            if (gateOpenness >= 1f) {
+                heldGainDb = computedGainDb
+            } else {
+                heldGainDb -= heldGainDb * heldGainDecayCoeff
+            }
+            val gainDb = computedGainDb * gateOpenness + heldGainDb * (1f - gateOpenness)
 
             val processed = (sample * dbToLinear(gainDb)).coerceIn(-0.98f, 0.98f)
             output[i] = (processed * 32768f).toInt().coerceIn(-32768, 32767).toShort()
@@ -161,6 +192,8 @@ class AutomaticGainController(
 
     fun reset() {
         envelope = 0f
+        holdRemaining = 0
+        heldGainDb = 0f
         noiseFloorDb = Float.POSITIVE_INFINITY
     }
 

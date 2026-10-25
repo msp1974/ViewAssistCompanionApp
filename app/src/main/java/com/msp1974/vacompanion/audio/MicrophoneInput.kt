@@ -85,8 +85,6 @@ class MicrophoneInput (
     private var aec: AcousticEchoCanceler? = null
 
     private val audioEnhancer = AudioEnhancer(sampleRateInHz, context)
-    private var totalFramesRead = 0L
-
     private var audioDSP = AudioDSP()
 
     // Owns all microphone device selection, the AudioDeviceCallback, and Bluetooth SCO -
@@ -180,13 +178,12 @@ class MicrophoneInput (
         val audioRecord = synchronized(audioRecordLock) { this.audioRecord } ?: return ShortArray(0)
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
-            totalFramesRead += readCount
             val frame = audioBuffer.copyOfRange(0, readCount)
-            val micGain = if (isMicSuppressed()) -5 else config.micGain
             if (applyEnhancement) {
                 // processFrame() internally no-ops on AGC/noise suppression when the
                 // device covers them in hardware - so it's always safe/cheap to route
                 // through here rather than tracking which sub-feature(s) are actually active.
+                val micGain = if (isMicSuppressed()) -5 else config.micGain
                 audioEnhancer.setMicGainDb(micGain.toFloat())
                 return audioEnhancer.processFrame(frame)
             }
