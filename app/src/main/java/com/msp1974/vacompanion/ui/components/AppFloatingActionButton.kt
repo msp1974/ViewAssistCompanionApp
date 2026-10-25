@@ -55,7 +55,7 @@ fun AppFloatingActionButtonBoxPreview() {
             onClick = { /* Handle click */ },
             modifier = Modifier.align(Alignment.BottomEnd),
             icon = Icons.Default.Settings,
-            contentDescription = "Settings"
+            contentDescription = "Menu"
         )
     }
 }

@@ -16,6 +16,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -47,7 +55,6 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.State
 import com.msp1974.vacompanion.ui.components.AppFloatingActionButton
-import com.msp1974.vacompanion.ui.components.InfoItem
 import com.msp1974.vacompanion.ui.components.LabelledSwitch
 import com.msp1974.vacompanion.ui.theme.AppTheme
 import com.msp1974.vacompanion.ui.theme.CustomColours
@@ -86,145 +93,79 @@ fun ConnectionContent(
     onCheckForUpdate: () -> Unit,
     onPermissionsClick: () -> Unit,
 ) {
-    Box(modifier = Modifier
-        .fillMaxSize()
-        .background(MaterialTheme.colorScheme.background)
-    ) {
-        when(val orientation = LocalConfiguration.current.orientation) {
-            Configuration.ORIENTATION_LANDSCAPE -> {
-                Column() {
-                    Column(
-                        modifier = Modifier.weight(0.15f)
-                    ) {
-                        // Action Buttons in Landscape
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            if (vaUiState.updates.updateAvailable) {
-                                UpdateButton(
-                                    text = stringResource(R.string.button_update_required),
-                                    modifier = Modifier.padding(8.dp),
-                                    onClick = onCheckForUpdate
-                                )
-                            }
-                            if (!vaUiState.permissions.hasCorePermissions || !vaUiState.permissions.hasOptionalPermissions) {
-                                PermissionStatusButton(
-                                    text = "Permissions",
-                                    colour = if (!vaUiState.permissions.hasCorePermissions) CustomColours.RED else CustomColours.AMBER,
-                                    modifier = Modifier.padding(8.dp),
-                                    onClick = onPermissionsClick
-                                )
-                            }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .safeDrawingPadding()
-                            .weight(0.85f)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .weight(0.4f)
-                                .fillMaxSize(),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            LogoImage(orientation)
-                        }
-                        Column(
-                            modifier = Modifier
-                                .weight(0.6f)
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.Center,
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            InfoTextBlock(vaUiState.appInfo)
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-                                LaunchOnBootSwitch(
-                                    vaUiState.launchOnBoot,
-                                    callback = onLaunchOnBootChange
-                                )
-                            } else {
-                                Text(
-                                    text = "To launch on boot, set this app as the launcher",
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier
-                                        .width(280.dp)
-                                        .padding(16.dp),
-                                    textAlign = TextAlign.Center
-                                )
-                            }
-                        }
-                    }
-                    Column(
-                        modifier = Modifier.weight(0.1f)
-                    ) { }
+    val details: @Composable () -> Unit = {
+        InfoCard(vaUiState.appInfo)
+        Spacer(modifier = Modifier.height(16.dp))
+        LaunchOnBootSection(vaUiState.launchOnBoot, onLaunchOnBootChange)
+        if (vaUiState.updates.updateAvailable || !vaUiState.permissions.hasCorePermissions || !vaUiState.permissions.hasOptionalPermissions) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (vaUiState.updates.updateAvailable) {
+                    UpdateButton(
+                        text = stringResource(R.string.button_update_required),
+                        onClick = onCheckForUpdate
+                    )
                 }
-            }
-            else -> { // Portrait and Default
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.background)
-                        .statusBarsPadding()
-                        .safeDrawingPadding()
-                        .verticalScroll(rememberScrollState()),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Spacer(modifier = Modifier.height(40.dp))
-                    
-                    LogoImage(orientation)
-                    
-                    Spacer(modifier = Modifier.height(40.dp))
-                    
-                    InfoTextBlock(vaUiState.appInfo)
-                    
-                    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-                        LaunchOnBootSwitch(vaUiState.launchOnBoot, callback = onLaunchOnBootChange)
-                    } else {
-                        Text(
-                            text="To launch on boot, set this app as the launcher",
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier
-                                .width(280.dp)
-                                .padding(16.dp),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        if (vaUiState.updates.updateAvailable) {
-                            UpdateButton(
-                                text = stringResource(R.string.button_update_required),
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                onClick = onCheckForUpdate)
-                        }
-                        if (!vaUiState.permissions.hasCorePermissions || !vaUiState.permissions.hasOptionalPermissions) {
-                            PermissionStatusButton(
-                                text = "Permissions",
-                                colour = if (!vaUiState.permissions.hasCorePermissions) CustomColours.RED else CustomColours.AMBER,
-                                modifier = Modifier.padding(vertical = 8.dp),
-                                onClick = onPermissionsClick
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(100.dp)) // Space for Status and FAB
+                if (!vaUiState.permissions.hasCorePermissions || !vaUiState.permissions.hasOptionalPermissions) {
+                    PermissionStatusButton(
+                        text = "Permissions",
+                        colour = if (!vaUiState.permissions.hasCorePermissions) CustomColours.RED else CustomColours.AMBER,
+                        onClick = onPermissionsClick
+                    )
                 }
             }
         }
+    }
 
-        // Fixed elements at the bottom
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        if (isLandscape) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(horizontal = 32.dp)
+                    .padding(bottom = 56.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(32.dp)
+            ) {
+                Box(modifier = Modifier.weight(0.4f), contentAlignment = Alignment.Center) {
+                    LogoImage(Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
+                }
+                Column(
+                    modifier = Modifier
+                        .weight(0.6f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) { details() }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(horizontal = 24.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Spacer(modifier = Modifier.height(48.dp))
+                LogoImage(Modifier.padding(horizontal = 48.dp, vertical = 8.dp))
+                Spacer(modifier = Modifier.height(40.dp))
+                details()
+                Spacer(modifier = Modifier.height(120.dp)) // Space for Status and FAB
+            }
+        }
+
         StatusText(
             statusMessage = vaUiState.statusMessage,
             modifier = Modifier.align(Alignment.BottomCenter)
@@ -240,60 +181,97 @@ fun ConnectionContent(
 }
 
 @Composable
-fun LogoImage(orientation: Int) {
+fun LogoImage(modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(id = R.drawable.main_logo),
         contentDescription = "Logo",
-        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.surfaceBright),
-        modifier =
-                when(orientation) {
-                    Configuration.ORIENTATION_PORTRAIT -> Modifier.padding(start=48.dp, end=48.dp, top=8.dp)
-                    else -> Modifier.padding(start=24.dp, end=24.dp, top=8.dp)
-                }
+        contentScale = ContentScale.Fit,
+        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onBackground),
+        modifier = modifier
     )
 }
 
+/** Device/app details. Values never wrap: they stay on one line and ellipsize only as a last resort. */
 @Composable
-fun InfoTextBlock(infoItems: Map<String, String>) {
-    Column(
-        modifier=Modifier
-            .width(280.dp)
-            .padding(16.dp)
+fun InfoCard(infoItems: Map<String, String>) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier
+            .widthIn(min = 280.dp, max = 520.dp)
+            .fillMaxWidth()
     ) {
-        infoItems.forEach { (label, value) ->
-            InfoItem(label, value)
+        Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)) {
+            infoItems.entries.forEachIndexed { index, (label, value) ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        softWrap = false
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
         }
     }
 }
-
-
 
 @Composable
 fun StatusText(statusMessage: String, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(bottom = 20.dp),
+            .navigationBarsPadding()
+            .padding(bottom = 24.dp, start = 80.dp, end = 80.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             statusMessage,
-            color = MaterialTheme.colorScheme.onPrimary, 
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            fontSize = 20.sp
+            style = MaterialTheme.typography.titleMedium
         )
     }
 }
 
 @Composable
-fun LaunchOnBootSwitch(isOn: Boolean, callback: (Boolean) -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        LabelledSwitch(isOn, callback)
+fun LaunchOnBootSection(isOn: Boolean, callback: (Boolean) -> Unit) {
+    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            LabelledSwitch(isOn, callback)
+        }
+    } else {
+        Text(
+            text = "To launch on boot, set this app as the launcher",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp),
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -304,7 +282,7 @@ fun UpdateButton(text: String, modifier: Modifier = Modifier, onClick: () -> Uni
         modifier = modifier,
         colors = ButtonDefaults.buttonColors(
             containerColor = CustomColours.AMBER,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
+            contentColor = Color.White,
         )
     ) { Text(text) }
 }

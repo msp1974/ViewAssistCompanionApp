@@ -47,7 +47,7 @@ data class MenuOption(
 @Composable
 fun MenuLayout(
     modifier: Modifier = Modifier,
-    title: String = "VACA Settings",
+    title: String = "Menu",
     level: Int = 0,
     onClose: () -> Unit,
     options: List<MenuOption>
@@ -75,7 +75,7 @@ fun MenuLayout(
 @Composable
 fun MenuLayout(
     modifier: Modifier = Modifier,
-    title: String = "VACA Settings",
+    title: String = "Menu",
     level: Int = 0,
     onClose: () -> Unit,
     content: @Composable ColumnScope.() -> Unit
@@ -170,7 +170,7 @@ fun MenuListItem(
 fun MenuLayoutPreview() {
     AppTheme {
         MenuLayout(
-            title = "VACA Settings",
+            title = "Menu",
             level = 1,
             onClose = {},
             options = listOf(

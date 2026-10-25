@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.ui.layouts.config
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsRun
 import androidx.compose.material.icons.filled.*
 import com.msp1974.vacompanion.ui.VAViewModel
 import kotlin.math.roundToInt
@@ -8,9 +9,14 @@ import kotlin.math.roundToInt
 private const val APPEARANCE = "Appearance"
 private const val BRIGHTNESS = "Brightness"
 private const val SCREEN = "Screen"
+private const val WAKE = "Wake the screen"
 
 fun displayConfig(vm: VAViewModel): ConfigSection {
     val c = vm.config
+    val hardware = vm.deviceInfo.hardware
+    val hasCamera = hardware.hasFrontCamera
+    val hasAccelerometer = hardware.hasAccelerometer
+    val hasProximity = hardware.hasProximitySensor
     return ConfigSection(
         "Display", Icons.Default.Brightness6, listOf(
             ConfigItem.Toggle(BRIGHTNESS, "Automatic brightness", null, Icons.Default.BrightnessAuto,
@@ -45,6 +51,41 @@ fun displayConfig(vm: VAViewModel): ConfigSection {
             ConfigItem.Toggle(APPEARANCE, "Status bar", "Show the Android status bar over the dashboard",
                 Icons.Default.Smartphone, key = "show_status_bar",
                 get = { c.showStatusBar }, set = { c.showStatusBar = it }),
+
+            ConfigItem.Toggle(WAKE, "On wake word", "Switch the screen on when the wake word is heard",
+                Icons.Default.RecordVoiceOver, key = "screen_on_wake_word",
+                get = { c.screenOnWakeWord }, set = { c.screenOnWakeWord = it }),
+
+            ConfigItem.Toggle(WAKE, "On motion", "Switch the screen on when motion is detected",
+                Icons.AutoMirrored.Filled.DirectionsRun, key = "screen_on_motion",
+                get = { c.screenOnMotion }, set = { c.screenOnMotion = it })
+                .enabledWhen { hasCamera },
+            ConfigItem.Options(WAKE, "Camera motion detection", null, Icons.Default.Videocam,
+                key = "motion_detection_mode", options = friendlyOptions("none", "motion", "face"),
+                get = { c.motionDetectionMode },
+                set = { c.motionDetectionMode = it; c.enableMotionDetection = it != "none" })
+                .enabledWhen { hasCamera },
+            ConfigItem.IntValue(WAKE, "Motion sensitivity", null, Icons.Default.Tune,
+                key = "motion_detection_sensitivity", min = 0, max = 100,
+                get = { c.motionDetectionSensitivity }, set = { c.motionDetectionSensitivity = it })
+                .enabledWhen { hasCamera },
+
+            ConfigItem.Toggle(WAKE, "On bump", "Switch the screen on when the device is bumped",
+                Icons.Default.Vibration, key = "screen_on_bump",
+                get = { c.screenOnBump }, set = { c.screenOnBump = it })
+                .enabledWhen { hasAccelerometer },
+            ConfigItem.FloatValue(WAKE, "Bump sensitivity", null, Icons.Default.Tune,
+                key = "bump_sensitivity", min = 0.5f, max = 10f, step = 0.5f,
+                get = { c.bumpSensitivity * 10 }, set = { c.bumpSensitivity = it / 10f })
+                .enabledWhen { hasAccelerometer },
+
+            ConfigItem.Toggle(WAKE, "On proximity", "Switch the screen on when something comes close",
+                Icons.Default.Sensors, key = "screen_on_proximity",
+                get = { c.screenOnProximity }, set = { c.screenOnProximity = it })
+                .enabledWhen { hasProximity },
+            ConfigItem.Info(WAKE, "Proximity threshold", null, Icons.Default.Tune,
+                value = { c.rawProximitySensorThreshold.toString() })
+                .enabledWhen { hasProximity },
         )
     )
 }

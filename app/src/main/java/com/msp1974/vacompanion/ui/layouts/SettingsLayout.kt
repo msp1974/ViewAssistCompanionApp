@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
-import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.Surface
@@ -20,10 +20,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.zIndex
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.components.MenuLayout
-import com.msp1974.vacompanion.ui.components.MenuOption
+import com.msp1974.vacompanion.ui.components.SettingsTile
+import com.msp1974.vacompanion.ui.components.SettingsTileGrid
 import com.msp1974.vacompanion.ui.components.UUIDEditDialog
 import com.msp1974.vacompanion.ui.components.VADialog
 
@@ -33,7 +35,6 @@ import com.msp1974.vacompanion.ui.components.VADialog
 enum class SettingsScreen {
     MAIN,
     CUSTOM_FILES,
-    PERMISSIONS_INFO,
     CAMERA_STREAM,
     CONFIGURATION
 }
@@ -76,75 +77,41 @@ fun SettingsLayout(
         ) { screen ->
             when (screen) {
                 SettingsScreen.MAIN -> {
-                    val menuOptions = mutableListOf<MenuOption>()
-
-                    menuOptions.add(
-                        MenuOption(
-                            title = "Unpair Device",
-                            subtitle = "Unpair from current HA server",
-                            icon = Icons.Default.DisabledByDefault,
-                            onClick = { currentDialog = Dialog.CLEAR_PAIRING }
-                        )
-                    )
-                    if (!vaUiState.menuOpenedByAction) {
-                        menuOptions.add(
-                            MenuOption(
-                                title = "Edit Device ID",
-                                subtitle = "Change the unique ID for this device",
-                                icon = Icons.Default.FileCopy,
-                                onClick = { currentDialog = Dialog.EDIT_UUID }
-                            )
-                        )
+                    val tiles = mutableListOf<SettingsTile>()
+                    // Colours come from the same palette as the Configuration sections, in order.
+                    fun add(title: String, subtitle: String, icon: ImageVector, onClick: () -> Unit) {
+                        tiles.add(SettingsTile(title, subtitle, icon, sectionColor(tiles.size), onClick))
                     }
 
-                    menuOptions.add(
-                        MenuOption(
-                            title = "Manage Custom Files",
-                            subtitle = "Manage custom wake words, sounds and alarms",
-                            icon = Icons.Default.FileCopy,
-                            onClick = { currentScreen = SettingsScreen.CUSTOM_FILES }
-                        )
-                    )
-                    menuOptions.add(
-                        MenuOption(
-                            title = "Permissions Info",
-                            icon = Icons.Default.Security,
-                            onClick = { currentScreen = SettingsScreen.PERMISSIONS_INFO }
-                        )
-                    )
+                    add("Configuration", "View the settings provided by Home Assistant", Icons.Default.Tune) {
+                        currentScreen = SettingsScreen.CONFIGURATION
+                    }
+                    add("Manage Custom Files", "Manage custom wake words, sounds and alarms", Icons.Default.FileCopy) {
+                        currentScreen = SettingsScreen.CUSTOM_FILES
+                    }
                     if (vaUiState.menuOpenedByAction && viewModel.deviceInfo.hardware.hasFrontCamera) {
-                        menuOptions.add(
-                            MenuOption(
-                                title = "View Camera Stream",
-                                subtitle = "Check the camera feed for motion or face detection",
-                                icon = Icons.Default.Videocam,
-                                onClick = { currentScreen = SettingsScreen.CAMERA_STREAM }
-                            )
-                        )
+                        add("View Camera Stream", "Check the camera feed for motion or face detection", Icons.Default.Videocam) {
+                            currentScreen = SettingsScreen.CAMERA_STREAM
+                        }
                     }
-                    menuOptions.add(
-                        MenuOption(
-                            title = "Configuration",
-                            subtitle = "View the settings provided by Home Assistant",
-                            icon = Icons.Default.Tune,
-                            onClick = { currentScreen = SettingsScreen.CONFIGURATION }
-                        )
-                    )
+                    if (!vaUiState.menuOpenedByAction) {
+                        add("Edit Device ID", "Change the unique ID for this device", Icons.Default.Fingerprint) {
+                            currentDialog = Dialog.EDIT_UUID
+                        }
+                    }
+                    add("Unpair Device", "Unpair from the Home Assistant server and reset authentication", Icons.Default.DisabledByDefault) {
+                        currentDialog = Dialog.CLEAR_PAIRING
+                    }
 
                     MenuLayout(
-                        title = "VACA Settings",
-                        onClose = onClose,
-                        options = menuOptions
-                    )
+                        title = "Menu",
+                        onClose = onClose
+                    ) {
+                        SettingsTileGrid(tiles)
+                    }
                 }
                 SettingsScreen.CUSTOM_FILES -> {
                     CustomFilesLayout(
-                        viewModel = viewModel,
-                        onBack = { currentScreen = SettingsScreen.MAIN }
-                    )
-                }
-                SettingsScreen.PERMISSIONS_INFO -> {
-                    PermissionsLayout(
                         viewModel = viewModel,
                         onBack = { currentScreen = SettingsScreen.MAIN }
                     )

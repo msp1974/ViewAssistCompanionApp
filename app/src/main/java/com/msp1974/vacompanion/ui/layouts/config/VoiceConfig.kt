@@ -5,11 +5,9 @@ import androidx.compose.material.icons.filled.*
 import com.msp1974.vacompanion.ui.VAViewModel
 
 private const val WAKE = "Wake word"
-private const val MIC = "Microphone"
 
 fun voiceConfig(vm: VAViewModel): ConfigSection {
     val c = vm.config
-    val hardware = vm.deviceInfo.hardware
     return ConfigSection(
         "Voice Assistant", Icons.Default.Mic, listOf(
             ConfigItem.Options(WAKE, "Detection engine", null, Icons.Default.Memory,
@@ -35,24 +33,8 @@ fun voiceConfig(vm: VAViewModel): ConfigSection {
                 },
                 get = { c.wakeWordSound }, set = { c.wakeWordSound = it }),
             ConfigItem.Toggle(WAKE, "Continue conversation",
-                "Keep listening after a reply when the assistant asks a question", Icons.Default.Forum,
+                "Keep listening after a reply always.  When off the assistant will keep listening for a response to a question only", Icons.Default.Forum,
                 key = "continue_conversation", get = { c.continueConversation }, set = { c.continueConversation = it }),
-
-            ConfigItem.Options(MIC, "Microphone", null, Icons.Default.Mic, key = "audio_input",
-                optionsProvider = {
-                    listOf(ConfigOption("-1", "Automatic")) +
-                        hardware.audioInputs.map { ConfigOption(it.id.toString(), "${it.productName} (${it.typeName})") }
-                },
-                get = { c.audioInputId.toString() }, set = { c.audioInputId = it.toInt() },
-                toHaValue = { it.toInt() }),
-            ConfigItem.IntValue(MIC, "Microphone gain", "Boost or reduce the microphone level", Icons.Default.GraphicEq,
-                key = "mic_gain", min = -10, max = 10, unit = " dB",
-                get = { c.micGain }, set = { c.micGain = it }),
-            ConfigItem.Toggle(MIC, "Advanced gain", "Use extra software gain for quiet microphones",
-                Icons.Default.Equalizer, key = "advanced_gain",
-                get = { c.useAdvancedGain }, set = { c.useAdvancedGain = it }),
-            ConfigItem.Toggle(MIC, "Muted", null, Icons.Default.MicOff,
-                key = "mute", get = { c.isMuted }, set = { c.isMuted = it }),
         )
     )
 }

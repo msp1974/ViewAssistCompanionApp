@@ -19,6 +19,18 @@ sealed class ConfigItem(
     val description: String?,
     val icon: ImageVector,
 ) {
+    /**
+     * Whether the item can be used. A row that can't (e.g. the device lacks the hardware) is still
+     * shown, but dimmed and not changeable. Set with [enabledWhen].
+     */
+    var isEnabled: () -> Boolean = { true }
+        private set
+
+    fun enabledWhen(check: () -> Boolean): ConfigItem {
+        isEnabled = check
+        return this
+    }
+
     /** A value that is only displayed. */
     class Info(
         group: String, label: String, description: String? = null, icon: ImageVector,
@@ -26,10 +38,16 @@ sealed class ConfigItem(
         val valueColor: (() -> Color?)? = null,
     ) : ConfigItem(group, label, description, icon)
 
-    /** A row that does something when tapped; [onClick] is given a function to open a link. */
+    /**
+     * A row that does something when tapped; [onClick] is given a function to open a link. An
+     * optional [value] shows a current state, re-read whenever the app comes back to the front
+     * (e.g. after changing a system setting that the tap opened).
+     */
     class Action(
         group: String, label: String, description: String? = null, icon: ImageVector,
         val opensLink: Boolean = false,
+        val value: (() -> String)? = null,
+        val valueColor: (() -> Color?)? = null,
         val onClick: (openUri: (String) -> Unit) -> Unit,
     ) : ConfigItem(group, label, description, icon)
 

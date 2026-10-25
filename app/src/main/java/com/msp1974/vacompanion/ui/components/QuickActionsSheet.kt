@@ -92,7 +92,7 @@ fun QuickActionsSheet(
                 )
                 QuickActionButton(
                     icon = Icons.Default.Settings,
-                    label = "Settings",
+                    label = "Menu",
                     onClick = {
                         onOpenSettings()
                         onDismiss()

@@ -109,6 +109,11 @@ class APPConfig @Inject constructor(val context: Context) {
     // Id of the Sendspin group the player currently belongs to; blank when not in one. Transient.
     @Volatile
     var sendspinGroupId: String = ""
+    // Settings changed on the device (Configuration screen) that Home Assistant has not been told
+    // about yet, by HA settings key. Latest value wins; the Satellite sends them as soon as it is
+    // running, so a change made while HA is disconnected is not lost.
+    val pendingHaSettings = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
     // True while the Bluetooth proxy cannot scan because system Location is off. Set by the scanner.
     var bluetoothProxyLocationOff: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -187,10 +192,6 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getString("area", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("area", value.trim()) }
 
-    var mediaPlayerGain: Int by Delegates.observable(0) { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue)
-    }
-
     var isMuted: Boolean by Delegates.observable(DEFAULT_MUTE) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
@@ -215,7 +216,9 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var darkMode: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+    // Persisted so the UI can pick the right theme at launch, before HA connects and pushes settings.
+    var darkMode: Boolean by Delegates.observable(sharedPrefs.getBoolean("dark_mode", false)) { property, oldValue, newValue ->
+        if (oldValue != newValue) sharedPrefs.edit { putBoolean("dark_mode", newValue) }
         onValueChangedListener(property, oldValue, newValue)
     }
 

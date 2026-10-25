@@ -194,6 +194,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         Timber.d("Satellite started in ${System.currentTimeMillis() - startTime}ms")
 
         state = SatelliteState.RUNNING
+        sendPendingSettings()
         BroadcastSender.sendBroadcast(context, BroadcastSender.SATELLITE_STARTED)
 
         audioManager.registerAudioDeviceCallback(audioDeviceCallback, null)
@@ -832,6 +833,28 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         sendCustomEvent(WyomingCustomEventType.STATUS, data)
     }
 
+    // Sends every setting changed on the device that HA has not been told about. Anything that
+    // cannot be sent yet (satellite not running) stays queued for the next time this is called.
+    private fun sendPendingSettings() {
+        if (state != SatelliteState.RUNNING) {
+            if (config.pendingHaSettings.isNotEmpty()) {
+                Timber.w("Settings not sent to HA yet (satellite $state): ${config.pendingHaSettings.keys}")
+            }
+            return
+        }
+        for (key in config.pendingHaSettings.keys.toList()) {
+            val value = config.pendingHaSettings[key] ?: continue
+            try {
+                sendSetting(key, value)
+                Timber.i("Sent setting to HA: $key=$value")
+                // Only drop it if a newer value has not been queued in the meantime.
+                config.pendingHaSettings.remove(key, value)
+            } catch (e: Exception) {
+                Timber.e("Failed to send setting $key to HA: $e")
+            }
+        }
+    }
+
     fun sendSetting(name: String, value: Any) {
         sendCustomEvent(WyomingCustomEventType.SETTINGS, buildJsonObject {
             put("timestamp", isoNow())
@@ -985,10 +1008,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     override fun onEventTriggered(event: Event) {
         when (event.eventName) {
             // A setting changed on the device (Configuration screen): tell HA, under its settings key.
-            "sendSettingToHA" -> {
-                val key = event.oldValue as? String
-                if (key != null && state == SatelliteState.RUNNING) sendSetting(key, event.newValue)
-            }
+            "sendSettingToHA" -> sendPendingSettings()
             "requestSettings" -> {
                 scope.launch {
                     if (clientId != "") {

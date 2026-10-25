@@ -1,9 +1,11 @@
 package com.msp1974.vacompanion.ui.layouts.config
 
 import android.content.Context
+import android.location.LocationManager
 import android.media.AudioManager
 import android.net.wifi.WifiManager
 import androidx.compose.ui.graphics.Color
+import androidx.core.location.LocationManagerCompat
 import com.msp1974.vacompanion.audio.AudioEnhancerSource
 import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.audio.AudioOutputRouter
@@ -11,6 +13,12 @@ import com.msp1974.vacompanion.settings.APPConfig
 import com.msp1974.vacompanion.ui.theme.CustomColours
 
 // Helpers for working out the values shown by the read-only config items.
+
+// Whether Android's Location setting is on (needed for Bluetooth scanning).
+fun locationEnabled(context: Context): Boolean {
+    val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return false
+    return LocationManagerCompat.isLocationEnabled(lm)
+}
 
 fun yesNo(value: Boolean) = if (value) "Yes" else "No"
 

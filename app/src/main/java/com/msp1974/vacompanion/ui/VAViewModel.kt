@@ -240,6 +240,7 @@ class VAViewModel @Inject constructor(
         _vacaState.update { currentState ->
             currentState.copy(
                 launchOnBoot = config.startOnBoot,
+                darkMode = config.darkMode,
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
                 showRtspStreamingIndicator = config.showRtspStreamingIndicator,
@@ -484,6 +485,7 @@ class VAViewModel @Inject constructor(
      * [value] is in the units HA uses; the Satellite sends it if it is connected.
      */
     fun sendSettingToHA(key: String, value: Any) {
+        config.pendingHaSettings[key] = value
         config.eventBroadcaster.notifyEvent(Event("sendSettingToHA", key, value))
     }
 

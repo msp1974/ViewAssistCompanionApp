@@ -74,7 +74,7 @@ class DeviceManager @Inject constructor(
     val sensors: StateFlow<Map<String, Any>> = _sensors.asStateFlow()
 
     // Status class to hold all connection-related states - includes full sensor state
-    private val _status = MutableStateFlow(Status())
+    private val _status = MutableStateFlow(Status(darkMode = config.darkMode))
     val status: StateFlow<Status> = _status.asStateFlow()
 
     init {
