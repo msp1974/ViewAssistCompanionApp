@@ -51,7 +51,6 @@
         tools:ignore="ProtectedPermissions" />
 
     <!--Restart Service After Reboot the Mobile Device-->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!--Write permissions for auto updating-->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -103,20 +102,6 @@
         <service android:name=".players.MusicPlayerService" />
         <service android:name=".players.AlarmService" />
         <service android:name=".players.VoicePlayerService" />
-
-        <!--Broadcast Receiver (Optional)-->
-        <receiver
-            android:name="com.msp1974.vacompanion.broadcasts.BootUpReceiver"
-            android:enabled="true"
-            android:exported="true">
-            <intent-filter>
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-            </intent-filter>
-        </receiver>
         <receiver
             android:name=".VACADeviceAdminReceiver"
             android:description="@string/app_name"

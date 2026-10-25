@@ -1,7 +1,6 @@
 package com.msp1974.vacompanion.ui.layouts
 
 import android.content.res.Configuration
-import android.os.Build
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -55,7 +54,6 @@ import com.msp1974.vacompanion.R
 import com.msp1974.vacompanion.ui.VAViewModel
 import com.msp1974.vacompanion.ui.State
 import com.msp1974.vacompanion.ui.components.AppFloatingActionButton
-import com.msp1974.vacompanion.ui.components.LabelledSwitch
 import com.msp1974.vacompanion.ui.theme.AppTheme
 import com.msp1974.vacompanion.ui.theme.CustomColours
 
@@ -78,7 +76,6 @@ fun ConnectionScreen(vaViewModel: VAViewModel = viewModel()) {
         ConnectionContent(
             vaUiState = vaUiState,
             onSettingsClick = { vaViewModel.setShowSettings(true) },
-            onLaunchOnBootChange = { vaViewModel.launchOnBoot = it },
             onCheckForUpdate = { vaViewModel.checkForUpdate() },
             onPermissionsClick = { showPermissions = true },
         )
@@ -89,7 +86,6 @@ fun ConnectionScreen(vaViewModel: VAViewModel = viewModel()) {
 fun ConnectionContent(
     vaUiState: State,
     onSettingsClick: () -> Unit,
-    onLaunchOnBootChange: (Boolean) -> Unit,
     onCheckForUpdate: () -> Unit,
     onPermissionsClick: () -> Unit,
 ) {
@@ -98,7 +94,7 @@ fun ConnectionContent(
     val details: @Composable () -> Unit = {
         InfoCard(vaUiState.appInfo)
         Spacer(modifier = Modifier.height(16.dp))
-        LaunchOnBootSection(vaUiState.launchOnBoot, onLaunchOnBootChange)
+        LaunchOnBootHint()
         if (vaUiState.updates.updateAvailable || !vaUiState.permissions.hasCorePermissions || !vaUiState.permissions.hasOptionalPermissions) {
             Spacer(modifier = Modifier.height(8.dp))
             Row(
@@ -256,23 +252,14 @@ fun StatusText(statusMessage: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun LaunchOnBootSection(isOn: Boolean, callback: (Boolean) -> Unit) {
-    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.Q) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            LabelledSwitch(isOn, callback)
-        }
-    } else {
-        Text(
-            text = "To launch on boot, set this app as the launcher",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp),
-            textAlign = TextAlign.Center
-        )
-    }
+fun LaunchOnBootHint() {
+    Text(
+        text = "To launch on boot, set this app as the launcher",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp),
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable
@@ -332,7 +319,6 @@ fun AppPreview() {
                     )
                 ),
                 onSettingsClick = {},
-                onLaunchOnBootChange = {},
                 onCheckForUpdate = {},
                 onPermissionsClick = {},
             )

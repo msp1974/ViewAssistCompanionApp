@@ -127,7 +127,6 @@ data class State(
     val statusMessage: String = "Initialising...",
     var orientation: Int = Configuration.ORIENTATION_LANDSCAPE,
 
-    var launchOnBoot: Boolean = true,
     // Single source of truth for "is the satellite running" on the UI side - mirrors
     // WyomingServerStatus.satelliteRunning (itself derived from Satellite.state) and is
     // what MainActivity's Compose tree keys off to decide whether to show WebViewScreen.
@@ -239,7 +238,6 @@ class VAViewModel @Inject constructor(
     fun initValues() {
         _vacaState.update { currentState ->
             currentState.copy(
-                launchOnBoot = config.startOnBoot,
                 darkMode = config.darkMode,
                 motionDetectionSensitivity = config.motionDetectionSensitivity,
                 motionDetectionMode = config.motionDetectionMode,
@@ -263,17 +261,6 @@ class VAViewModel @Inject constructor(
     override fun close() {
         network.releaseWifiLock()
     }
-
-    var launchOnBoot: Boolean
-        get() = config.startOnBoot
-        set(value) {
-            _vacaState.update { currentState ->
-                currentState.copy(
-                    launchOnBoot = value
-                )
-            }
-            config.startOnBoot = value
-        }
 
     override fun onEventTriggered(event: Event) {
         var consumed = true
