@@ -6,6 +6,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.DisabledByDefault
 import androidx.compose.material.icons.filled.FileCopy
 import androidx.compose.material.icons.filled.Fingerprint
@@ -36,7 +37,8 @@ enum class SettingsScreen {
     MAIN,
     CUSTOM_FILES,
     CAMERA_STREAM,
-    CONFIGURATION
+    CONFIGURATION,
+    APP_LAUNCHER
 }
 
 enum class Dialog {
@@ -89,6 +91,9 @@ fun SettingsLayout(
                     add("Manage Custom Files", "Manage custom wake words, sounds and alarms", Icons.Default.FileCopy) {
                         currentScreen = SettingsScreen.CUSTOM_FILES
                     }
+                    add("App Launcher", "Launch other apps from a page of tiles you choose", Icons.Default.Apps) {
+                        currentScreen = SettingsScreen.APP_LAUNCHER
+                    }
                     if (vaUiState.menuOpenedByAction && viewModel.deviceInfo.hardware.hasFrontCamera) {
                         add("View Camera Stream", "Check the camera feed for motion or face detection", Icons.Default.Videocam) {
                             currentScreen = SettingsScreen.CAMERA_STREAM
@@ -118,6 +123,12 @@ fun SettingsLayout(
                 }
                 SettingsScreen.CAMERA_STREAM -> {
                     CameraStreamLayout(
+                        viewModel = viewModel,
+                        onBack = { currentScreen = SettingsScreen.MAIN }
+                    )
+                }
+                SettingsScreen.APP_LAUNCHER -> {
+                    AppLauncherLayout(
                         viewModel = viewModel,
                         onBack = { currentScreen = SettingsScreen.MAIN }
                     )
