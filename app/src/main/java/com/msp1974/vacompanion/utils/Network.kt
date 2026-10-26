@@ -10,7 +10,7 @@ class Network(val context: Context) {
 
     init {
         val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "wallPanel:wifiLock")
+        wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "vaca:wifiLock")
     }
 
     fun setWifiLock() {

@@ -21,6 +21,7 @@ class NetworkSensor(private val context: Context) : Sensor {
     override var onUpdate: ((String, Any) -> Unit)? = null
     private val connectivityManager = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     private var currentState = NetworkState()
+    private val wifiDropMonitor = WifiDropMonitor(context)
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onUnavailable() {
@@ -34,22 +35,27 @@ class NetworkSensor(private val context: Context) : Sensor {
 
         override fun onAvailable(network: Network) {
             Timber.d("Network available")
+            val type = getNetworkType(connectivityManager, network)
+            if (type == "Wifi") wifiDropMonitor.onWifiConnected()
             updateNetworkState(currentState.copy(
                 status = NetworkStatus.Available,
-                type = getNetworkType(connectivityManager, network),
+                type = type,
                 lastChanged = System.currentTimeMillis()
             ))
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            val type = getNetworkType(connectivityManager, network)
+            if (type == "Wifi") wifiDropMonitor.onWifiConnected()
             updateNetworkState(currentState.copy(
-                type = getNetworkType(connectivityManager, network),
+                type = type,
                 lastChanged = System.currentTimeMillis()
             ))
         }
 
         override fun onLost(network: Network) {
             Timber.w("Network lost")
+            if (currentState.type == "Wifi") wifiDropMonitor.onWifiLost()
             updateNetworkState(currentState.copy(
                 status = NetworkStatus.Unavailable,
                 type = "None",
@@ -96,6 +102,7 @@ class NetworkSensor(private val context: Context) : Sensor {
     }
 
     override fun stop() {
+        wifiDropMonitor.stop()
         connectivityManager.unregisterNetworkCallback(callback)
     }
 }
