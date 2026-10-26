@@ -497,6 +497,11 @@ class VAViewModel @Inject constructor(
         config.eventBroadcaster.notifyEvent(Event("sendspinCommand", "", command))
     }
 
+    fun onToggleMute(muted: Boolean) {
+        config.isMuted = muted
+        sendSettingToHA("mute", muted)
+    }
+
     fun onToggleDND(enabled: Boolean) {
         val notificationManager = app.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (notificationManager.isNotificationPolicyAccessGranted) {

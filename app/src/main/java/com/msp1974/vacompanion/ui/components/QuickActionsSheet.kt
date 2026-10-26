@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DoNotDisturbOn
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -30,6 +32,8 @@ fun QuickActionsSheet(
     onToggleDiagnostics: () -> Unit,
     isDNDEnabled: Boolean,
     onToggleDND: () -> Unit,
+    isMicMuted: Boolean,
+    onToggleMicMute: () -> Unit,
     sheetState: SheetState = rememberModalBottomSheetState(),
 ) {
     ModalBottomSheet(
@@ -80,6 +84,14 @@ fun QuickActionsSheet(
                     isSelected = isDNDEnabled,
                     onClick = {
                         onToggleDND()
+                    }
+                )
+                QuickActionButton(
+                    icon = if (isMicMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                    label = "Mic Mute",
+                    isSelected = isMicMuted,
+                    onClick = {
+                        onToggleMicMute()
                     }
                 )
                 QuickActionButton(

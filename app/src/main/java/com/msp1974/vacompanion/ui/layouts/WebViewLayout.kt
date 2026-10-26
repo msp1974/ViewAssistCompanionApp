@@ -188,7 +188,9 @@ fun WebViewScreen (webView: CustomWebView, vaViewModel: VAViewModel = viewModel(
                     !vaViewModel.config.diagnosticsEnabled
                 )},
                 isDNDEnabled = vaUiState.isDND,
-                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) }
+                onToggleDND = { vaViewModel.onToggleDND(!vaUiState.isDND) },
+                isMicMuted = vaUiState.diagnosticInfo.muted,
+                onToggleMicMute = { vaViewModel.onToggleMute(!vaUiState.diagnosticInfo.muted) }
             )
         }
     }
