@@ -670,6 +670,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
                 Timber.i("Pipeline ended.  Restarting: $continueConversation")
                 // A continuing conversation keeps other devices ducked until it really finishes.
+                // This device ducked the others when it won arbitration, so it always unducks them.
                 if (!(reason == PipelineEndReason.END_OF_PIPELINE && continueConversation)) {
                     config.eventBroadcaster.notifyEvent(Event(VacaUdpBroadcast.EVENT_PIPELINE_COMPLETED, "", ""))
                 }
