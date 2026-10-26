@@ -75,3 +75,12 @@ lint/tmp/
 # App Specific cases 
 app/release/output.json
 .idea/codeStyles/
+
+# Local device deploy helper
+scripts/deploy.ps1
+scripts/devices.txt
+.claude/commands/deploy.md
+scripts/common.ps1
+scripts/mute.ps1
+.claude/commands/mute.md
+.claude/commands/unmute.md
