@@ -128,6 +128,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         val splashscreen = installSplashScreen()
         super.onCreate(savedInstanceState)
 
+        // setDarkMode() only runs when the setting changes, and the system-wide night mode it also
+        // sets is refused on devices where it is locked (e.g. the Echo Show 8), so apply the
+        // app's own night mode at startup. This is what makes the WebView report prefers-color-scheme.
+        AppCompatDelegate.setDefaultNightMode(
+            if (config.darkMode) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        )
+
         screen = ScreenUtils(this, config)
         // The orientation is otherwise only applied when the setting changes, so a new Activity
         // would start with the manifest default whatever mode is configured.
