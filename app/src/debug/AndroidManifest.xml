@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: lets scripts/mute.ps1 set mic mute and DND over adb. -->
+        <receiver
+            android:name="com.msp1974.vacompanion.debug.DebugQuietModeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.msp1974.vacompanion.debug.SET_QUIET_MODE" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
