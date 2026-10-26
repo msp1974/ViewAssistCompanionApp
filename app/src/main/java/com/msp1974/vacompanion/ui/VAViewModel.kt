@@ -490,6 +490,7 @@ class VAViewModel @Inject constructor(
 
     fun onShowDiagnostics(show: Boolean) {
         config.diagnosticsEnabled = show
+        sendSettingToHA("diagnostics_enabled", show)
     }
 
     /** A transport button on the now-playing overlay: "play", "pause", "next" or "previous". */
