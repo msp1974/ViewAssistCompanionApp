@@ -46,6 +46,9 @@ object VacaBroadcastType {
     const val MASTER_CLAIM = "master_claim"
     const val MASTER_HEARTBEAT = "master_heartbeat"
 
+    // Sent by a device when its listener comes up; the master answers with an immediate heartbeat.
+    const val DEVICE_HELLO = "device_hello"
+
     // Wake word arbitration: devices report detections to the master, which announces the winner.
     const val WAKE_DETECTION = "wake_detection"
     const val WAKE_DECISION = "wake_decision"
@@ -144,6 +147,9 @@ class VacaUdpBroadcast(
         private const val HEARTBEAT_INTERVAL_MS = 2_000L
         private const val HEARTBEAT_TIMEOUT_MS = 6_000L
 
+        // How long a freshly started device waits for the master to answer its hello before claiming.
+        private const val STARTUP_MASTER_WAIT_MS = 2_500L
+
         // Devices wait a random time up to this before claiming mastership, so the fastest claims it.
         private const val ELECTION_JITTER_MS = 500
 
@@ -173,6 +179,8 @@ class VacaUdpBroadcast(
 
         addHandler(VacaBroadcastType.MASTER_CLAIM) { msg -> onMasterSeen(msg.senderId) }
         addHandler(VacaBroadcastType.MASTER_HEARTBEAT) { msg -> onMasterSeen(msg.senderId) }
+        // A device just came up and doesn't know the master: tell it straight away.
+        addHandler(VacaBroadcastType.DEVICE_HELLO) { if (isMaster) send(VacaBroadcastType.MASTER_HEARTBEAT) }
         addHandler(VacaBroadcastType.WAKE_DETECTION) { msg ->
             val id = msg.data[DATA_ID]?.jsonPrimitive?.contentOrNull ?: return@addHandler
             val score = msg.data[DATA_SCORE]?.jsonPrimitive?.floatOrNull ?: 0f
@@ -315,8 +323,8 @@ class VacaUdpBroadcast(
     }
 
     private suspend fun masterLoop() {
-        // Starting as a listener gives an existing master time to be heard before anyone claims.
-        lastMasterSeen = SystemClock.elapsedRealtime()
+        // Starting as a listener gives an existing master time to answer our hello before we claim.
+        lastMasterSeen = SystemClock.elapsedRealtime() - (HEARTBEAT_TIMEOUT_MS - STARTUP_MASTER_WAIT_MS)
         var lastHeartbeat = 0L
         while (scope.isActive) {
             val now = SystemClock.elapsedRealtime()
@@ -379,7 +387,7 @@ class VacaUdpBroadcast(
                 } catch (e: Exception) {
                     Timber.d("VacaUdpBroadcast: send to $target failed: ${e.message}")
                 }
-                //Timber.d("VacaUdpBroadcast: sent $type")
+                if (type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: sent $type")
             } catch (e: Exception) {
                 Timber.e("VacaUdpBroadcast: send failed: ${e.message}")
             }
@@ -397,6 +405,7 @@ class VacaUdpBroadcast(
                 }
                 receiveSocket = socket
                 Timber.i("VacaUdpBroadcast: listening on UDP $PORT")
+                send(VacaBroadcastType.DEVICE_HELLO)
                 val buffer = ByteArray(MAX_PACKET_BYTES)
                 while (scope.isActive) {
                     val packet = DatagramPacket(buffer, buffer.size)
@@ -417,7 +426,7 @@ class VacaUdpBroadcast(
     private fun handlePacket(packet: DatagramPacket) {
         val message = parse(packet) ?: return
         if (message.senderId == config.uuid) return
-        //Timber.d("VacaUdpBroadcast: received ${message.type} from ${message.senderId}")
+        if (message.type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: received ${message.type} from ${message.senderId}")
         handlers[message.type]?.forEach {
             try {
                 it(message)
