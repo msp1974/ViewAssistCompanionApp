@@ -166,7 +166,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
         customFilesLoader()
 
-        volumeObserver = VolumeObserver(context) { musicVolume, notificationVolume, alarmVolume ->
+        // Before the observer is registered so it cannot read half-applied volumes back into config
+        eventHandler.applyVolumes()
+
+        volumeObserver =VolumeObserver(context) { musicVolume, notificationVolume, alarmVolume ->
             if (config.musicVolume != musicVolume) {
                 config.musicVolume = musicVolume
                 sendSetting("music_volume", musicVolume)

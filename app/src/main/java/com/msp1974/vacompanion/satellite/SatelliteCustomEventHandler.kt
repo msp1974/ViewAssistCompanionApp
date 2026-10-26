@@ -66,6 +66,17 @@ class SatelliteCustomEventHandler(
         serviceStarted.complete(0)
     }
 
+    // The initial settings from HA are processed before this handler is listening, and the config
+    // properties only notify on a change from their in-memory default, so push the volumes to the
+    // device explicitly once they have arrived.
+    fun applyVolumes() {
+        if (!SoundControl.isDoNotDisturbEnabled(context)) {
+            volumeManager.setVolume(AudioManager.STREAM_NOTIFICATION, config.notificationVolume)
+        }
+        volumeManager.setVolume(AudioManager.STREAM_MUSIC, config.musicVolume)
+        volumeManager.setVolume(AudioManager.STREAM_ALARM, config.alarmVolume)
+    }
+
     override fun onEventTriggered(event: Event) {
         var consumed = true
         when (event.eventName) {
