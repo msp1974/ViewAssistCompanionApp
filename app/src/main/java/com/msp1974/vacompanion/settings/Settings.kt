@@ -569,6 +569,9 @@ class APPConfig @Inject constructor(val context: Context) {
         val event = Event(key.toString(), "", "")
         firebase.addToCrashLog("${key.toString()} changed")
         eventBroadcaster.notifyEvent(event)
+        // The event above carries no old/new value, so UI that only reacts to a changed value
+        // (the Configuration screen) would miss it. This one differs by carrying the key.
+        eventBroadcaster.notifyEvent(Event("preferenceChanged", "", key.toString()))
     }
 
     fun onValueChangedListener(property: KProperty<*>, oldValue: Any, newValue: Any) {
