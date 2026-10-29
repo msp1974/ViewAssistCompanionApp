@@ -106,9 +106,6 @@ class APPConfig @Inject constructor(val context: Context) {
     @Volatile
     var sendspinPort: Int = 0
 
-    // Id of the Sendspin group the player currently belongs to; blank when not in one. Transient.
-    @Volatile
-    var sendspinGroupId: String = ""
     // Settings changed on the device (Configuration screen) that Home Assistant has not been told
     // about yet, by HA settings key. Latest value wins; the Satellite sends them as soon as it is
     // running, so a change made while HA is disconnected is not lost.
@@ -191,6 +188,32 @@ class APPConfig @Inject constructor(val context: Context) {
     var area: String
         get() = this.sharedPrefs.getString("area", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("area", value.trim()) }
+
+    // Which devices this one ducks with, and contests wake words against: those in the same HA
+    // [DUCK_SCOPE_AREA] (default) or those set to the same custom [duckZone]. On-device preference
+    // that HA can also push.
+    var duckScope: String
+        get() = this.sharedPrefs.getString("duck_scope", DUCK_SCOPE_AREA)
+            ?.takeIf { it == DUCK_SCOPE_ZONE } ?: DUCK_SCOPE_AREA
+        set(value) = this.sharedPrefs.edit { putString("duck_scope", value) }
+
+    // One of [DUCK_ZONES], used when [duckScope] is [DUCK_SCOPE_ZONE].
+    var duckZone: String
+        get() = this.sharedPrefs.getString("duck_zone", DUCK_ZONES.first())
+            ?.takeIf { it in DUCK_ZONES } ?: DUCK_ZONES.first()
+        set(value) = this.sharedPrefs.edit { putString("duck_zone", value.takeIf { it in DUCK_ZONES } ?: DUCK_ZONES.first()) }
+
+    /**
+     * Identifies the group of devices this one ducks and arbitrates wake words with; blank when it
+     * has none (area scope with no area set), so it then never matches another device. The prefix
+     * keeps an area and a zone with the same name apart.
+     */
+    val duckGroupKey: String
+        get() = if (duckScope == DUCK_SCOPE_ZONE) {
+            "zone:${duckZone.lowercase()}"
+        } else {
+            area.lowercase().let { if (it.isEmpty()) "" else "area:$it" }
+        }
 
     var isMuted: Boolean by Delegates.observable(DEFAULT_MUTE) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -480,6 +503,8 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["alarm_volume"]?.jsonPrimitive?.floatOrNull?.let { alarmVolume = it.toInt() }
         settings["ducking_volume"]?.jsonPrimitive?.floatOrNull?.let { duckingVolume = it.toInt() }
         settings["area"]?.jsonPrimitive?.contentOrNull?.let { area = it }
+        settings["duck_scope"]?.jsonPrimitive?.contentOrNull?.let { duckScope = it }
+        settings["duck_zone"]?.jsonPrimitive?.contentOrNull?.let { duckZone = it }
         settings["mic_gain"]?.jsonPrimitive?.intOrNull?.let { micGain = it }
         settings["mute"]?.jsonPrimitive?.booleanOrNull?.let { isMuted = it }
         settings["screen_brightness"]?.jsonPrimitive?.floatOrNull?.let { screenBrightness = it / 100 }
@@ -597,6 +622,9 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_SCREEN_BRIGHTNESS = 0.5f
         const val DEFAULT_SCREEN_AUTO_BRIGHTNESS = true
         const val DEFAULT_DUCKING_VOLUME = 2
+        const val DUCK_SCOPE_AREA = "area"
+        const val DUCK_SCOPE_ZONE = "zone"
+        val DUCK_ZONES = (1..10).map { "Zone$it" }
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0
         const val DEFAULT_RTSP_PORT = 8554

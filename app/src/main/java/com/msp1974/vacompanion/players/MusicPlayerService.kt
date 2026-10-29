@@ -118,7 +118,7 @@ class MusicPlayerService : Service(), EventListener {
                 }
             }
         } else if (event.eventName == "remoteWakeWordDetected") {
-            // Another VACA device in our area or Sendspin group heard a wake word (UDP broadcast) - duck if we're playing.
+            // Another VACA device in our area or custom zone heard a wake word (UDP broadcast) - duck if we're playing.
             Handler(Looper.getMainLooper()).post {
                 if (isRelevantTo(event) && mediaPlayer?.isPlaying == true) {
                     duckVolume()
@@ -135,10 +135,10 @@ class MusicPlayerService : Service(), EventListener {
         }
     }
 
-    // Same rule as the Sendspin player: the sender is in our Sendspin group or our area.
+    // Same rule as the Sendspin player: the sender is in our duck group (area or custom zone).
     private fun isRelevantTo(event: Event): Boolean =
         (event.newValue as? VacaBroadcastMessage)
-            ?.isRelevantTo(config.sendspinGroupId, config.area) == true
+            ?.isRelevantTo(config.duckGroupKey) == true
 
     private var remoteDuckTimeout: Job? = null
 

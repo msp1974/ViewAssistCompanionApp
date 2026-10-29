@@ -265,7 +265,6 @@ class SendspinPlayer(
             output.pause()
             abandonAudioFocus()
             resetNowPlaying()
-            config.sendspinGroupId = ""
         }
     }
 
@@ -295,9 +294,8 @@ class SendspinPlayer(
         resetNowPlaying()
     }
 
-    override fun onGroupChanged(groupId: String) {
-        config.sendspinGroupId = groupId
-    }
+    // Ducking is by area/custom zone, not Sendspin group, so the group id isn't needed.
+    override fun onGroupChanged(groupId: String) {}
 
     override fun onPlaybackStateChanged(playing: Boolean) {
         synchronized(nowPlayingLock) { groupPlaying = playing }
@@ -473,7 +471,7 @@ class SendspinPlayer(
                 if (h != 0L && active) NativeSendspin.nativeSendCommand(h, "stop", 0)
             }
             // Another VACA device heard a wake word / finished its pipeline (UDP broadcast).
-            // React if we're in the sender's Sendspin group or in the sender's area.
+            // React if we're in the sender's duck group (same area or custom zone).
             "remoteWakeWordDetected" -> mainHandler.post {
                 if (isRelevantTo(event) && isGroupPlaying()) {
                     duck()
@@ -488,7 +486,7 @@ class SendspinPlayer(
 
     private fun isRelevantTo(event: Event): Boolean =
         (event.newValue as? VacaBroadcastMessage)
-            ?.isRelevantTo(config.sendspinGroupId, config.area) == true
+            ?.isRelevantTo(config.duckGroupKey) == true
 
     private fun isGroupPlaying(): Boolean = synchronized(nowPlayingLock) { groupPlaying }
 

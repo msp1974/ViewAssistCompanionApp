@@ -53,7 +53,7 @@ object VacaBroadcastType {
     const val WAKE_DETECTION = "wake_detection"
     const val WAKE_DECISION = "wake_decision"
 
-    // Sent by the device running a pipeline to the others in its group/area.
+    // Sent by the device running a pipeline to the others in its duck group (area or custom zone).
     const val DUCK = "duck"
     const val PIPELINE_COMPLETED = "pipeline_completed" // unduck
 }
@@ -66,24 +66,16 @@ data class VacaBroadcastMessage(
     val sourceAddress: InetAddress,
 ) {
     /**
-     * True if this device should react to the message: it is in the sender's Sendspin group or in
-     * the sender's area. A blank group/area never matches, so unconfigured devices stay out.
+     * True if this device should react to the message: it is in the sender's duck group (see
+     * [APPConfig.duckGroupKey]). A blank group never matches, so unconfigured devices stay out.
      * Shared by every player that ducks for other devices' assistant activity.
      */
-    fun isRelevantTo(ownSendspinGroup: String, ownArea: String): Boolean {
-        val group = sendspinGroup.orEmpty()
-        val sender = area.orEmpty()
-        return (group.isNotEmpty() && group == ownSendspinGroup) ||
-            (sender.isNotEmpty() && sender.equals(ownArea, ignoreCase = true))
-    }
+    fun isRelevantTo(ownDuckGroup: String): Boolean =
+        duckGroup.isNotEmpty() && duckGroup == ownDuckGroup
 
-    /** Sendspin group the sender belongs to, if any (added to every outgoing message). */
-    val sendspinGroup: String?
-        get() = data[VacaUdpBroadcast.DATA_SENDSPIN_GROUP]?.jsonPrimitive?.contentOrNull
-
-    /** Home Assistant area the sender is in, if set (added to every outgoing message). */
-    val area: String?
-        get() = data[VacaUdpBroadcast.DATA_AREA]?.jsonPrimitive?.contentOrNull
+    /** Duck group the sender belongs to, blank if none (added to every outgoing message). */
+    val duckGroup: String
+        get() = data[VacaUdpBroadcast.DATA_DUCK_GROUP]?.jsonPrimitive?.contentOrNull.orEmpty()
 }
 
 /**
@@ -97,8 +89,8 @@ data class VacaBroadcastMessage(
  *
  * Wake word arbitration is run by one elected master (see [arbitrateWakeWord]). Every device that
  * hears a wake word reports it to the master; after [DECISION_WINDOW_MS] the master picks the
- * strongest detection per area and announces it. Only that device starts a pipeline, and it tells
- * its group/area to duck now and unduck when the pipeline finishes. The master heartbeats; when
+ * strongest detection per duck group (the devices' area or custom zone) and announces it. Only that
+ * device starts a pipeline, and it tells its duck group to duck now and unduck when the pipeline finishes. The master heartbeats; when
  * the heartbeats stop the remaining devices elect a new one.
  *
  * To add a new broadcast: add a constant to [VacaBroadcastType], call [send] where it should be
@@ -127,8 +119,7 @@ class VacaUdpBroadcast(
         const val PORT = 10950
         const val MAGIC = "VACA"
         const val VERSION = 1
-        const val DATA_SENDSPIN_GROUP = "sendspin_group"
-        const val DATA_AREA = "area"
+        const val DATA_DUCK_GROUP = "duck_group"
         private const val MAX_PACKET_BYTES = 1024
         private const val RESTART_DELAY_MS = 5_000L
 
@@ -153,7 +144,7 @@ class VacaUdpBroadcast(
         // Devices wait a random time up to this before claiming mastership, so the fastest claims it.
         private const val ELECTION_JITTER_MS = 500
 
-        // Failsafe so a pipeline whose completion was never heard doesn't block its area forever.
+        // Failsafe so a pipeline whose completion was never heard doesn't block its duck group forever.
         private const val ACTIVE_PIPELINE_TIMEOUT_MS = 90_000L
 
         // Set while running, so the satellite can arbitrate without holding a reference.
@@ -184,7 +175,7 @@ class VacaUdpBroadcast(
         addHandler(VacaBroadcastType.WAKE_DETECTION) { msg ->
             val id = msg.data[DATA_ID]?.jsonPrimitive?.contentOrNull ?: return@addHandler
             val score = msg.data[DATA_SCORE]?.jsonPrimitive?.floatOrNull ?: 0f
-            if (isMaster) collectDetection(msg.area.orEmpty(), Detection(id, msg.senderId, score))
+            if (isMaster) collectDetection(msg.duckGroup, Detection(id, msg.senderId, score))
         }
         addHandler(VacaBroadcastType.WAKE_DECISION) { msg ->
             val winner = msg.data[DATA_WINNER]?.jsonPrimitive?.contentOrNull.orEmpty()
@@ -192,7 +183,7 @@ class VacaUdpBroadcast(
             completeAwaiting(winner, ids)
         }
         addHandler(VacaBroadcastType.DUCK) { msg ->
-            activePipelines[msg.senderId] = ActivePipeline(msg.area.orEmpty(), SystemClock.elapsedRealtime())
+            activePipelines[msg.senderId] = ActivePipeline(msg.duckGroup, SystemClock.elapsedRealtime())
             config.eventBroadcaster.notifyEvent(Event(EVENT_REMOTE_WAKE_WORD_DETECTED, "", msg))
         }
         addHandler(VacaBroadcastType.PIPELINE_COMPLETED) { msg ->
@@ -205,16 +196,16 @@ class VacaUdpBroadcast(
     }
 
     private class Detection(val id: String, val sender: String, val score: Float)
-    private class ActivePipeline(val area: String, val since: Long)
+    private class ActivePipeline(val group: String, val since: Long)
 
     @Volatile private var masterId: String? = null
     @Volatile private var lastMasterSeen = 0L
     private val isMaster get() = masterId == config.uuid
 
-    // Master only: detections gathered per (lowercase) area while a decision window is open.
+    // Master only: detections gathered per duck group while a decision window is open.
     private val pending = HashMap<String, MutableList<Detection>>()
 
-    // Devices (by uuid) known to be running a pipeline, with the area they claimed.
+    // Devices (by uuid) known to be running a pipeline, with the duck group they claimed.
     private val activePipelines = ConcurrentHashMap<String, ActivePipeline>()
 
     // This device's reported detections waiting for the master's decision.
@@ -225,18 +216,19 @@ class VacaUdpBroadcast(
      * Reports a wake word detection with its [score] and returns whether this device should start
      * the audio pipeline (Home Assistant only accepts one per wake word).
      *
-     * The master collects every report for the area for [DECISION_WINDOW_MS] and the highest score
-     * wins (a stronger detection means the speaker is closest), the lowest device id breaking ties.
-     * It refuses all of them if a different device in the area already has a pipeline running.
-     * The winner tells its group/area to duck, and later unducks via `audioPipelineCompleted`.
+     * The master collects every report for the duck group (the device's area or custom zone, see
+     * [APPConfig.duckGroupKey]) for [DECISION_WINDOW_MS] and the highest score wins (a stronger
+     * detection means the speaker is closest), the lowest device id breaking ties. It refuses all
+     * of them if a different device in the group already has a pipeline running.
+     * The winner tells its group to duck, and later unducks via `audioPipelineCompleted`.
      * Losers never start a pipeline, so they send nothing.
      *
-     * Skipped ([contest] false, or no area set) the device just ducks and wins. The same happens
+     * Skipped ([contest] false, or no duck group) the device just ducks and wins. The same happens
      * if no master is known yet or it doesn't answer, so a dead master never silences a device.
      */
     suspend fun arbitrateWakeWord(score: Float, contest: Boolean = true): Boolean {
-        val area = config.area
-        if (!contest || area.isEmpty() || masterId == null) {
+        val group = config.duckGroupKey
+        if (!contest || group.isEmpty() || masterId == null) {
             sendDuck()
             return true
         }
@@ -246,7 +238,7 @@ class VacaUdpBroadcast(
         val decision = CompletableDeferred<String>()
         awaiting[id] = decision
         if (isMaster) {
-            collectDetection(area, Detection(id, me, score))
+            collectDetection(group, Detection(id, me, score))
         } else {
             send(VacaBroadcastType.WAKE_DETECTION, buildJsonObject {
                 put(DATA_ID, JsonPrimitive(id))
@@ -269,7 +261,7 @@ class VacaUdpBroadcast(
     }
 
     private fun sendDuck() {
-        activePipelines[config.uuid] = ActivePipeline(config.area, SystemClock.elapsedRealtime())
+        activePipelines[config.uuid] = ActivePipeline(config.duckGroupKey, SystemClock.elapsedRealtime())
         send(VacaBroadcastType.DUCK)
     }
 
@@ -277,31 +269,30 @@ class VacaUdpBroadcast(
         ids.forEach { awaiting[it]?.complete(winner) }
     }
 
-    /** Master: adds a detection to its area's window, opening one (and a decision timer) if needed. */
-    private fun collectDetection(area: String, detection: Detection) {
-        if (area.isEmpty()) return
-        val key = area.lowercase()
+    /** Master: adds a detection to its group's window, opening one (and a decision timer) if needed. */
+    private fun collectDetection(group: String, detection: Detection) {
+        if (group.isEmpty()) return
         val opensWindow = synchronized(pending) {
-            val list = pending.getOrPut(key) { mutableListOf() }
+            val list = pending.getOrPut(group) { mutableListOf() }
             list.add(detection)
             list.size == 1
         }
         if (opensWindow) scope.launch {
             delay(DECISION_WINDOW_MS.milliseconds)
-            decide(key)
+            decide(group)
         }
     }
 
-    /** Master: picks the strongest detection for [areaKey] and announces it, or refuses all if busy. */
-    private fun decide(areaKey: String) {
-        val detections = synchronized(pending) { pending.remove(areaKey) } ?: return
+    /** Master: picks the strongest detection for [groupKey] and announces it, or refuses all if busy. */
+    private fun decide(groupKey: String) {
+        val detections = synchronized(pending) { pending.remove(groupKey) } ?: return
         val now = SystemClock.elapsedRealtime()
         activePipelines.entries.removeIf { now - it.value.since > ACTIVE_PIPELINE_TIMEOUT_MS }
 
         val best = detections.maxWithOrNull(compareBy<Detection> { it.score }.thenByDescending { it.sender }) ?: return
-        val busy = activePipelines.any { (sender, p) -> sender != best.sender && p.area.equals(areaKey, ignoreCase = true) }
+        val busy = activePipelines.any { (sender, p) -> sender != best.sender && p.group == groupKey }
         val winner = if (busy) "" else best.id
-        if (!busy) activePipelines[best.sender] = ActivePipeline(areaKey, now)
+        if (!busy) activePipelines[best.sender] = ActivePipeline(groupKey, now)
         Timber.i("VacaUdpBroadcast: decided ${if (busy) "no winner (pipeline active)" else "winner ${best.sender}"} from ${detections.size} detection(s)")
 
         val ids = detections.map { it.id }
@@ -372,10 +363,7 @@ class VacaUdpBroadcast(
                     put("v", JsonPrimitive(VERSION))
                     put("type", JsonPrimitive(type))
                     put("sender", JsonPrimitive(config.uuid))
-                    put("data", JsonObject(data + mapOf(
-                        DATA_SENDSPIN_GROUP to JsonPrimitive(config.sendspinGroupId),
-                        DATA_AREA to JsonPrimitive(config.area),
-                    )))
+                    put("data", JsonObject(data + (DATA_DUCK_GROUP to JsonPrimitive(config.duckGroupKey))))
                 }.toString().toByteArray()
 
                 val socket = sendSocket ?: DatagramSocket().apply { broadcast = true }.also { sendSocket = it }

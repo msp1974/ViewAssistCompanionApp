@@ -65,7 +65,6 @@ class SendspinManager(
         player = null
         config.sendspinPort = 0
         config.sendspinRunning = false
-        config.sendspinGroupId = ""
     }
 
     private fun appVersion(): String = try {
