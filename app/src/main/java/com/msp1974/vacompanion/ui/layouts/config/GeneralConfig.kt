@@ -45,6 +45,10 @@ fun generalConfig(vm: VAViewModel): ConfigSection {
                 value = { state().isNetworkConnected; wifiSsid(context) }),
             ConfigItem.Info(NETWORK, "IP Address", null, Icons.Default.Lan,
                 value = { state().isNetworkConnected; Helpers.getIpv4HostAddress().ifBlank { "Not available" } }),
+            ConfigItem.Toggle(NETWORK, "Network recovery",
+                "Try to reconnect Wi-Fi if it stays down. Rooted devices may be asked for root permission",
+                Icons.Default.WifiFind, key = "enable_network_recovery",
+                get = { c.enableNetworkRecovery }, set = { c.enableNetworkRecovery = it }),
         )
     )
 }

@@ -281,9 +281,25 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    var enableNetworkRecovery: Boolean by Delegates.observable(true) { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue)
-    }
+    // Whether to try to reconnect Wi-Fi if it stays down, including with root (`su`) as a last
+    // resort. On-device preference that HA can also push. Turning it back on after being off gives
+    // root another chance (see [wifiRootFailed]).
+    var enableNetworkRecovery: Boolean
+        get() = this.sharedPrefs.getBoolean("enable_network_recovery", true)
+        set(value) {
+            val wasEnabled = enableNetworkRecovery
+            this.sharedPrefs.edit {
+                putBoolean("enable_network_recovery", value)
+                if (value && !wasEnabled) putBoolean("wifi_root_failed", false)
+            }
+        }
+
+    // Set when root was refused, missing or didn't answer, so Wi-Fi recovery never asks again
+    // (a root manager such as Magisk prompts on every attempt).
+    var wifiRootFailed: Boolean
+        get() = this.sharedPrefs.getBoolean("wifi_root_failed", false)
+        set(value) = this.sharedPrefs.edit { putBoolean("wifi_root_failed", value) }
+
 
     var enableMotionDetection: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)

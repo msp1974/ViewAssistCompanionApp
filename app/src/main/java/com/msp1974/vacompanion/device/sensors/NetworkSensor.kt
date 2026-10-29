@@ -5,10 +5,11 @@ import android.content.Context.CONNECTIVITY_SERVICE
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import com.msp1974.vacompanion.settings.APPConfig
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
-class NetworkSensor(private val context: Context) : Sensor {
+class NetworkSensor(private val context: Context, config: APPConfig) : Sensor {
 
     companion object {
         internal val basicSensor = Sensor.BasicSensor(
@@ -21,7 +22,7 @@ class NetworkSensor(private val context: Context) : Sensor {
     override var onUpdate: ((String, Any) -> Unit)? = null
     private val connectivityManager = context.getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
     private var currentState = NetworkState()
-    private val wifiDropMonitor = WifiDropMonitor(context)
+    private val wifiDropMonitor = WifiDropMonitor(context, config)
 
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onUnavailable() {

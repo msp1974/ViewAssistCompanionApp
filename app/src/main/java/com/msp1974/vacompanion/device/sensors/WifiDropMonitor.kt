@@ -2,8 +2,11 @@ package com.msp1974.vacompanion.device.sensors
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.net.wifi.WifiManager
+import com.msp1974.vacompanion.settings.APPConfig
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -12,25 +15,29 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
- * Records Wi-Fi drops (and roams) to a small persistent log and force-reconnects Wi-Fi if the
- * connection stays down for [RECONNECT_AFTER_MS].
+ * Records Wi-Fi drops (and roams) to a small persistent log and, if network recovery is enabled,
+ * force-reconnects Wi-Fi when the connection stays down for [RECONNECT_AFTER_MS], using root as a
+ * last resort. Root is given up on the first time it fails.
  *
  * Fed by [NetworkSensor]'s default-network callback. The log is written to
  * `<external files dir>/wifi_drops.log` (pullable with adb from
  * /sdcard/Android/data/com.msp1974.vacompanion/files/) and mirrored to Timber.
  */
-class WifiDropMonitor(context: Context) {
+class WifiDropMonitor(context: Context, private val config: APPConfig) {
 
     companion object {
         const val RECONNECT_AFTER_MS = 30_000L
+        private const val ROOT_TIMEOUT_S = 15L
         private const val LOG_FILE = "wifi_drops.log"
         private const val MAX_LOG_BYTES = 256 * 1024L
     }
 
     private val appContext = context.applicationContext
     private val wifiManager = appContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+    private val connectivityManager = appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
 
     private var lastSnapshot: Snapshot? = null
@@ -52,19 +59,33 @@ class WifiDropMonitor(context: Context) {
         null
     }
 
+    /** True if the system's default network is currently a Wi-Fi one. */
+    private fun isWifiDefault(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        return connectivityManager.getNetworkCapabilities(network)
+            ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+    }
+
     /** Wi-Fi is the active network (or its capabilities changed): track signal and roams. */
     @Synchronized
     fun onWifiConnected() {
-        val now = snapshot() ?: return
-        val prev = lastSnapshot
-        lastSnapshot = now
+        val now = snapshot()
 
+        // Wi-Fi is back whether or not its details can be read (snapshot() is null when they
+        // can't), so a recorded drop is always closed here and the watchdog stopped.
         if (downSince != 0L) {
             val secs = (System.currentTimeMillis() - downSince) / 1000
             downSince = 0L
             watchdog?.cancel()
-            write("RESTORED after ${secs}s - $now" + (prev?.let { " (was bssid=${it.bssid} rssi=${it.rssi})" } ?: ""))
-        } else if (prev != null && prev.bssid != now.bssid) {
+            val prev = lastSnapshot
+            write("RESTORED after ${secs}s - ${now ?: "no wifi details"}" +
+                (prev?.let { " (was bssid=${it.bssid} rssi=${it.rssi})" } ?: ""))
+        }
+        if (now == null) return
+
+        val prev = lastSnapshot
+        lastSnapshot = now
+        if (prev != null && prev.bssid != now.bssid) {
             write("ROAM ${prev.bssid} (${prev.freq}MHz, ${prev.rssi}dBm) -> ${now.bssid} (${now.freq}MHz, ${now.rssi}dBm)")
         }
     }
@@ -73,14 +94,24 @@ class WifiDropMonitor(context: Context) {
     @Synchronized
     fun onWifiLost() {
         if (downSince != 0L) return
+        // The old network is reported lost after its replacement is up (e.g. a Wi-Fi to Wi-Fi
+        // handover), so only a lost default network with nothing to take over is a drop.
+        if (connectivityManager.activeNetwork != null) return
         downSince = System.currentTimeMillis()
         write("DROP - last known ${lastSnapshot ?: "n/a"}; wifi enabled=${wifiManager.isWifiEnabled}")
+        if (!config.enableNetworkRecovery) return
 
         watchdog?.cancel()
         watchdog = Sensor.sensorWorkerScope.launch {
             var attempt = 1
             while (true) {
                 delay(RECONNECT_AFTER_MS)
+                if (!config.enableNetworkRecovery) return@launch
+                // Don't act on a drop the system says is over, even if its end was never reported.
+                if (isWifiDefault()) {
+                    onWifiConnected()
+                    return@launch
+                }
                 val secs = (System.currentTimeMillis() - downSince) / 1000
                 write("STILL DOWN after ${secs}s - forcing reconnect (attempt $attempt)")
                 forceReconnect(attempt++)
@@ -116,17 +147,31 @@ class WifiDropMonitor(context: Context) {
             write("  reconnect failed: ${e.message}")
         }
 
-        if (attempt >= 2) rootToggle()
+        if (attempt >= 2 && !config.wifiRootFailed) rootToggle()
     }
 
+    /**
+     * Toggles Wi-Fi as root, as part of network recovery. If root is refused, missing or doesn't
+     * answer in [ROOT_TIMEOUT_S] this is remembered so it is never asked for again.
+     */
     private fun rootToggle() {
-        try {
-            val result = Runtime.getRuntime()
+        var process: Process? = null
+        val failure = try {
+            process = Runtime.getRuntime()
                 .exec(arrayOf("su", "-c", "svc wifi disable; sleep 2; svc wifi enable"))
-                .waitFor()
-            write("  root wifi toggle exit=$result")
+            if (!process.waitFor(ROOT_TIMEOUT_S, TimeUnit.SECONDS)) "no answer in ${ROOT_TIMEOUT_S}s"
+            else process.exitValue().let { if (it == 0) null else "exit=$it" }
         } catch (e: Exception) {
-            write("  root wifi toggle unavailable (${e.message})")
+            "unavailable (${e.message})"
+        } finally {
+            process?.destroy()
+        }
+
+        if (failure == null) {
+            write("  root wifi toggle ok")
+        } else {
+            config.wifiRootFailed = true
+            write("  root wifi toggle failed: $failure - won't try root again")
         }
     }
 

@@ -47,7 +47,7 @@ class SensorManager(
             "accelerometer" to AccelerometerSensor(context, config),
             "battery" to BatterySensor(context),
             "orientation" to OrientationSensor(context),
-            "network" to NetworkSensor(context),
+            "network" to NetworkSensor(context, config),
             "mic_input" to MicInputSensor(context),
             "audio_output" to AudioOutputSensor(context),
         )
