@@ -1,0 +1,4 @@
+# Pin to an exact WebRTC commit hash for reproducible builds.
+# Example:
+#  8f3a8f2d0a4c5e9b7a2f1c6d4e3b9a8c7d6e5f4a
+f85d783f006ecd9dc5453d7e9bbe99548f3fc26b

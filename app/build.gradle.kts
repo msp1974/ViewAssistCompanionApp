@@ -105,6 +105,7 @@ androidComponents {
 dependencies {
 
     implementation(project(":microfeatures"))
+    implementation(project(":webrtc-apm"))
     implementation(project(":sendspin"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

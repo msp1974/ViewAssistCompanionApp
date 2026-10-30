@@ -24,5 +24,6 @@ dependencyResolutionManagement {
 rootProject.name = "ViewAssistCompanionApp"
 include(":app")
 include(":microfeatures")
+include(":webrtc-apm")
 include(":sendspin")
  

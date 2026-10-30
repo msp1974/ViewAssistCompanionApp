@@ -27,22 +27,14 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import com.msp1974.vacompanion.audio.AudioEnhancer
-import com.msp1974.vacompanion.audio.AutomaticGainController
 import com.msp1974.vacompanion.ui.DiagnosticInfo
 import com.msp1974.vacompanion.ui.theme.CustomColours
 import com.msp1974.vacompanion.satellite.AudioRouteOption
 import com.msp1974.vacompanion.utils.Event
 import java.lang.System
 
-/**
- * Mic level gauge range: centred on the -18 dBFS AGC target with enough
- * headroom either side to show the full range reachable via `mic_gain`
- * (-10..10, i.e. -28..-8 dBFS target), capped at 0 dBFS (full scale).
- */
-private const val MIC_LEVEL_GAUGE_MARGIN_DB = 10f
-private const val MIC_LEVEL_GAUGE_MIN_DBFS =
-    AutomaticGainController.BASE_TARGET_LEVEL_DBFS + AudioEnhancer.MIC_GAIN_MIN_DB - MIC_LEVEL_GAUGE_MARGIN_DB
+/** Mic level gauge range, up to 0 dBFS (full scale). */
+private const val MIC_LEVEL_GAUGE_MIN_DBFS = -38f
 private const val MIC_LEVEL_GAUGE_MAX_DBFS = 0f
 
 

@@ -117,11 +117,6 @@ abstract class SatelliteAudioPipeline(
     val isListening
         get() = pipelineStage == PipelineStage.LISTENING || pipelineStage == PipelineStage.VOICE_STARTED
 
-    // True from starting until the user has finished speaking, when the microphone's gain control
-    // should be tuned to capture a command rather than to listen for the wake word.
-    val isCapturingSpeech
-        get() = pipelineStage.ordinal in PipelineStage.STARTING.ordinal..PipelineStage.VOICE_STOPPED.ordinal
-
     // Stages only ever increase, so the microphone is subscribed to once on entering LISTENING
     // and released for good as soon as the pipeline moves past VOICE_STARTED (or ends).
     private fun updateMicSubscription(stage: PipelineStage) {

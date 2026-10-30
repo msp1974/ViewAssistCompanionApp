@@ -24,6 +24,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * The single owner of the microphone. [audio] is a hot flow of 16-bit PCM frames that any number
@@ -40,9 +41,13 @@ class MicrophoneAudioStream(
     private val context: Context,
     private val deviceManager: DeviceManager,
     scope: CoroutineScope,
-    // True while a voice command is being captured; the microphone tunes its gain control to suit.
-    private val isSpeechCaptureActive: () -> Boolean = { false },
 ) {
+    /** How loud the microphone has been lately, measured on the raw signal before any processing. */
+    val level = MicLevelMonitor()
+
+    /** Turns the microphone right down while a sound the device plays itself (the wake sound) is heard. */
+    val suppressor = MicSuppressor()
+
     // The buffer must be the last operator: shareIn takes its buffering/overflow behaviour from it.
     val audio: SharedFlow<ShortArray> = capture()
         .retryWhen { cause, attempt ->
@@ -50,7 +55,7 @@ class MicrophoneAudioStream(
                 false
             } else {
                 Timber.e(cause, "Microphone failed, restarting (attempt ${attempt + 1}/$MAX_RESTARTS)")
-                delay(RESTART_DELAY_MS)
+                delay(RESTART_DELAY_MS.milliseconds)
                 true
             }
         }
@@ -67,14 +72,15 @@ class MicrophoneAudioStream(
             Timber.w("Microphone not opened - RECORD_AUDIO permission not granted")
             return@channelFlow
         }
-        val microphone = MicrophoneInput(context, deviceManager, isSpeechCaptureActive)
+        level.reset()
+        val microphone = MicrophoneInput(context, deviceManager, suppressor, level)
         try {
             withContext(Dispatchers.IO) { microphone.start() }
             Timber.d("Microphone opened")
             launch(Dispatchers.IO) {
                 while (isActive) {
                     val frame = microphone.readShort()
-                    if (frame.isNotEmpty()) trySend(frame) else delay(EMPTY_READ_DELAY_MS)
+                    if (frame.isNotEmpty()) trySend(frame) else delay(EMPTY_READ_DELAY_MS.milliseconds)
                 }
             }
             awaitCancellation()

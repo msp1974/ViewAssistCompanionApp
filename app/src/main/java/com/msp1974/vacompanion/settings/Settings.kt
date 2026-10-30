@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.settings
 
+import com.msp1974.vacompanion.audio.MicLevelMonitor
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
@@ -219,9 +220,21 @@ class APPConfig @Inject constructor(val context: Context) {
         onValueChangedListener(property, oldValue, newValue)
     }
 
+    // Quietest the raw microphone may be, in dBFS, for a wake word to be acted on, so that a
+    // whisper is ignored. MicLevelMonitor.MIN_LEVEL_OFF_DBFS (the lowest value) is off.
+    var wakeWordMinLevel: Int by Delegates.observable(MicLevelMonitor.MIN_LEVEL_OFF_DBFS) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
+    // Turn the microphone right down while the wake sound plays, so a spoken one isn't heard as speech.
+    var suppressWakeSound: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
+        onValueChangedListener(property, oldValue, newValue)
+    }
+
     var micGain: Int by Delegates.observable(DEFAULT_MIC_GAIN) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
+
 
     var screenBrightness: Float by Delegates.observable(DEFAULT_SCREEN_BRIGHTNESS) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -550,6 +563,8 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_saver_disable_on_touch"]?.jsonPrimitive?.booleanOrNull?.let { screenSaverDisableOnTouch = it }
         settings["screen_orientation_mode"]?.jsonPrimitive?.contentOrNull?.let { screenOrientationMode = it }
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
+        settings["suppress_wake_sound"]?.jsonPrimitive?.booleanOrNull?.let { suppressWakeSound = it }
+        settings["wake_word_min_level"]?.jsonPrimitive?.intOrNull?.let { wakeWordMinLevel = it }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
         settings["rtsp_enabled"]?.jsonPrimitive?.booleanOrNull?.let { rtspEnabled = it }

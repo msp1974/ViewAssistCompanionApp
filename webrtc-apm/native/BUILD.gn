@@ -1,0 +1,31 @@
+# Build target for the WebRTC APM JNI shared library.
+#
+# This file should be placed at $WEBRTC_SRC/apm_jni/BUILD.gn
+# (the build script copies it there automatically).
+#
+# Build commands:
+#   gn gen out/arm64 --args='target_os="android" target_cpu="arm64" is_debug=false is_component_build=false rtc_include_tests=false'
+#   ninja -C out/arm64 apm_jni:webrtc_apms
+
+import("//build/config/android/config.gni")
+import("//build/config/android/rules.gni")
+
+shared_library("webrtc_apms") {
+  sources = [ "apm_jni.cpp" ]
+
+  deps = [
+    "//api:scoped_refptr",
+    "//api/audio:audio_processing",
+    "//api/audio:builtin_audio_processing_builder",
+    "//api/environment:environment_factory",
+    "//modules/audio_processing",
+    "//modules/audio_processing:api",
+  ]
+
+  # Android logging
+  libs = [ "log" ]
+
+  # Ensure symbols for JNI_OnLoad are exported
+  ldflags = [ "-Wl,--version-script=" +
+              rebase_path("//apm_jni/jni_exports.lds", root_build_dir) ]
+}

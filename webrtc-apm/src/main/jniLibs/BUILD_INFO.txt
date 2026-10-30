@@ -1,0 +1,5 @@
+webrtc_revision=f85d783f006ecd9dc5453d7e9bbe99548f3fc26b
+webrtc_revision_input=f85d783f006ecd9dc5453d7e9bbe99548f3fc26b
+built_at_utc=2026-03-25T13:02:00Z
+builder_image_tag=viewassist/webrtc-apm-builder:ubuntu22.04-v1
+builder_image_id=sha256:c6bfa8fd86d7f7dfbfa18083674dee985b115cf540670bea47329ec3431cdcd6

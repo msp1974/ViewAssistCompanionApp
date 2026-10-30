@@ -3,11 +3,8 @@ package com.msp1974.vacompanion.audio
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Context
-import android.media.AudioDeviceInfo
 import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AutomaticGainControl
-import android.media.audiofx.NoiseSuppressor
 import androidx.annotation.RequiresPermission
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.FunctionClasses
@@ -15,17 +12,18 @@ import com.msp1974.vacompanion.device.UnsupportedFunctionsDevice
 import com.msp1974.vacompanion.settings.APPConfig
 import timber.log.Timber
 
-object AudioEnhancerSource {
+object AudioEffectSource {
     const val UNAVAILABLE = "Unavailable"
     const val ANDROID = "Operating System"
-    const val SOFTWARE = "VACA"
+    const val WEBRTC = "WebRTC"
 }
 
 class MicrophoneInput (
     val context: Context,
     val deviceManager: DeviceManager,
-    // True while a voice command is being captured (see AudioEnhancer).
-    isSpeechCaptureActive: () -> Boolean = { false },
+    private val suppressor: MicSuppressor = MicSuppressor(),
+    // Fed every frame as it is read, before any processing, so the real loudness can be told.
+    private val level: MicLevelMonitor? = null,
 ) : AutoCloseable {
 
     private val sampleRateInHz: Int = VACAAudioFormat.SAMPLE_RATE_HZ
@@ -34,39 +32,21 @@ class MicrophoneInput (
     private val config: APPConfig = deviceManager.config
 
     companion object {
-        // Resolved AGC/noise-suppression source, updated whenever a MicrophoneInput sets up its
-        // audio effects - hardware if the platform effect attached successfully, software if
-        // AudioEnhancer's fallback is running instead, unavailable before any mic has started.
-        var agcSource: String = AudioEnhancerSource.UNAVAILABLE
+        // Where the gain control and noise suppression come from: WebRTC, or unavailable if it could
+        // not be started on this device (the microphone is then not levelled at all). Updated
+        // whenever a MicrophoneInput sets up its audio effects.
+        var agcSource: String = AudioEffectSource.UNAVAILABLE
             private set
-        var nsSource: String = AudioEnhancerSource.UNAVAILABLE
+        var nsSource: String = AudioEffectSource.UNAVAILABLE
             private set
-        // AEC has no software fallback in this app (unlike AGC/NS), so it's purely a hardware
-        // capability check - computed once since it can't change at runtime.
-        var aecSource: String  = AudioEnhancerSource.UNAVAILABLE
+        // Echo cancellation is only ever the platform's, so this is purely a hardware capability
+        // check - computed once since it can't change at runtime.
+        var aecSource: String  = AudioEffectSource.UNAVAILABLE
             private set
 
-        // Wall-clock deadline (System.currentTimeMillis()) until which captured mic frames are
-        // replaced with digital silence before they reach the AGC, the wake-word engine, or
-        // anything streamed onward. Used to blank out the device's own short, non-interactive
-        // sound effects (wake-word confirmation chime, error sound) - most devices have no
-        // hardware AEC, so without this the acoustic leak-back from speaker to mic both pollutes
-        // the AGC's envelope/noise-floor (leaving it too low to amplify the command that follows
-        // until it decays back down) and gets forwarded to HA. Never used for TTS/alarm playback,
-        // where the mic must stay live for barge-in.
-        @Volatile
-        private var suppressUntilMs: Long = 0L
-
-        /**
-         * Silences captured mic audio for [durationMs] from now. Safe to call repeatedly with a
-         * shorter, more precise duration once it's known (e.g. once actual playback is confirmed
-         * to have ended) - each call simply replaces the deadline outright.
-         */
-        fun suppressMicFor(durationMs: Long) {
-            suppressUntilMs = System.currentTimeMillis() + durationMs
-        }
-
-        private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs    }
+        // The `mic_gain` setting is clamped to this either side of 0 dB.
+        private const val MIC_GAIN_LIMIT_DB = 10f
+    }
 
     // Guards reads/writes of audioRecord: recreateAudioRecord() runs on the main thread (via
     // AudioInRouter's device/route-change callback) while readShort() runs on the wake-word
@@ -81,11 +61,10 @@ class MicrophoneInput (
     // microphone open for good.
     private var closed = false
 
-    private var ns: NoiseSuppressor? = null
-    private var agc: AutomaticGainControl? = null
     private var aec: AcousticEchoCanceler? = null
 
-    private val audioEnhancer = AudioEnhancer(sampleRateInHz, context, isSpeechCaptureActive)
+    // Null if WebRTC could not be started on this device.
+    private val webRtc: WebRtcMicProcessor? = WebRtcMicProcessor.create()
     private var audioDSP = AudioDSP()
 
     // Owns all microphone device selection, the AudioDeviceCallback, and Bluetooth SCO -
@@ -116,7 +95,6 @@ class MicrophoneInput (
     private fun createAudioRecord(): AudioRecord {
 
         val preferred = micController.getPreferredMicrophone()
-        val isBuiltIn = preferred.device?.type == AudioDeviceInfo.TYPE_BUILTIN_MIC
 
         Timber.i(
             "Using microphone: ${preferred.device?.productName} ${AudioInRouter.getDeviceTypeName(preferred.device?.type ?: -1)}, AudioSource: ${VACAAudioFormat.getAudioSourceName(preferred.audioSource)}")
@@ -131,7 +109,7 @@ class MicrophoneInput (
             "Failed to initialize AudioRecord"
         }
         micController.applyPreferredDevice(record, preferred.device)
-        setupAudioEffects(record, attachNs = !isBuiltIn)
+        setupAudioEffects(record)
 
         if (record.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
             record.startRecording()
@@ -156,10 +134,6 @@ class MicrophoneInput (
     private fun recreateAudioRecord() {
         synchronized(audioRecordLock) {
             if (closed || audioRecord == null) return
-            agc?.release()
-            agc = null
-            ns?.release()
-            ns = null
 
             audioRecord?.let {
                 if (isRecording) it.stop()
@@ -180,13 +154,12 @@ class MicrophoneInput (
         val readCount = audioRecord.read(audioBuffer, 0, audioBuffer.size)
         if (readCount > 0) {
             val frame = audioBuffer.copyOfRange(0, readCount)
+            level?.update(frame, sampleRateInHz)
             if (applyEnhancement) {
-                // processFrame() internally no-ops on AGC/noise suppression when the
-                // device covers them in hardware - so it's always safe/cheap to route
-                // through here rather than tracking which sub-feature(s) are actually active.
-                val micGain = if (isMicSuppressed()) -5 else config.micGain
-                audioEnhancer.setMicGainDb(micGain.toFloat())
-                return audioEnhancer.processFrame(frame)
+                // WebRTC levels the signal to a fixed output level; the mic gain setting then
+                // raises or lowers that, unless the microphone is being turned right down.
+                val micGainDb = config.micGain.toFloat().coerceIn(-MIC_GAIN_LIMIT_DB, MIC_GAIN_LIMIT_DB)
+                return suppressor.applyTo(webRtc?.process(frame) ?: frame, micGainDb)
             }
             return frame
         }
@@ -202,71 +175,31 @@ class MicrophoneInput (
         return FloatArray(0)
     }
 
-    private fun setupAudioEffects(record: AudioRecord, attachNs: Boolean = true, attachAgc: Boolean = true, attachAec: Boolean = true) {
+    private fun setupAudioEffects(record: AudioRecord) {
         val sessionId = record.audioSessionId
 
-        agcSource = AudioEnhancerSource.UNAVAILABLE
-        nsSource = AudioEnhancerSource.UNAVAILABLE
-        aecSource = AudioEnhancerSource.UNAVAILABLE
+        // Gain control and noise suppression are WebRTC's. The platform's own are deliberately not
+        // attached: two gain controls in a row would fight each other.
+        agcSource = if (webRtc != null) AudioEffectSource.WEBRTC else AudioEffectSource.UNAVAILABLE
+        nsSource = agcSource
+        aecSource = AudioEffectSource.UNAVAILABLE
 
-        // Catch if issue with audio enhancements and do not load any platform effects -
-        // the software AudioEnhancer below still covers AGC/NS on these devices.
+        // Catch if issue with audio enhancements and do not load any platform effects.
         val skipHardwareEffects = UnsupportedFunctionsDevice.isIssueDevice(FunctionClasses.AUDIO_ENHANCEMENTS)
 
         if (!skipHardwareEffects) {
-            if (attachAgc) {
-                if (AutomaticGainControl.isAvailable()) {
-                    try {
-                        agc = AutomaticGainControl.create(sessionId)?.apply { enabled = true }
-                        if (agc != null) agcSource = AudioEnhancerSource.ANDROID
-                    } catch (e: Exception) {
-                        Timber.w("Failed to attach hardware AGC: ${e.message}")
-                    }
-                }
-                if (agc == null) {
-                    audioEnhancer.agcEnabled = true
-                    agcSource = AudioEnhancerSource.SOFTWARE
-                }
-            }
-
-            if (attachNs) {
-                if (NoiseSuppressor.isAvailable()) {
-                    try {
-                        ns = NoiseSuppressor.create(sessionId)?.apply { enabled = true }
-                        if (ns != null) nsSource = AudioEnhancerSource.ANDROID
-                    } catch (e: Exception) {
-                        Timber.w("Failed to attach hardware noise suppressor: ${e.message}")
-                    }
-                }
-                if (ns == null) {
-                    audioEnhancer.noiseSuppressionEnabled = true
-                    nsSource = AudioEnhancerSource.SOFTWARE
-                }
-            }
-
-            if (attachAec) {
-                if (AcousticEchoCanceler.isAvailable()) {
-                    try {
-                        aec = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
-                        if (aec != null) aecSource = AudioEnhancerSource.ANDROID
-                    } catch (e: Exception) {
-                        Timber.w("Failed to attach hardware AEC: ${e.message}")
-                    }
+            if (AcousticEchoCanceler.isAvailable()) {
+                try {
+                    aec = AcousticEchoCanceler.create(sessionId)?.apply { enabled = true }
+                    if (aec != null) aecSource = AudioEffectSource.ANDROID
+                } catch (e: Exception) {
+                    Timber.w("Failed to attach hardware AEC: ${e.message}")
                 }
             }
         } else {
             Timber.d("Skipping hardware audio enhancements on this device")
-            if (attachAgc) {
-                audioEnhancer.agcEnabled = true
-                agcSource = AudioEnhancerSource.SOFTWARE
-            }
-            if (attachNs) {
-                audioEnhancer.noiseSuppressionEnabled = true
-                nsSource = AudioEnhancerSource.SOFTWARE
-            }
         }
 
-        audioEnhancer.reset()
         Timber.d(
             "Audio enhancement - AGC: ${agcSource}, NS: ${nsSource}, AEC: ${aecSource}"
         )
@@ -280,18 +213,10 @@ class MicrophoneInput (
         // the microphone) held open.
         runCatching { micController.stop() }
             .onFailure { Timber.w(it, "Error stopping microphone controller") }
-        runCatching { audioEnhancer.release() }
-            .onFailure { Timber.w(it, "Error releasing audio enhancer") }
+        runCatching { webRtc?.close() }
+            .onFailure { Timber.w(it, "Error releasing WebRTC audio processing") }
 
         synchronized(audioRecordLock) {
-            runCatching { agc?.release() }
-                .onFailure { Timber.w(it, "Error releasing AGC") }
-            agc = null
-
-            runCatching { ns?.release() }
-                .onFailure { Timber.w(it, "Error releasing noise suppressor") }
-            ns = null
-
             audioRecord?.let {
                 try {
                     if (isRecording) it.stop()

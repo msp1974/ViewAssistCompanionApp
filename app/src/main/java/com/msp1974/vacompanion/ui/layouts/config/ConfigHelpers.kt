@@ -6,7 +6,7 @@ import android.media.AudioManager
 import android.net.wifi.WifiManager
 import androidx.compose.ui.graphics.Color
 import androidx.core.location.LocationManagerCompat
-import com.msp1974.vacompanion.audio.AudioEnhancerSource
+import com.msp1974.vacompanion.audio.AudioEffectSource
 import com.msp1974.vacompanion.audio.AudioInRouter
 import com.msp1974.vacompanion.audio.AudioOutputRouter
 import com.msp1974.vacompanion.settings.APPConfig
@@ -25,14 +25,14 @@ fun yesNo(value: Boolean) = if (value) "Yes" else "No"
 fun yesNoColor(value: Boolean): Color = if (value) CustomColours.GREEN else CustomColours.AMBER
 
 fun enhancementSourceLabel(source: String): String = when (source) {
-    AudioEnhancerSource.ANDROID -> "Android"
-    AudioEnhancerSource.SOFTWARE -> "Software"
+    AudioEffectSource.ANDROID -> "Android"
+    AudioEffectSource.WEBRTC -> "WebRTC"
     else -> "Not Available"
 }
 
 fun enhancementSourceColor(source: String): Color = when (source) {
-    AudioEnhancerSource.ANDROID -> CustomColours.GREEN
-    AudioEnhancerSource.SOFTWARE -> CustomColours.AMBER
+    AudioEffectSource.ANDROID -> CustomColours.GREEN
+    AudioEffectSource.WEBRTC -> CustomColours.GREEN
     else -> CustomColours.RED
 }
 

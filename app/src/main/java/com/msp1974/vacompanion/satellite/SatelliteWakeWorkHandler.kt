@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.satellite
 
 import android.Manifest
 import android.content.Context
+import com.msp1974.vacompanion.audio.MicLevelMonitor
 import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
@@ -58,6 +59,10 @@ abstract class SatelliteWakeWorkHandler(
         // comfortably cover normal teardown time; if it's hit, that's a real problem worth
         // surfacing (see stop()), not silently ignoring.
         private const val STOP_TIMEOUT_MS = 1000L
+
+        // How much of the most recent audio to look at for how loud the wake word was said. Covers
+        // the phrase itself plus the time the engine takes to report it.
+        private const val WAKE_WORD_LEVEL_WINDOW_MS = 2000L
     }
 
     val config = deviceManager.config
@@ -188,9 +193,20 @@ abstract class SatelliteWakeWorkHandler(
                                 val lastDetection = detectionCooldowns[it.detection.wakeWordId]
 
                                 if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
-                                    Timber.i("Wake word detected: ${it.detection.wakeWord}")
-                                    wakeWordDetected(it.detection)
-                                    detectionCooldowns[it.detection.wakeWordId] = now
+                                    // Measured on the raw microphone: gain control brings a whisper up
+                                    // to speech loudness, so the engine can't tell it apart.
+                                    val micLevel = microphone.level.peakDbfs(WAKE_WORD_LEVEL_WINDOW_MS)
+                                    val levelText = micLevel?.let { l -> "%.1f dBFS".format(l) } ?: "unknown"
+                                    if (MicLevelMonitor.isBelowMinimum(config.wakeWordMinLevel, micLevel)) {
+                                        Timber.i(
+                                            "Ignored ${it.detection.wakeWord} wake word (score ${it.detection.score}): " +
+                                                "mic level $levelText is below the minimum of ${config.wakeWordMinLevel} dBFS"
+                                        )
+                                    } else {
+                                        Timber.i("Wake word detected: ${it.detection.wakeWord} (mic level $levelText)")
+                                        wakeWordDetected(it.detection)
+                                        detectionCooldowns[it.detection.wakeWordId] = now
+                                    }
                                 }
                             }
                         }

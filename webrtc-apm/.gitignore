@@ -1,0 +1,8 @@
+# Reproducible build inputs are committed:
+# - native/* build scripts and Dockerfile
+# - native/WEBRTC_REVISION
+# - src/main/jniLibs/*/libwebrtc_apms.so
+# - src/main/jniLibs/BUILD_INFO.txt
+#
+# Local build cache/tooling and fetched sources (do not commit)
+/.local/
