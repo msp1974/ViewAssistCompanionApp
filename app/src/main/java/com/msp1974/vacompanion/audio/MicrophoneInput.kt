@@ -24,6 +24,8 @@ object AudioEnhancerSource {
 class MicrophoneInput (
     val context: Context,
     val deviceManager: DeviceManager,
+    // True while a voice command is being captured (see AudioEnhancer).
+    isSpeechCaptureActive: () -> Boolean = { false },
 ) : AutoCloseable {
 
     private val sampleRateInHz: Int = VACAAudioFormat.SAMPLE_RATE_HZ
@@ -64,8 +66,7 @@ class MicrophoneInput (
             suppressUntilMs = System.currentTimeMillis() + durationMs
         }
 
-        private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs
-    }
+        private fun isMicSuppressed(): Boolean = System.currentTimeMillis() < suppressUntilMs    }
 
     // Guards reads/writes of audioRecord: recreateAudioRecord() runs on the main thread (via
     // AudioInRouter's device/route-change callback) while readShort() runs on the wake-word
@@ -84,7 +85,7 @@ class MicrophoneInput (
     private var agc: AutomaticGainControl? = null
     private var aec: AcousticEchoCanceler? = null
 
-    private val audioEnhancer = AudioEnhancer(sampleRateInHz, context)
+    private val audioEnhancer = AudioEnhancer(sampleRateInHz, context, isSpeechCaptureActive)
     private var audioDSP = AudioDSP()
 
     // Owns all microphone device selection, the AudioDeviceCallback, and Bluetooth SCO -

@@ -40,6 +40,8 @@ class MicrophoneAudioStream(
     private val context: Context,
     private val deviceManager: DeviceManager,
     scope: CoroutineScope,
+    // True while a voice command is being captured; the microphone tunes its gain control to suit.
+    private val isSpeechCaptureActive: () -> Boolean = { false },
 ) {
     // The buffer must be the last operator: shareIn takes its buffering/overflow behaviour from it.
     val audio: SharedFlow<ShortArray> = capture()
@@ -65,7 +67,7 @@ class MicrophoneAudioStream(
             Timber.w("Microphone not opened - RECORD_AUDIO permission not granted")
             return@channelFlow
         }
-        val microphone = MicrophoneInput(context, deviceManager)
+        val microphone = MicrophoneInput(context, deviceManager, isSpeechCaptureActive)
         try {
             withContext(Dispatchers.IO) { microphone.start() }
             Timber.d("Microphone opened")

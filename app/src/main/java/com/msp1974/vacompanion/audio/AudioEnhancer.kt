@@ -29,6 +29,10 @@ import kotlin.math.sqrt
 class AudioEnhancer(
     private val sampleRate: Int = VACAAudioFormat.SAMPLE_RATE_HZ,
     private val context: Context? = null,
+    // Asked for every frame whether a voice command is being captured, which selects the AGC's
+    // speech tuning (see AutomaticGainController.setSpeechProfile). Being asked rather than told
+    // means the tuning can't stay on speech if whatever was capturing ends without saying so.
+    private val isSpeechCaptureActive: () -> Boolean = { false },
 ) {
 
     var agcEnabled = false
@@ -51,6 +55,7 @@ class AudioEnhancer(
 
     fun processFrame(input: ShortArray): ShortArray {
         if (input.isEmpty()) return input
+        agc.setSpeechProfile(isSpeechCaptureActive())
         // Noise suppression cleans up generic noise, then the AGC levels the final, cleaned signal.
         var processed = input
 
@@ -90,6 +95,11 @@ class AudioEnhancer(
  * ever attenuating; [maxGainDb]/[maxAttenuationDb] are generous enough to
  * cover the full range [AudioEnhancer.setMicGainDb] can shift the target to.
  *
+ * It has two tunings, selected with [setSpeechProfile]. While listening for the wake word, a
+ * sustained quiet sound pulls the noise floor up quickly and the gate closes, so a whisper isn't
+ * levelled up to normal speech and mistaken for it. While a command is being captured, the floor
+ * is nearly frozen during speech and the gate and gain are held, so a long phrase keeps its gain.
+ *
  * The gate itself is threshold-free by design: a single fixed dBFS cutoff can't fit every
  * microphone, since raw input level for the same physical loudness varies wildly device to
  * device (a quiet-mic device's speech may never reach a threshold tuned for a sensitive one,
@@ -117,12 +127,41 @@ class AutomaticGainController(
     heldGainDecayMs: Float = 1500f,
 ) {
     private val attackCoeff = timeConstantToCoeff(envelopeAttackMs, sampleRate)
-    private val releaseCoeff = timeConstantToCoeff(envelopeReleaseMs, sampleRate)
     private val noiseFloorRiseCoeff = timeConstantToCoeff(noiseFloorRiseMs, sampleRate)
-    private val noiseFloorSpeechRiseCoeff = timeConstantToCoeff(noiseFloorRiseWhileSpeechMs, sampleRate)
-    private val heldGainDecayCoeff = timeConstantToCoeff(heldGainDecayMs, sampleRate)
-    private val gateHoldSamples = (gateHoldMs / 1000f * sampleRate).toInt()
     private var envelope = 0f
+
+    /** The gate/envelope timings that differ between [setSpeechProfile]'s two tunings. */
+    private class Profile(
+        sampleRate: Int,
+        releaseMs: Float,
+        noiseFloorRiseWhileSpeechMs: Float,
+        gateHoldMs: Float,
+        heldGainDecayMs: Float,
+    ) {
+        val releaseCoeff = timeConstantToCoeff(releaseMs, sampleRate)
+        val noiseFloorSpeechRiseCoeff = timeConstantToCoeff(noiseFloorRiseWhileSpeechMs, sampleRate)
+        val heldGainDecayCoeff = timeConstantToCoeff(heldGainDecayMs, sampleRate)
+        val gateHoldSamples = (gateHoldMs / 1000f * sampleRate).toInt()
+    }
+
+    // Wake word listening: the floor follows a sustained quiet sound up within seconds and the
+    // gate closes behind it, so a whisper isn't boosted to normal speech level.
+    private val listeningProfile = Profile(sampleRate, LISTENING_RELEASE_MS, noiseFloorRiseMs, 0f, 0f)
+
+    // Capturing a command: the constructor's values, which keep gain steady through a long phrase.
+    private val speechProfile = Profile(
+        sampleRate, envelopeReleaseMs, noiseFloorRiseWhileSpeechMs, gateHoldMs, heldGainDecayMs,
+    )
+    private var profile = listeningProfile
+
+    /**
+     * Selects the tuning for [speech] being captured (a voice command is being streamed) or not
+     * (listening for the wake word). Only the timings change, not the running state, so switching
+     * mid-signal is seamless.
+     */
+    fun setSpeechProfile(speech: Boolean) {
+        profile = if (speech) speechProfile else listeningProfile
+    }
 
     // Samples remaining before a gate that has stopped detecting signal is allowed to close.
     private var holdRemaining = 0
@@ -141,10 +180,11 @@ class AutomaticGainController(
             val sample = input[i] / 32768f
             val absSample = abs(sample)
 
+            val profile = profile
             envelope = if (absSample > envelope) {
                 envelope + (absSample - envelope) * attackCoeff
             } else {
-                envelope + (absSample - envelope) * releaseCoeff
+                envelope + (absSample - envelope) * profile.releaseCoeff
             }
 
             val levelDb = linearToDb(envelope)
@@ -159,7 +199,7 @@ class AutomaticGainController(
             noiseFloorDb = if (levelDb < noiseFloorDb) {
                 levelDb
             } else {
-                val coeff = if (levelDb < noiseFloorDb + noiseGateMarginDb) noiseFloorRiseCoeff else noiseFloorSpeechRiseCoeff
+                val coeff = if (levelDb < noiseFloorDb + noiseGateMarginDb) noiseFloorRiseCoeff else profile.noiseFloorSpeechRiseCoeff
                 noiseFloorDb + (levelDb - noiseFloorDb) * coeff
             }
             val adaptiveGateThresholdDbfs = (noiseFloorDb + noiseGateMarginDb)
@@ -171,7 +211,7 @@ class AutomaticGainController(
             // trailing syllables of a phrase.
             var gateOpenness = ((levelDb - adaptiveGateThresholdDbfs) / GATE_TRANSITION_DB).coerceIn(0f, 1f)
             if (gateOpenness > 0f) {
-                holdRemaining = gateHoldSamples
+                holdRemaining = profile.gateHoldSamples
             } else if (holdRemaining > 0) {
                 holdRemaining--
                 gateOpenness = 1f
@@ -180,7 +220,7 @@ class AutomaticGainController(
             if (gateOpenness >= 1f) {
                 heldGainDb = computedGainDb
             } else {
-                heldGainDb -= heldGainDb * heldGainDecayCoeff
+                heldGainDb -= heldGainDb * profile.heldGainDecayCoeff
             }
             val gainDb = computedGainDb * gateOpenness + heldGainDb * (1f - gateOpenness)
 
@@ -202,6 +242,8 @@ class AutomaticGainController(
         const val BASE_TARGET_LEVEL_DBFS = -18f
 
         private const val GATE_TRANSITION_DB = 10f
+
+        private const val LISTENING_RELEASE_MS = 250f
 
         private fun timeConstantToCoeff(timeConstantMs: Float, sampleRate: Int): Float {
             val tau = (timeConstantMs / 1000f).coerceAtLeast(0.0001f)

@@ -100,6 +100,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     private val firebase = FirebaseManager.getInstance(context)
 
     private var wakeWordHandler: SatelliteWakeWorkHandler? = null
+    // Volatile as the microphone's read thread checks it (see microphone below).
+    @Volatile
     private var audioPipeline: SatelliteAudioPipeline? = null
     private var audioPipelineLastStateChange = System.currentTimeMillis()
 
@@ -110,7 +112,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     // The only owner of the microphone. The wake word engine and any listening audio pipeline
     // subscribe to it; it is open only while at least one of them is.
-    private val microphone = MicrophoneAudioStream(context, deviceManager, scope)
+    // Its gain control follows the current pipeline's stage, so there is nothing to reset when a
+    // pipeline ends: no pipeline, or one past listening, means wake word tuning.
+    private val microphone = MicrophoneAudioStream(context, deviceManager, scope) {
+        audioPipeline?.isCapturingSpeech == true
+    }
 
     private var soundEffectFinishTime: Long = 0
     private var currentWakeWordSoundUri: android.net.Uri? = null
