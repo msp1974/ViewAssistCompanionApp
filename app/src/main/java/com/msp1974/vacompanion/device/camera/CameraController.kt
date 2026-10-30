@@ -40,7 +40,9 @@ import timber.log.Timber
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
-enum class CameraAvailability { NO_CAMERA, NO_PERMISSION, IN_USE, READY }
+/** [NO_VIDEO]: the camera opens but delivers no frames (see [Camera2DirectSource]). Only reported
+ *  while [CameraController] is backing off before it tries again. */
+enum class CameraAvailability { NO_CAMERA, NO_PERMISSION, IN_USE, NO_VIDEO, READY }
 
 /**
  * Single owner of the device's front camera. CameraX only allows one bound set of use cases at a
@@ -168,7 +170,14 @@ class CameraController(
     fun currentAvailability(): CameraAvailability {
         val static = computeStaticAvailability()
         if (static != CameraAvailability.READY) return static
-        return if (_availability.value == CameraAvailability.IN_USE) CameraAvailability.IN_USE else CameraAvailability.READY
+        return when {
+            _availability.value == CameraAvailability.IN_USE -> CameraAvailability.IN_USE
+            // Once the backoff is over the camera is worth another try, so report it as ready and
+            // let the next consumer to attach start it.
+            _availability.value == CameraAvailability.NO_VIDEO && System.currentTimeMillis() < rebindBackoffUntilMs ->
+                CameraAvailability.NO_VIDEO
+            else -> CameraAvailability.READY
+        }
     }
 
     /** Re-checks permission/hardware availability. Call after a permission grant/revoke, since
@@ -242,7 +251,13 @@ class CameraController(
 
         val now = System.currentTimeMillis()
         if (consecutiveBindFailures > 0 && now < rebindBackoffUntilMs) {
-            Timber.d("CameraController: skipping rebind, backing off for ${rebindBackoffUntilMs - now}ms after $consecutiveBindFailures consecutive failure(s)")
+            val remaining = rebindBackoffUntilMs - now
+            Timber.d("CameraController: skipping rebind, backing off for ${remaining}ms after $consecutiveBindFailures consecutive failure(s)")
+            // Whatever is waiting on the camera has no other trigger to try again.
+            rebindJob = mainScope.launch {
+                delay(remaining)
+                rebind()
+            }
             return
         }
 
@@ -334,9 +349,11 @@ class CameraController(
         ).also {
             it.onOpened = {
                 _availability.value = CameraAvailability.READY
-                onBindSuccess()
                 Timber.i("CameraController: bound via direct Camera2 (id=$id)")
             }
+            // Only now is the camera known to work, so only now is the failure backoff cleared.
+            it.onFrames = { onBindSuccess() }
+            it.onNoFrames = { mainScope.launch { onNoVideo() } }
             it.onError = {
                 _availability.value = CameraAvailability.IN_USE
                 onBindFailure()
@@ -344,8 +361,23 @@ class CameraController(
             directSource = it
         }
 
-        source.stop()
-        source.start(directTargets(), needsAnalysis)
+        // Opening or closing the camera can block for seconds (see Camera2DirectSource), so never
+        // on the main thread.
+        withContext(Dispatchers.IO) {
+            source.stop()
+            source.start(directTargets(), needsAnalysis)
+        }
+    }
+
+    /** The direct camera is open but isn't delivering frames: let go of it so the device's own
+     *  camera pipeline isn't held up, tell consumers, and retry once the backoff is over. */
+    private suspend fun onNoVideo() {
+        Timber.e("CameraController: camera opened but delivers no video, releasing it")
+        withContext(Dispatchers.IO) { directSource?.stop() }
+        directViaTee = false
+        onBindFailure()
+        _availability.value = CameraAvailability.NO_VIDEO
+        scheduleRebind()
     }
 
     /**
@@ -453,7 +485,7 @@ class CameraController(
 
     private suspend fun unbind() {
         if (directCameraId != null) {
-            directSource?.stop()
+            withContext(Dispatchers.IO) { directSource?.stop() }
             directViaTee = false
             _availability.value = computeStaticAvailability()
             return

@@ -141,6 +141,22 @@ abstract class RtspServer(private val context: Context, val deviceManager: Devic
         }
 
         state = RtspServerState.RUNNING
+
+        // A camera that delivers no video can't serve the clients already connected, so release them
+        // (and the encoder) rather than leave them waiting on a stream that never starts.
+        val noVideoJob = scope.launch {
+            deviceManager.camera.availability.collect { availability ->
+                if (availability == CameraAvailability.NO_VIDEO) {
+                    Timber.w("RtspServer: camera is not producing video, closing ${sessions.size} session(s)")
+                    sessions.forEach { it.close() }
+                    encoderLock.withLock {
+                        encoderIdleJob?.cancel()
+                        encoder?.stop()
+                        encoder = null
+                    }
+                }
+            }
+        }
         try {
             while (runServer) {
                 val socket = try {
@@ -163,6 +179,7 @@ abstract class RtspServer(private val context: Context, val deviceManager: Devic
             state = RtspServerState.ERRORED
         } finally {
             withContext(NonCancellable) {
+                noVideoJob.cancel()
                 state = RtspServerState.STOPPING
                 sessions.forEach { it.close() }
                 sessions.clear()

@@ -10,6 +10,7 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.ImmutableImageInfo
 import androidx.camera.core.impl.TagBundle
 import java.nio.ByteBuffer
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Minimal [ImageProxy] wrapping a raw [Image] from an [android.media.ImageReader]. Lets a frame
@@ -26,7 +27,11 @@ import java.nio.ByteBuffer
 class DirectImageProxy(
     private val image: Image,
     rotationDegrees: Int,
+    /** Called once, the first time the frame is closed. */
+    private val onClose: (() -> Unit)? = null,
 ) : ImageProxy {
+
+    private val closed = AtomicBoolean(false)
 
     private val info: ImageInfo = ImmutableImageInfo.create(
         TagBundle.emptyBundle(),
@@ -36,7 +41,14 @@ class DirectImageProxy(
         FlashState.UNKNOWN,
     )
 
-    override fun close() = image.close()
+    override fun close() {
+        if (!closed.compareAndSet(false, true)) return
+        try {
+            image.close()
+        } finally {
+            onClose?.invoke()
+        }
+    }
     override fun getCropRect(): Rect = image.cropRect
     override fun setCropRect(rect: Rect?) { image.cropRect = rect }
     override fun getFormat(): Int = image.format

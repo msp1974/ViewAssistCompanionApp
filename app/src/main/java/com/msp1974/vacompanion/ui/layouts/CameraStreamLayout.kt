@@ -123,6 +123,7 @@ fun CameraStreamLayout(
             }
             CameraAvailability.NO_PERMISSION -> CameraUnavailableMessage("Camera permission not granted")
             CameraAvailability.IN_USE -> CameraUnavailableMessage("Camera is in use elsewhere")
+            CameraAvailability.NO_VIDEO -> CameraUnavailableMessage("Camera is not producing video")
             CameraAvailability.NO_CAMERA -> CameraUnavailableMessage("No front camera available")
         }
 
