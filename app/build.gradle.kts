@@ -143,7 +143,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.service)
     implementation(libs.ktor.network)
     implementation(libs.ktor.client.core) // Ktor-Core
-    implementation(libs.ktor.client.android) // Ktor-Engine
+    implementation(libs.ktor.client.okhttp) // Ktor-Engine
     implementation(libs.ktor.serialization.kotlinx.json) // Ktor- To work with Serialization
     implementation(libs.ktor.client.content.negotiation) // Serialization
     testImplementation(libs.junit)

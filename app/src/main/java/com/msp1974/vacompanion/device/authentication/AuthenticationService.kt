@@ -99,6 +99,7 @@ class AuthenticationService(ignoreSslErrors: () -> Boolean = { false }) : IAuthe
             val cid = clientId ?: getClientId(url.protocol == IAuthenticationService.HTTPS)
             val obfuscatedSource = "{'grant_type': '$grantType', 'refresh_token': '${refreshToken.subSequence(0,10)}...', 'client_id': '${cid}'}"
             Timber.d("refreshToken Request: $authUrl -> $obfuscatedSource")
+            val startMs = System.currentTimeMillis()
             val response = client.post(authUrl) {
                 contentType(ContentType.Application.FormUrlEncoded)
                 setBody(FormDataContent(parameters {
@@ -107,6 +108,7 @@ class AuthenticationService(ignoreSslErrors: () -> Boolean = { false }) : IAuthe
                     append("client_id", cid)
                 }))
             }
+            Timber.d("refreshToken response: ${response.status} in ${System.currentTimeMillis() - startMs}ms")
             if (response.status.isSuccess()) {
                 val result = response.body<Token>()
                 val obfuscatedResult = "{'access_token': '${result.accessToken.subSequence(0,10)}...', 'expires_in': ${result.expiresIn}, 'refresh_token': '${result.refreshToken?.subSequence(0,10)}...', 'token_type': '${result.tokenType}'}"
@@ -118,6 +120,7 @@ class AuthenticationService(ignoreSslErrors: () -> Boolean = { false }) : IAuthe
             // Already carries the HTTP status and body - don't re-wrap, or callers lose them.
             throw e
         } catch (e: Exception) {
+            Timber.w(e, "refreshToken failed: ${e.javaClass.simpleName}")
             // Network/TLS failures (e.g. a misconfigured HA URL whose certificate doesn't cover
             // the configured host) must surface as AuthenticationException like getToken() does,
             // not escape as a raw exception - callers only catch AuthenticationException.
