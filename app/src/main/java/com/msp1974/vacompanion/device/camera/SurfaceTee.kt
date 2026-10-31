@@ -1,5 +1,6 @@
 package com.msp1974.vacompanion.device.camera
 
+import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.opengl.EGL14
 import android.opengl.EGLConfig
@@ -12,26 +13,24 @@ import android.opengl.Matrix
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
-import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceRequest
 import timber.log.Timber
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executor
 import java.util.concurrent.Future
 
 /**
  * One destination the shared camera feed is drawn into: the on-screen preview, the RTSP
  * encoder's input surface, etc. [mirror] requests the familiar "selfie" look (left-right
- * flipped); the camera's own sensor mirroring is always corrected for first, so with
- * mirror=false the output is true-to-life - what a remote RTSP viewer expects.
+ * flipped); the camera's own frames are true to life, so with mirror=false the output is too -
+ * what a remote RTSP viewer expects. The user's mirror setting flips every output from there.
  *
  * Once the image is turned upright it can be a different shape from the output (a portrait image
- * going to a landscape output). It always keeps its proportions and is centre-cropped to fill the
- * output - never stretched, and never letterboxed.
+ * going to a landscape output). It always keeps its proportions, never stretched. By default it is
+ * centre-cropped to fill the output; with [fit] the whole image is kept instead and the spare
+ * space is left black.
  */
 class TeeOutput(
     val id: String,
@@ -39,19 +38,20 @@ class TeeOutput(
     val width: Int,
     val height: Int,
     val mirror: Boolean = false,
+    val fit: Boolean = false,
 )
 
 /**
- * Fans a single CameraX [Preview] stream out to any number of destination surfaces, using a
- * dedicated GL thread. CameraX only allows one bound [Preview] use case at a time, so this is
- * what lets the local camera view and the RTSP encoder share the same camera feed concurrently.
- * Outputs can be added/removed at any time without [CameraController] having to rebind the camera.
+ * Fans the camera's single stream out to any number of destination surfaces, using a dedicated GL
+ * thread, drawing it turned upright, mirrored and fitted for each. Only one capture session can
+ * hold the camera, so this is what lets the local camera view and the RTSP encoder share the same
+ * camera feed concurrently. Outputs can be added/removed at any time without [CameraController]
+ * having to reopen the camera.
  */
-class SurfaceTee : Preview.SurfaceProvider {
+class SurfaceTee {
 
     private val thread = HandlerThread("CameraTeeGL").apply { start() }
     private val handler = Handler(thread.looper)
-    private val glExecutor = Executor { handler.post(it) }
 
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -69,11 +69,23 @@ class SurfaceTee : Preview.SurfaceProvider {
 
     private val stMatrix = FloatArray(16)
     private val adjustMatrix = FloatArray(16)
+    private val mirrorMatrix = FloatArray(16)
+    private val stMirrorMatrix = FloatArray(16)
     private val finalMatrix = FloatArray(16)
 
-    // Rotation to make the camera image upright: reported by CameraX, or set from the device
-    // orientation for the direct Camera2 backend (see setDirectRotation).
+    // The camera's own transform as of the last frame drawn, for [imageToOutput].
+    @Volatile private var lastStMatrix: FloatArray? = null
+
+    // Rotation to make the camera image upright, set from the camera's report (see setDirectRotation).
     @Volatile private var cameraRotation = 0
+
+    // Flips every output left to right, from the user's mirror setting.
+    @Volatile var userMirror = false
+
+    // For a frame holding a picture of the transposed shape stretched into the buffer (see
+    // CameraOrientation.isFrameSqueezed), so the image is drawn as if the buffer were that shape:
+    // the texture still fills the quad, which undoes the stretch.
+    @Volatile var bufferIsTransposed = false
 
     // Extra rotation the user asked for, for devices whose camera orientation is misreported.
     @Volatile private var rotationOffset = 0
@@ -82,47 +94,15 @@ class SurfaceTee : Preview.SurfaceProvider {
     @Volatile private var bufferWidth = 0
     @Volatile private var bufferHeight = 0
 
-    @Volatile private var sourceMirroring = false
     @Volatile private var released = false
-
-    /** Told what CameraX reports each time it sends a transform, for diagnostics. */
-    @Volatile var onCameraXTransform: ((rotationDegrees: Int, mirroring: Boolean) -> Unit)? = null
 
     private class OutputState(val output: TeeOutput) {
         var eglSurface: EGLSurface = EGL14.EGL_NO_SURFACE
+        var loggedWidth = 0
+        var loggedHeight = 0
     }
 
     private val outputs = CopyOnWriteArrayList<OutputState>()
-
-    override fun onSurfaceRequested(request: SurfaceRequest) {
-        handler.post {
-            if (released) {
-                request.willNotProvideSurface()
-                return@post
-            }
-            try {
-                ensureEgl()
-                val resolution = request.resolution
-                setupCameraTexture(resolution.width, resolution.height)
-                val surface = cameraSurface
-                if (surface == null) {
-                    request.willNotProvideSurface()
-                    return@post
-                }
-                request.setTransformationInfoListener(glExecutor) { info ->
-                    cameraRotation = info.rotationDegrees
-                    sourceMirroring = info.isMirroring
-                    onCameraXTransform?.invoke(info.rotationDegrees, info.isMirroring)
-                }
-                request.provideSurface(surface, glExecutor) { result ->
-                    Timber.d("SurfaceTee: surface request result: ${result.resultCode}")
-                }
-            } catch (e: Exception) {
-                Timber.e("SurfaceTee: failed to satisfy surface request: $e")
-                request.willNotProvideSurface()
-            }
-        }
-    }
 
     /** Turns every output by a further [degrees], on top of the camera's own orientation. */
     fun setRotationOffset(degrees: Int) {
@@ -130,10 +110,10 @@ class SurfaceTee : Preview.SurfaceProvider {
     }
 
     /**
-     * Opens the tee's camera input for a camera that isn't driven by CameraX (the direct Camera2
-     * backend). The camera writes into the returned surface and every output is then drawn from it
-     * with the orientation set by [setDirectRotation] - without this the raw frames reach the
-     * outputs exactly as the sensor produced them. Completes with null if the tee was released.
+     * Opens the tee's camera input. The camera writes into the returned surface and every output is
+     * then drawn from it with the orientation set by [setDirectRotation] - without this the raw
+     * frames reach the outputs exactly as the sensor produced them. Completes with null if the tee
+     * was released.
      */
     fun createDirectInput(width: Int, height: Int): Future<Surface?> {
         val result = CompletableFuture<Surface?>()
@@ -144,8 +124,7 @@ class SurfaceTee : Preview.SurfaceProvider {
                 } else {
                     ensureEgl()
                     setupCameraTexture(width, height)
-                    // The direct backend delivers true-to-life frames; only CameraX flags mirroring.
-                    sourceMirroring = false
+                    Timber.i("SurfaceTee: camera input ${width}x$height")
                     result.complete(cameraSurface)
                 }
             } catch (e: Exception) {
@@ -155,7 +134,8 @@ class SurfaceTee : Preview.SurfaceProvider {
         return result
     }
 
-    /** Sets the rotation that makes frames from [createDirectInput] upright. */
+    /** Sets the rotation that makes frames from [createDirectInput] upright (see
+     *  [CameraOrientation.reportedRotation]). */
     fun setDirectRotation(degrees: Int) {
         cameraRotation = ((degrees % 360) + 360) % 360
     }
@@ -176,7 +156,12 @@ class SurfaceTee : Preview.SurfaceProvider {
 
     fun addOutput(output: TeeOutput) {
         handler.post {
-            outputs.removeAll { it.output.id == output.id }
+            // A replaced output (the view was resized, e.g. by a rotation) may be the same window,
+            // which a second EGL surface can't connect to until the old one is let go.
+            outputs.filter { it.output.id == output.id }.forEach {
+                destroyOutputSurface(it)
+                outputs.remove(it)
+            }
             outputs.add(OutputState(output))
         }
     }
@@ -295,6 +280,7 @@ class SurfaceTee : Preview.SurfaceProvider {
         EGL14.eglMakeCurrent(eglDisplay, defaultSurface, defaultSurface, eglContext)
         texture.updateTexImage()
         texture.getTransformMatrix(stMatrix)
+        lastStMatrix = stMatrix.copyOf()
 
         val rotation = (cameraRotation + rotationOffset) % 360
         for (state in outputs) {
@@ -302,10 +288,26 @@ class SurfaceTee : Preview.SurfaceProvider {
             if (state.eglSurface == EGL14.EGL_NO_SURFACE) continue
             EGL14.eglMakeCurrent(eglDisplay, state.eglSurface, state.eglSurface, eglContext)
             val output = state.output
-            val (x, y, w, h) = fillViewport(output.width, output.height, rotation)
+            // The surface's real size, which is what the viewport must be worked out against: the
+            // size the output was registered with is out of date if the view has been resized since.
+            val eglSize = IntArray(2)
+            EGL14.eglQuerySurface(eglDisplay, state.eglSurface, EGL14.EGL_WIDTH, eglSize, 0)
+            EGL14.eglQuerySurface(eglDisplay, state.eglSurface, EGL14.EGL_HEIGHT, eglSize, 1)
+            val outWidth = if (eglSize[0] > 0) eglSize[0] else output.width
+            val outHeight = if (eglSize[1] > 0) eglSize[1] else output.height
+            if (state.loggedWidth != outWidth || state.loggedHeight != outHeight) {
+                state.loggedWidth = outWidth
+                state.loggedHeight = outHeight
+                Timber.i(
+                    "SurfaceTee: output ${output.id} registered ${output.width}x${output.height}, " +
+                        "surface ${eglSize[0]}x${eglSize[1]}, buffer ${bufferWidth}x$bufferHeight, rotation $rotation"
+                )
+            }
+            val (x, y, w, h) = fillViewport(outWidth, outHeight, rotation, output.fit)
             GLES20.glViewport(x, y, w, h)
             computeAdjustMatrix(output.mirror, rotation)
-            Matrix.multiplyMM(finalMatrix, 0, adjustMatrix, 0, stMatrix, 0)
+            Matrix.multiplyMM(stMirrorMatrix, 0, stMatrix, 0, mirrorMatrix, 0)
+            Matrix.multiplyMM(finalMatrix, 0, adjustMatrix, 0, stMirrorMatrix, 0)
             drawQuad()
             EGL14.eglSwapBuffers(eglDisplay, state.eglSurface)
         }
@@ -320,16 +322,18 @@ class SurfaceTee : Preview.SurfaceProvider {
      * A quarter-turn swaps the camera frame's width and height, so a landscape frame becomes a
      * portrait image; to fill a landscape output it is drawn larger than the output and centred, so
      * the overhang (top and bottom) is clipped off by the surface. The origin is therefore negative
-     * on the cropped axis, which GL allows.
+     * on the cropped axis, which GL allows. With [fit] it is drawn smaller than the output instead,
+     * so the whole image shows.
      */
-    private fun fillViewport(outWidth: Int, outHeight: Int, rotation: Int): IntArray {
-        val bw = bufferWidth
-        val bh = bufferHeight
+    private fun fillViewport(outWidth: Int, outHeight: Int, rotation: Int, fit: Boolean): IntArray {
+        val bw = if (bufferIsTransposed) bufferHeight else bufferWidth
+        val bh = if (bufferIsTransposed) bufferWidth else bufferHeight
         if (bw <= 0 || bh <= 0) return intArrayOf(0, 0, outWidth, outHeight)
         val quarterTurn = rotation % 180 != 0
         val imageAspect = if (quarterTurn) bh.toFloat() / bw else bw.toFloat() / bh
         val outAspect = outWidth.toFloat() / outHeight
-        return if (imageAspect > outAspect) {
+        // Covering the output means matching its shorter side, fitting it means matching its longer.
+        return if ((imageAspect > outAspect) != fit) {
             val w = (outHeight * imageAspect).toInt()
             intArrayOf((outWidth - w) / 2, 0, w, outHeight)
         } else {
@@ -338,17 +342,71 @@ class SurfaceTee : Preview.SurfaceProvider {
         }
     }
 
-    private fun computeAdjustMatrix(outputMirror: Boolean, rotation: Int) {
+    /** The width over height of the image as drawn (before any fitting), or null before the camera
+     *  has produced a frame. */
+    fun imageAspect(): Float? {
+        val bw = if (bufferIsTransposed) bufferHeight else bufferWidth
+        val bh = if (bufferIsTransposed) bufferWidth else bufferHeight
+        if (bw <= 0 || bh <= 0) return null
+        val quarterTurn = (cameraRotation + rotationOffset) % 180 != 0
+        return if (quarterTurn) bh.toFloat() / bw else bw.toFloat() / bh
+    }
+
+    /**
+     * Where [rect] - a rectangle in the camera frame, 0..1 across and down from its top left, as
+     * the motion and face detectors report - appears in an output's image, 0..1 across and down
+     * from the top left of the image as drawn (not of the whole surface). Worked out by running
+     * the very transform the frames are drawn with backwards, so it follows the rotation, mirror and
+     * camera transform whatever they are. Null until a frame has been drawn.
+     */
+    fun imageToOutput(rect: RectF, outputMirror: Boolean): RectF? {
+        val st = lastStMatrix ?: return null
+        val rotation = (cameraRotation + rotationOffset) % 360
+        val adjust = FloatArray(16)
+        val mirror = FloatArray(16)
+        computeAdjustMatrix(outputMirror, rotation, adjust, mirror)
+        val stMirror = FloatArray(16)
+        val full = FloatArray(16)
+        val inverse = FloatArray(16)
+        Matrix.multiplyMM(stMirror, 0, st, 0, mirror, 0)
+        Matrix.multiplyMM(full, 0, adjust, 0, stMirror, 0)
+        if (!Matrix.invertM(inverse, 0, full, 0)) return null
+
+        // Texture coordinates run down the frame from t=0 at its first row, GL's v runs up the output.
+        val out = FloatArray(4)
+        val xs = FloatArray(4)
+        val ys = FloatArray(4)
+        val corners = floatArrayOf(rect.left, rect.top, rect.right, rect.top, rect.left, rect.bottom, rect.right, rect.bottom)
+        for (i in 0 until 4) {
+            Matrix.multiplyMV(out, 0, inverse, 0, floatArrayOf(corners[i * 2], corners[i * 2 + 1], 0f, 1f), 0)
+            xs[i] = out[0]
+            ys[i] = 1f - out[1]
+        }
+        return RectF(xs.min(), ys.min(), xs.max(), ys.max())
+    }
+
+    private fun computeAdjustMatrix(
+        outputMirror: Boolean,
+        rotation: Int,
+        adjustMatrix: FloatArray = this.adjustMatrix,
+        mirrorMatrix: FloatArray = this.mirrorMatrix,
+    ) {
         Matrix.setIdentityM(adjustMatrix, 0)
         Matrix.translateM(adjustMatrix, 0, 0.5f, 0.5f, 0f)
-        // The sensor buffer for a front camera is inherently mirrored; undo that first so a
-        // non-mirrored output (e.g. the RTSP stream) is true-to-life, then re-apply a mirror
-        // only when this particular output wants the familiar "selfie" look.
-        if (sourceMirroring xor outputMirror) {
-            Matrix.scaleM(adjustMatrix, 0, -1f, 1f, 1f)
-        }
         Matrix.rotateM(adjustMatrix, 0, rotation.toFloat(), 0f, 0f, 1f)
         Matrix.translateM(adjustMatrix, 0, -0.5f, -0.5f, 0f)
+
+        // The camera's frames are true to life, so a non-mirrored output (e.g. the RTSP stream) is
+        // as they are, and a mirror is applied only when this particular output wants the familiar
+        // "selfie" look, or the user has asked for one. The flip is of the output's left-right, so it
+        // is applied to the output coordinates before the camera's transform and the rotation;
+        // applied after the rotation it would flip top-bottom whenever the image is turned a quarter.
+        Matrix.setIdentityM(mirrorMatrix, 0)
+        if (outputMirror xor userMirror) {
+            Matrix.translateM(mirrorMatrix, 0, 0.5f, 0.5f, 0f)
+            Matrix.scaleM(mirrorMatrix, 0, -1f, 1f, 1f)
+            Matrix.translateM(mirrorMatrix, 0, -0.5f, -0.5f, 0f)
+        }
     }
 
     private fun ensureOutputSurface(state: OutputState) {

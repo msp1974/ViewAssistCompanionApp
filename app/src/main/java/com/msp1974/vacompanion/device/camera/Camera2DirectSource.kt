@@ -20,15 +20,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Alternate camera backend for devices where CameraX's own enumeration/validation rejects a
- * camera that opens fine via raw Camera2 (see [DeviceCameraQuirks]). Opens [cameraId] directly
- * and targets every currently-needed output - the analysis [ImageReader] plus any preview/
- * encoder [Surface]s - with a single capture session and one repeating request.
+ * The camera backend: opens [cameraId] through raw Camera2 and targets every currently-needed
+ * output - the analysis [ImageReader] plus any preview/encoder [Surface]s - with a single capture
+ * session and one repeating request. (CameraX's own enumeration rejects some devices' cameras that
+ * open fine this way.)
  *
  * Camera2 natively fans one capture request out to multiple target surfaces, so the surfaces it is
  * given can be the outputs themselves. Those get the raw sensor orientation, which is only right
- * when the camera's image is already upright; [CameraController] instead hands this a single
- * [SurfaceTee] input when the image needs turning, and the tee draws it to every output.
+ * when the camera's image is already upright and the output is its shape; [CameraController]
+ * instead hands this a single [SurfaceTee] input, and the tee draws it to every output.
  *
  * Opening a camera can block for seconds on some devices (the Portal's camera service waits on a
  * platform service), so [start] and [stop] block and must be called off the main thread.
@@ -50,6 +50,10 @@ class Camera2DirectSource(
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
     private var analysisReader: ImageReader? = null
+
+    // What the capture request asks for beyond the defaults, set by [start].
+    private var targetFps: Int? = null
+    private var boostExposure = false
 
     @Volatile private var running = false
     @Volatile private var starting = false
@@ -74,9 +78,11 @@ class Camera2DirectSource(
 
     @Synchronized
     @SuppressLint("MissingPermission")
-    fun start(outputs: List<Surface>, needsAnalysis: Boolean) {
+    fun start(outputs: List<Surface>, needsAnalysis: Boolean, targetFps: Int? = null, boostExposure: Boolean = false) {
         if (running || starting) return
         val gen = ++generation
+        this.targetFps = targetFps
+        this.boostExposure = boostExposure
 
         val targets = mutableListOf<Surface>().apply { addAll(outputs) }
 
@@ -166,6 +172,7 @@ class Camera2DirectSource(
             val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW).apply {
                 targets.forEach { addTarget(it) }
                 set(CaptureRequest.CONTROL_AE_ANTIBANDING_MODE, CaptureRequest.CONTROL_AE_ANTIBANDING_MODE_AUTO)
+                applyOptionalSettings(this)
             }
 
             @Suppress("DEPRECATION")
@@ -211,6 +218,32 @@ class Camera2DirectSource(
             Timber.e("Camera2DirectSource: createCaptureSession threw: $e")
             release()
             onError?.invoke()
+        }
+    }
+
+    /** The frame rate range and exposure the owner asked for, where the camera supports them. A
+     *  camera whose metadata can't be read just keeps its defaults. */
+    private fun applyOptionalSettings(builder: CaptureRequest.Builder) {
+        val characteristics = try {
+            (context.getSystemService(Context.CAMERA_SERVICE) as CameraManager).getCameraCharacteristics(cameraId)
+        } catch (e: Exception) {
+            Timber.w("Camera2DirectSource: couldn't read the camera's capabilities: $e")
+            return
+        }
+        try {
+            val fps = targetFps
+            if (fps != null) {
+                characteristics.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES)
+                    ?.filter { fps in it.lower..it.upper }
+                    ?.minByOrNull { (it.upper - fps) + (fps - it.lower) }
+                    ?.let { builder.set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, it) }
+            }
+            if (boostExposure) {
+                val upper = characteristics.get(CameraCharacteristics.CONTROL_AE_COMPENSATION_RANGE)?.upper ?: 0
+                if (upper > 0) builder.set(CaptureRequest.CONTROL_AE_EXPOSURE_COMPENSATION, upper / 2)
+            }
+        } catch (e: Exception) {
+            Timber.w("Camera2DirectSource: couldn't apply the frame rate or exposure: $e")
         }
     }
 

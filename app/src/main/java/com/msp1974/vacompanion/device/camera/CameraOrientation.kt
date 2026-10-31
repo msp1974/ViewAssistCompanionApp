@@ -14,13 +14,11 @@ import timber.log.Timber
 import kotlin.math.abs
 
 /**
- * The rotation to apply to the camera image so it appears upright. That is the camera's own
- * [sensorOrientation] - the device reports it already allowing for how it is oriented, so it is
- * used as it stands rather than being worked out again from the display rotation.
- *
- * It is re-read whenever the display rotates, so a device that updates it as it is turned (such as
- * the rotating Portal+) is followed. [CameraController] uses it to orient the raw frames of the
- * direct Camera2 backend, which has no CameraX transform at all.
+ * What is known about how the camera is mounted, and how the device is turned, to put its image
+ * upright: the [sensorOrientation] the camera reports, the display rotation, and from them the
+ * [reportedRotation]. It is re-read whenever the display rotates, so a device that updates its
+ * sensor orientation as it is turned (such as the rotating Portal+) is followed. [CameraController]
+ * uses it to orient the raw frames from [Camera2DirectSource], which come as the sensor made them.
  *
  * @param cameraId the camera to describe, or null for the device's front camera.
  */
@@ -49,18 +47,59 @@ class CameraOrientation(context: Context, cameraId: String?) {
     }
 
     /**
-     * Degrees (0, 90, 180 or 270) the camera image must be rotated to be upright, as reported by
-     * the camera. Cached, because the direct backend asks for it on every analysis frame; it is
-     * refreshed whenever the display rotates.
+     * Degrees (0, 90, 180 or 270) the camera reports its sensor is turned by relative to the device.
+     * Cached, because it is asked for on every analysis frame; it is refreshed whenever the display
+     * rotates.
      */
     @Volatile
     var sensorOrientation: Int = readSensorOrientation()
         private set
 
-    /** The default display's rotation, as a [Surface] ROTATION_* constant. CameraX is given this as
-     *  its target rotation; it is not used to work out [sensorOrientation]. */
+    /** The default display's rotation, as a [Surface] ROTATION_* constant. */
     val surfaceRotation: Int
         get() = displayManager.getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Surface.ROTATION_0
+
+    /** [surfaceRotation] in degrees. */
+    val surfaceRotationDegrees: Int
+        get() = when (surfaceRotation) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
+    /** The id of the camera being described, or null if the device has no front camera. */
+    val cameraId: String? get() = resolvedCameraId
+
+    /**
+     * Degrees clockwise the camera's image must be turned to be upright for the device as it is
+     * now, as Android defines it for a front camera: the sensor orientation plus the display
+     * rotation. A camera that already allows for how the device is turned (see
+     * [DeviceCameraQuirks.sensorTracksDisplay]) reports it in the sensor orientation alone. This is
+     * what the motion and face detectors are given, and it is right for them on every device seen.
+     */
+    val reportedRotation: Int
+        get() = if (DeviceCameraQuirks.sensorTracksDisplay()) sensorOrientation
+        else (sensorOrientation + surfaceRotationDegrees) % 360
+
+    /**
+     * The angle [SurfaceTee] draws the frame at to put it upright (before the user's rotation
+     * setting). Cameras don't turn their frames to match the sensor mounting the way Android
+     * describes, so [sensorOrientation] isn't used: the frame holds the picture as the device is
+     * naturally held, and the display being turned needs the opposite turn. A camera that already
+     * follows the display (see [DeviceCameraQuirks.sensorTracksDisplay]) is drawn at its report.
+     */
+    val imageRotation: Int
+        get() = if (DeviceCameraQuirks.sensorTracksDisplay()) sensorOrientation
+        else (360 - surfaceRotationDegrees) % 360
+
+    /**
+     * Whether the frame is a picture of the transposed shape stretched into the sensor's landscape
+     * buffer: that is the shape of the device as it is naturally held, so it happens when that is
+     * portrait (the Lenovo and Samsung tablets). It is drawn as if the buffer were that shape.
+     */
+    val isFrameSqueezed: Boolean
+        get() = !DeviceCameraQuirks.sensorTracksDisplay() && !isNaturalLandscape
 
     /**
      * Whether the device's natural orientation - the display at rotation 0 - is landscape (most
@@ -127,19 +166,21 @@ class CameraOrientation(context: Context, cameraId: String?) {
 
     /**
      * The camera output size, for a SurfaceTexture, closest to [target]: the same shape if the
-     * camera offers one, otherwise the nearest in area. The direct backend has no CameraX to pick
+     * camera offers one, otherwise the nearest in area. There is no CameraX to pick
      * a size for it.
      */
     fun outputSize(target: Size): Size {
+        // Some devices' camera metadata is incomplete and the framework throws on reading the map.
         val sizes = try {
-            resolvedCameraId?.let { cameraManager.getCameraCharacteristics(it) }
+            resolvedCameraId
+                ?.let { cameraManager.getCameraCharacteristics(it) }
+                ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+                ?.getOutputSizes(SurfaceTexture::class.java)
+                ?.takeIf { it.isNotEmpty() }
         } catch (e: Exception) {
+            Timber.w("CameraOrientation: couldn't read the output sizes: $e")
             null
-        }
-            ?.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-            ?.getOutputSizes(SurfaceTexture::class.java)
-            ?.takeIf { it.isNotEmpty() }
-            ?: return target
+        } ?: return target
         val targetAspect = target.width.toFloat() / target.height
         val targetArea = target.width.toLong() * target.height
         return sizes.minByOrNull { size ->

@@ -50,8 +50,7 @@ class H264Encoder(
 
     fun start() {
         if (running.get()) return
-        // Same shape as the camera's own, so nothing is cropped or stretched unless the image is
-        // turned a quarter-turn.
+        // The shape of the upright camera image, so nothing is cropped or stretched.
         val (w, h) = cameraController.streamResolution().let { it.width to it.height }
 
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, w, h).apply {
@@ -72,7 +71,7 @@ class H264Encoder(
 
         cameraController.setEncoderFps(config.rtspFps)
         cameraController.addSurfaceOutput(
-            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false)
+            TeeOutput(id = OUTPUT_ID, surface = inputSurface, width = w, height = h, mirror = false, fit = true)
         )
 
         scope.launch { drainOutput(mediaCodec) }

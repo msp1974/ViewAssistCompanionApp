@@ -1,6 +1,7 @@
 package com.msp1974.vacompanion.device
 
 import android.annotation.SuppressLint
+import android.graphics.Bitmap
 import android.graphics.RectF
 import androidx.camera.core.ImageProxy
 import com.google.mlkit.vision.common.InputImage
@@ -116,20 +117,31 @@ class MotionDetectionEngine(
         faceDetector = null
     }
 
+    /** The camera's frames hold a picture of the transposed shape stretched into the frame (see
+     *  [com.msp1974.vacompanion.device.camera.CameraOrientation.isFrameSqueezed]). */
+    @Volatile var squeezedFrames = false
+
     @SuppressLint("UnsafeOptInUsageError")
     suspend fun processImageProxy(imageProxy: ImageProxy) {
         if (detectorMode == MotionDetectionMode.FACE_DETECTION) {
             val mediaImage = imageProxy.image ?: return
             val rotation = imageProxy.imageInfo.rotationDegrees
-            val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
+            val inputImage = if (squeezedFrames) {
+                InputImage.fromBitmap(unsqueezedLuma(imageProxy), rotation)
+            } else {
+                InputImage.fromMediaImage(mediaImage, rotation)
+            }
             
             try {
                 val faces = getFaceDetector().process(inputImage).await()
                 
                 // ML Kit bounding boxes are in the coordinate system of the InputImage.
                 // We normalize these to the UPRIGHT coordinate system first.
-                val imageW = inputImage.width.toFloat()
-                val imageH = inputImage.height.toFloat()
+                // The boxes are in the turned image, whose width and height swap on a quarter turn;
+                // the InputImage reports the ones it was given.
+                val quarterTurn = rotation % 180 != 0
+                val imageW = (if (quarterTurn) inputImage.height else inputImage.width).toFloat()
+                val imageH = (if (quarterTurn) inputImage.width else inputImage.height).toFloat()
 
                 val boxes = faces.map { face ->
                     val bounds = face.boundingBox
@@ -163,6 +175,29 @@ class MotionDetectionEngine(
                 Timber.e(e, "Face detection failed")
             }
         }
+    }
+
+    /**
+     * The frame's brightness as a greyscale bitmap with its shape put right, for a camera whose
+     * frames are squeezed. A face detector does poorly on faces stretched that far.
+     */
+    private fun unsqueezedLuma(imageProxy: ImageProxy): Bitmap {
+        val width = imageProxy.width
+        val height = imageProxy.height
+        val plane = imageProxy.planes[0]
+        val buffer = plane.buffer
+        val rowStride = plane.rowStride
+        val pixels = IntArray(width * height)
+        for (row in 0 until height) {
+            for (col in 0 until width) {
+                val luma = buffer.get(row * rowStride + col).toInt() and 0xFF
+                pixels[row * width + col] = (0xFF shl 24) or (luma shl 16) or (luma shl 8) or luma
+            }
+        }
+        val frame = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+        // The picture is height:width, so it is as tall as the frame and (height / width) as wide.
+        val trueWidth = (height.toLong() * height / width).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(frame, trueWidth, height, true).also { if (it !== frame) frame.recycle() }
     }
 
     suspend fun processFrame(luma: IntArray, frameWidth: Int, frameHeight: Int, rotation: Int = 0) {

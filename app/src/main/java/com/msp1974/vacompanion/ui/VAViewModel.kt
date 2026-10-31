@@ -767,9 +767,17 @@ class VAViewModel @Inject constructor(
      *  motion/face detection and the RTSP stream - see [com.msp1974.vacompanion.device.camera.CameraController]. */
     fun attachPreviewSurface(surface: Surface, width: Int, height: Int) {
         deviceManager.camera.addSurfaceOutput(
-            TeeOutput(id = PREVIEW_OUTPUT_ID, surface = surface, width = width, height = height, mirror = true)
+            TeeOutput(id = PREVIEW_OUTPUT_ID, surface = surface, width = width, height = height, mirror = true, fit = true)
         )
     }
+
+    /** Where a motion or face box (in the camera frame, 0..1) lies in the preview's image, or null
+     *  before the preview has drawn a frame. */
+    fun mapToPreview(rect: android.graphics.RectF): android.graphics.RectF? =
+        deviceManager.camera.previewRect(rect)
+
+    /** The width over height of the preview's image, or null before it has drawn a frame. */
+    fun previewImageAspect(): Float? = deviceManager.camera.previewImageAspect()
 
     fun detachPreviewSurface() {
         deviceManager.camera.removeSurfaceOutput(PREVIEW_OUTPUT_ID)

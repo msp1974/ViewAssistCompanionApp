@@ -141,6 +141,8 @@ class MotionDetector(
                 motionEngine.detectorMode = MotionDetectionMode.PIXEL_DIFF
             }
 
+            motionEngine.squeezedFrames = cameraController.frameIsSqueezed
+
             val plane = image.planes[0]
             val buffer = plane.buffer
             val width = image.width

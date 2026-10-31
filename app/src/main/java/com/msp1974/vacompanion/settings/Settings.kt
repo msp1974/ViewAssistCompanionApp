@@ -565,6 +565,15 @@ class APPConfig @Inject constructor(val context: Context) {
             putInt("camera_rotation_offset", (((value % 360) + 360) % 360) / 90 * 90)
         }
 
+    /** Flips the camera image left to right, in the on-device preview and in the RTSP stream. */
+    var cameraMirror: Boolean
+        get() = this.sharedPrefs.getBoolean("camera_mirror", false)
+        set(value) {
+            val old = cameraMirror
+            this.sharedPrefs.edit { putBoolean("camera_mirror", value) }
+            if (old != value) eventBroadcaster.notifyEvent(Event("cameraMirror", old, value))
+        }
+
     fun processSettings(settingString: String) {
         val settings = Json.parseToJsonElement(settingString).jsonObject
 
@@ -635,6 +644,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["wake_word_arbitration"]?.jsonPrimitive?.booleanOrNull?.let { wakeWordArbitrationEnabled = it }
         settings["bluetooth_proxy_enabled"]?.jsonPrimitive?.booleanOrNull?.let { bluetoothProxyEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
+        settings["camera_mirror"]?.jsonPrimitive?.booleanOrNull?.let { cameraMirror = it }
         settings["show_status_bar"]?.jsonPrimitive?.booleanOrNull?.let { showStatusBar = it }
 
         initSettings = true

@@ -130,8 +130,25 @@ fun CameraStreamLayout(
         // Motion Visualization Overlay
         Canvas(modifier = Modifier.fillMaxSize()) {
             vaUiState.lastMotionResult?.let { result ->
+                // The preview fits the whole upright image in the view (see TeeOutput.fit), so the
+                // boxes are drawn within where that image is, not across the whole view.
+                val turned = result.rotation % 180 != 0
+                val imageAspect = viewModel.previewImageAspect()
+                    ?: if (turned) result.height.toFloat() / result.width else result.width.toFloat() / result.height
+                val imageW: Float
+                val imageH: Float
+                if (imageAspect > size.width / size.height) {
+                    imageW = size.width
+                    imageH = size.width / imageAspect
+                } else {
+                    imageH = size.height
+                    imageW = size.height * imageAspect
+                }
+                val originX = (size.width - imageW) / 2
+                val originY = (size.height - imageH) / 2
+
                 result.boundingBoxes.forEach { rect ->
-                    val rotatedRect = transformRect(rect, result.rotation)
+                    val rotatedRect = viewModel.mapToPreview(rect) ?: transformRect(rect, result.rotation)
 
                     val left = rotatedRect.left
                     val top = rotatedRect.top
@@ -140,8 +157,8 @@ fun CameraStreamLayout(
 
                     drawRect(
                         color = Color.Red,
-                        topLeft = Offset(x = left * size.width, y = top * size.height),
-                        size = Size(width = (right - left) * size.width, height = (bottom - top) * size.height),
+                        topLeft = Offset(x = originX + left * imageW, y = originY + top * imageH),
+                        size = Size(width = (right - left) * imageW, height = (bottom - top) * imageH),
                         style = Stroke(width = 2.dp.toPx())
                     )
                 }
