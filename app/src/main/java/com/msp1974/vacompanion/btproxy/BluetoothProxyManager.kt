@@ -10,6 +10,7 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.Build
+import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.location.LocationManagerCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
@@ -194,6 +195,15 @@ class BluetoothProxyManager(
     // BLE scan results are only delivered while system Location is on (the manifest does not
     // declare neverForLocation, as that would hide beacons from Home Assistant).
     private fun isLocationEnabled(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            // AndroidX checks GPS/network providers before API 28. Devices such as the
+            // NSPanel Pro have neither provider, but can scan BLE when Location is on.
+            return Settings.Secure.getInt(
+                context.contentResolver,
+                Settings.Secure.LOCATION_MODE,
+                Settings.Secure.LOCATION_MODE_OFF,
+            ) != Settings.Secure.LOCATION_MODE_OFF
+        }
         val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return true
         return LocationManagerCompat.isLocationEnabled(lm)
     }
