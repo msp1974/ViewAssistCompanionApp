@@ -294,31 +294,47 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
                     startSatellite(clientId)
                 }
                 WyomingEvent.PAUSE_SATELLITE -> schedulePauseSatelliteTimeout()
+                WyomingEvent.CUSTOM_EVENT -> {
+                    val eventType = packet.getProp(EVENT_TYPE)
+                    if (eventType == WyomingCustomEventType.INSTANCE_INFO) {
+                        val uuid = packet.getProp("instance_uuid")
+                        if (uuid.isNotEmpty()) {
+                            clients[clientId]?.handler?.instanceUUID = uuid
+                            Timber.i("Received instance UUID from %s: %s", clientId, uuid)
+                        }
+                    } else {
+                        forwardToSatellite(clientId, packet)
+                    }
+                }
                 else -> {
-                    var retryCount = 2
-                    var processed = false
-                    while (retryCount > 0) {
-                        if (satellite != null && satellite?.state != SatelliteState.STOPPED) {
-                            satellite?.processMessage(packet)
-                            processed = true
-                            break
-                        } else {
-                            retryCount--
-                            delay(1.seconds)
-                        }
-                    }
-                    if (!processed) {
-                        Timber.w("Cannot process message ${packet.toMap()}")
-                        when {
-                            satellite == null -> Timber.w("Satellite is null")
-                            clientId != satellite?.clientId -> Timber.w("Client id does not match satellite id")
-                            satellite?.state == SatelliteState.STOPPED -> Timber.w("Satellite is stopped")
-                        }
-                    }
+                    forwardToSatellite(clientId, packet)
                 }
             }
         } catch (ex: Exception) {
             Timber.e("Error processing event ${packet.type}: $ex")
+        }
+    }
+
+    private suspend fun forwardToSatellite(clientId: String, packet: WyomingPacket) {
+        var retryCount = 2
+        var processed = false
+        while (retryCount > 0) {
+            if (satellite != null && satellite?.state != SatelliteState.STOPPED) {
+                satellite?.processMessage(packet)
+                processed = true
+                break
+            } else {
+                retryCount--
+                delay(1.seconds)
+            }
+        }
+        if (!processed) {
+            Timber.w("Cannot process message ${packet.toMap()}")
+            when {
+                satellite == null -> Timber.w("Satellite is null")
+                clientId != satellite?.clientId -> Timber.w("Client id does not match satellite id")
+                satellite?.state == SatelliteState.STOPPED -> Timber.w("Satellite is stopped")
+            }
         }
     }
 
@@ -378,12 +394,29 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
         }
 
         val serverIP = clients[clientId]?.handler?.clientIP ?: ""
+        val serverInstanceUUID = clients[clientId]?.handler?.instanceUUID ?: ""
 
-        if (config.pairedDeviceId.isEmpty()) {
-            config.pairedDeviceId = serverIP
-        } else if (!isValidServer(serverIP)) {
-            Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceId}, attempting server: $serverIP")
+        if (serverInstanceUUID.isNotEmpty()) {
+            if (config.pairedInstanceId.isNotEmpty()) {
+                if (config.pairedInstanceId != serverInstanceUUID) {
+                    Timber.e("Non paired server. Paired UUID: %s, attempting UUID: %s", config.pairedInstanceId, serverInstanceUUID)
+                    return
+                }
+                Timber.d("Authenticated by instance UUID: %s", serverInstanceUUID)
+            } else {
+                config.pairedInstanceId = serverInstanceUUID
+                Timber.i("Adopted instance UUID for pairing: %s", serverInstanceUUID)
+            }
+        } else if (config.pairedInstanceId.isNotEmpty()) {
+            Timber.e("Server previously paired on UUID but now not sending UUID. Rejecting.")
             return
+        } else {
+            if (config.pairedDeviceId.isEmpty()) {
+                config.pairedDeviceId = serverIP
+            } else if (!isValidServer(serverIP)) {
+                Timber.e("Non paired server attempted to start satellite.  Paired to ${config.pairedDeviceId}, attempting server: $serverIP")
+                return
+            }
         }
 
         if (satellite != null) {

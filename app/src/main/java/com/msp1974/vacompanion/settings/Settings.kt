@@ -386,7 +386,7 @@ class APPConfig @Inject constructor(val context: Context) {
     // this setting already have a uuid stored, so they are marked onboarded on first read.
     var onboarded: Boolean
         get() {
-            if (!this.sharedPrefs.contains("onboarded") && pairedDeviceId.isNotEmpty()) {
+            if (!this.sharedPrefs.contains("onboarded") && (pairedDeviceId.isNotEmpty() || pairedInstanceId.isNotEmpty())) {
                 this.sharedPrefs.edit { putBoolean("onboarded", true) }
             }
             return this.sharedPrefs.getBoolean("onboarded", false)
@@ -404,6 +404,10 @@ class APPConfig @Inject constructor(val context: Context) {
     var pairedDeviceId: String
         get() = this.sharedPrefs.getString("paired_device_id", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("paired_device_id", value) }
+
+    var pairedInstanceId: String
+        get() = this.sharedPrefs.getString("paired_instance_id", "") ?: ""
+        set(value) = this.sharedPrefs.edit { putString("paired_instance_id", value) }
 
     var alwaysIgnoreSSLErrors: Boolean
         get() = this.sharedPrefs.getBoolean("always_ignore_ssl_errors", false)

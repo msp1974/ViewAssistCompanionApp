@@ -690,6 +690,7 @@ class VAViewModel @Inject constructor(
 
     fun clearPairedDevice() {
         config.pairedDeviceId = ""
+        config.pairedInstanceId = ""
         config.accessToken = ""
         config.refreshToken = ""
         config.tokenExpiry = 0
