@@ -8,6 +8,7 @@ import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.FirebaseManager
 import com.msp1974.vacompanion.utils.Permissions
+import com.msp1974.vacompanion.wakeword.DetectionRearmGate
 import com.msp1974.vacompanion.wakeword.WakeWordEngine
 import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
@@ -59,10 +60,6 @@ abstract class SatelliteWakeWorkHandler(
         // comfortably cover normal teardown time; if it's hit, that's a real problem worth
         // surfacing (see stop()), not silently ignoring.
         private const val STOP_TIMEOUT_MS = 1000L
-
-        // How much of the most recent audio to look at for how loud the wake word was said. Covers
-        // the phrase itself plus the time the engine takes to report it.
-        private const val WAKE_WORD_LEVEL_WINDOW_MS = 2000L
     }
 
     val config = deviceManager.config
@@ -83,6 +80,7 @@ abstract class SatelliteWakeWorkHandler(
     private var holdDetectionLevelJob: Job? = null
     private var lastWakeWordDetectionScore = 0f
     private val detectionCooldowns = mutableMapOf<String, Long>()
+    private val rearmGate = DetectionRearmGate() // REARM-FILTER
     private val detectionCooldownMs: Long = 2000L
     private var lastWakeDetectionTimestamp = 0L
 
@@ -188,20 +186,28 @@ abstract class SatelliteWakeWorkHandler(
                     when (it) {
                         is WakeWordEngineProvider.AudioResult.WakeDetected -> {
                             holdLastDetectionLevel(it.detection.score)
-                            if (it.detection.detected) {
+                            // REARM-FILTER: the rest of a word that has already been detected is not a new detection.
+                            val wakeWordId = it.detection.wakeWordId
+                            val outcome = rearmGate.onScore(wakeWordId, it.detection.score, it.detection.detected, config.wakeWordThreshold)
+                            if (outcome == DetectionRearmGate.Outcome.RESIDUAL && rearmGate.suppressed(wakeWordId) == 1) {
+                                Timber.i("Ignoring the rest of the ${it.detection.wakeWord} detection already acted on (score ${it.detection.score}); further frames are not logged")
+                            }
+                            if (outcome == DetectionRearmGate.Outcome.FRESH) { // REARM-FILTER (was: if (it.detection.detected))
+                                val ignored = rearmGate.takeSuppressed(wakeWordId)
+                                if (ignored > 0) Timber.d("$ignored residual detection frame(s) of ${it.detection.wakeWord} ignored since the last detection")
                                 val now = System.currentTimeMillis()
                                 val lastDetection = detectionCooldowns[it.detection.wakeWordId]
 
                                 if (lastDetection == null || detectionCooldownMs == 0L || now - lastDetection >= detectionCooldownMs) {
-                                    // Measured on the raw microphone: gain control brings a whisper up
-                                    // to speech loudness, so the engine can't tell it apart.
-                                    val micLevel = microphone.level.peakDbfs(WAKE_WORD_LEVEL_WINDOW_MS)
-                                    val levelText = micLevel?.let { l -> "%.1f dBFS".format(l) } ?: "unknown"
-                                    if (MicLevelMonitor.isBelowMinimum(config.wakeWordMinLevel, micLevel)) {
-                                        Timber.i(
-                                            "Ignored ${it.detection.wakeWord} wake word (score ${it.detection.score}): " +
-                                                "mic level $levelText is below the minimum of ${config.wakeWordMinLevel} dBFS"
-                                        )
+                                    // Measured on the raw microphone, before gain control.
+                                    val rawLevel = microphone.level.peakDbfs(MicLevelMonitor.WAKE_WORD_WINDOW_MS)
+                                    val micLevel = MicLevelMonitor.calibrated(rawLevel, config.wakeLevelOffsetDb)
+                                    val levelText = micLevel?.let { l -> "%.1f dB".format(l) } ?: "unknown"
+                                    if (config.wakeLevelCalibration.isActive) {
+                                        // Calibrating: the reading is the point, so the device doesn't wake.
+                                        rawLevel?.let { l -> config.wakeLevelCalibration.addReading(l) }
+                                        Timber.i("Wake level calibration reading: raw ${rawLevel?.let { l -> "%.1f".format(l) }} dBFS")
+                                        detectionCooldowns[it.detection.wakeWordId] = now
                                     } else {
                                         Timber.i("Wake word detected: ${it.detection.wakeWord} (mic level $levelText)")
                                         wakeWordDetected(it.detection)

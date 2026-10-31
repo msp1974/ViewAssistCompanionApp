@@ -26,6 +26,8 @@ class MicrophoneInput (
     private val level: MicLevelMonitor? = null,
 ) : AutoCloseable {
 
+    private val gate = MicGate()
+
     private val sampleRateInHz: Int = VACAAudioFormat.SAMPLE_RATE_HZ
     private val channelConfig: Int = VACAAudioFormat.CHANNELS
     private val audioFormat: Int = VACAAudioFormat.ENCODING
@@ -156,6 +158,9 @@ class MicrophoneInput (
             val frame = audioBuffer.copyOfRange(0, readCount)
             level?.update(frame, sampleRateInHz)
             if (applyEnhancement) {
+                // Too quiet to be speech: send silence, and leave WebRTC alone so its gain doesn't
+                // wind up on the noise.
+                if (!gate.isOpen(frame, config.micMinLevel)) return ShortArray(frame.size)
                 // WebRTC levels the signal to a fixed output level; the mic gain setting then
                 // raises or lowers that, unless the microphone is being turned right down.
                 val micGainDb = config.micGain.toFloat().coerceIn(-MIC_GAIN_LIMIT_DB, MIC_GAIN_LIMIT_DB)

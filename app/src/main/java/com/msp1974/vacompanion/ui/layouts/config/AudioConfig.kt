@@ -67,19 +67,6 @@ fun audioConfig(vm: VAViewModel): ConfigSection {
             ConfigItem.IntValue(VOLUME, "Ducking volume", "Music volume while the assistant is speaking",
                 Icons.AutoMirrored.Filled.VolumeDown, key = "ducking_volume", min = 0, max = 50,
                 get = { c.duckingVolume }, set = { c.duckingVolume = it }),
-            ConfigItem.Options(VOLUME, "Ducking scope",
-                "Which devices duck, and compete for the wake word, when this one is woken",
-                Icons.Default.Hub, key = "duck_scope",
-                options = listOf(
-                    ConfigOption(APPConfig.DUCK_SCOPE_AREA, "Area"),
-                    ConfigOption(APPConfig.DUCK_SCOPE_ZONE, "Custom zone"),
-                ),
-                get = { c.duckScope }, set = { c.duckScope = it }),
-            ConfigItem.Options(VOLUME, "Custom ducking zone", "Devices set to the same zone duck together",
-                Icons.Default.Hub, key = "duck_zone",
-                options = APPConfig.DUCK_ZONES.map { ConfigOption(it, it) },
-                get = { c.duckZone }, set = { c.duckZone = it })
-                .enabledWhen { c.duckScope == APPConfig.DUCK_SCOPE_ZONE },
 
             ConfigItem.Options(ALARMS, "Alarm sound", null, Icons.Default.Alarm, key = "alarm_sound",
                 optionsProvider = {

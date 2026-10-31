@@ -1,6 +1,8 @@
 package com.msp1974.vacompanion.settings
 
+import com.msp1974.vacompanion.audio.MicGate
 import com.msp1974.vacompanion.audio.MicLevelMonitor
+import com.msp1974.vacompanion.audio.WakeLevelCalibration
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
@@ -190,13 +192,17 @@ class APPConfig @Inject constructor(val context: Context) {
         get() = this.sharedPrefs.getString("area", "") ?: ""
         set(value) = this.sharedPrefs.edit { putString("area", value.trim()) }
 
-    // Which devices this one ducks with, and contests wake words against: those in the same HA
-    // [DUCK_SCOPE_AREA] (default) or those set to the same custom [duckZone]. On-device preference
+    // Which devices this one ducks with: those in the same HA [DUCK_SCOPE_AREA] (default), those set
+    // to the same custom [duckZone], or none at all ([DUCK_SCOPE_DISABLED]). On-device preference
     // that HA can also push.
     var duckScope: String
         get() = this.sharedPrefs.getString("duck_scope", DUCK_SCOPE_AREA)
-            ?.takeIf { it == DUCK_SCOPE_ZONE } ?: DUCK_SCOPE_AREA
+            ?.takeIf { it == DUCK_SCOPE_ZONE || it == DUCK_SCOPE_DISABLED } ?: DUCK_SCOPE_AREA
         set(value) = this.sharedPrefs.edit { putString("duck_scope", value) }
+
+    /** Whether this device ducks, and is ducked, with others at all: everything but [DUCK_SCOPE_DISABLED]. */
+    val groupDuckingEnabled: Boolean
+        get() = duckScope != DUCK_SCOPE_DISABLED
 
     // One of [DUCK_ZONES], used when [duckScope] is [DUCK_SCOPE_ZONE].
     var duckZone: String
@@ -205,31 +211,40 @@ class APPConfig @Inject constructor(val context: Context) {
         set(value) = this.sharedPrefs.edit { putString("duck_zone", value.takeIf { it in DUCK_ZONES } ?: DUCK_ZONES.first()) }
 
     /**
-     * Identifies the group of devices this one ducks and arbitrates wake words with; blank when it
-     * has none (area scope with no area set), so it then never matches another device. The prefix
-     * keeps an area and a zone with the same name apart.
+     * Identifies the group of devices this one ducks with; blank when it has none (ducking disabled,
+     * or area scope with no area set), so it then never matches another device. The prefix keeps an
+     * area and a zone with the same name apart.
      */
     val duckGroupKey: String
-        get() = if (duckScope == DUCK_SCOPE_ZONE) {
-            "zone:${duckZone.lowercase()}"
-        } else {
-            area.lowercase().let { if (it.isEmpty()) "" else "area:$it" }
+        get() = when (duckScope) {
+            DUCK_SCOPE_DISABLED -> ""
+            DUCK_SCOPE_ZONE -> "zone:${duckZone.lowercase()}"
+            else -> area.lowercase().let { if (it.isEmpty()) "" else "area:$it" }
         }
 
     var isMuted: Boolean by Delegates.observable(DEFAULT_MUTE) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
     }
 
-    // Quietest the raw microphone may be, in dBFS, for a wake word to be acted on, so that a
-    // whisper is ignored. MicLevelMonitor.MIN_LEVEL_OFF_DBFS (the lowest value) is off.
-    var wakeWordMinLevel: Int by Delegates.observable(MicLevelMonitor.MIN_LEVEL_OFF_DBFS) { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue)
-    }
+    // Keep the microphone silent until it hears something over this level, in dBFS (MicGate). The lowest
+    // value is off. Stored on the device, so it survives a restart; HA can also push it.
+    var micMinLevel: Int
+        get() = this.sharedPrefs.getInt("mic_min_level", MicGate.OFF_DBFS).coerceIn(MicGate.OFF_DBFS, MicGate.MAX_DBFS)
+        set(value) {
+            val old = micMinLevel
+            this.sharedPrefs.edit { putInt("mic_min_level", value) }
+            if (old != micMinLevel) eventBroadcaster.notifyEvent(Event("micMinLevel", old, micMinLevel))
+        }
 
     // Turn the microphone right down while the wake sound plays, so a spoken one isn't heard as speech.
-    var suppressWakeSound: Boolean by Delegates.observable(false) { property, oldValue, newValue ->
-        onValueChangedListener(property, oldValue, newValue)
-    }
+    // Stored on the device, so it survives a restart; HA can also push it.
+    var suppressWakeSound: Boolean
+        get() = this.sharedPrefs.getBoolean("suppress_wake_sound", false)
+        set(value) {
+            val old = suppressWakeSound
+            this.sharedPrefs.edit { putBoolean("suppress_wake_sound", value) }
+            if (old != value) eventBroadcaster.notifyEvent(Event("suppressWakeSound", old, value))
+        }
 
     var micGain: Int by Delegates.observable(DEFAULT_MIC_GAIN) { property, oldValue, newValue ->
         onValueChangedListener(property, oldValue, newValue)
@@ -501,6 +516,13 @@ class APPConfig @Inject constructor(val context: Context) {
     // Whether to show the on-screen now-playing player while Sendspin audio is playing. Separate
     // from sendspinEnabled: the audio can play without the overlay. On-device preference that HA
     // can also push; on unless turned off.
+    // Experimental: whether this device takes part in wake word arbitration, reporting what it hears
+    // to the master and abiding by its decision. Off, it answers every wake word it hears. On-device
+    // preference that HA can also push; on unless turned off.
+    var wakeWordArbitrationEnabled: Boolean
+        get() = this.sharedPrefs.getBoolean("wake_word_arbitration", true)
+        set(value) = this.sharedPrefs.edit { putBoolean("wake_word_arbitration", value) }
+
     var sendspinOverlayEnabled: Boolean
         get() = this.sharedPrefs.getBoolean("sendspin_overlay_enabled", false)
         set(value) = this.sharedPrefs.edit { putBoolean("sendspin_overlay_enabled", value) }
@@ -508,6 +530,35 @@ class APPConfig @Inject constructor(val context: Context) {
     // Extra rotation (0, 90, 180 or 270 degrees) applied to the camera image - the RTSP stream and
     // the on-device preview - on top of the automatic orientation, for a device whose camera
     // orientation is reported wrongly. On-device preference that HA can also push.
+    /**
+     * How much is added to this device's measured wake word level so it can be compared with other
+     * devices' (microphones differ in sensitivity). Set by the calibration wizard; 0 until then.
+     * On-device only: Home Assistant isn't told.
+     */
+    /**
+     * Whether the microphone has been calibrated, so [wakeLevelOffsetDb] means
+     * something. A device that saved an offset before this was kept separately counts as calibrated.
+     */
+    var wakeLevelCalibrated: Boolean
+        get() = this.sharedPrefs.getBoolean("wake_level_calibrated", this.sharedPrefs.getFloat("wake_level_offset_db", 0f) != 0f)
+        set(value) {
+            val old = wakeLevelCalibrated
+            this.sharedPrefs.edit { putBoolean("wake_level_calibrated", value) }
+            if (old != value) eventBroadcaster.notifyEvent(Event("wakeLevelCalibrated", old, value))
+        }
+
+    var wakeLevelOffsetDb: Float
+        get() = this.sharedPrefs.getFloat("wake_level_offset_db", 0f)
+        set(value) {
+            val old = wakeLevelOffsetDb
+            val new = value.coerceIn(-WakeLevelCalibration.MAX_OFFSET_DB, WakeLevelCalibration.MAX_OFFSET_DB)
+            this.sharedPrefs.edit { putFloat("wake_level_offset_db", new) }
+            if (old != new) eventBroadcaster.notifyEvent(Event("wakeLevelOffsetDb", old, new))
+        }
+
+    /** Collects the readings for the wake level calibration wizard. Not stored. */
+    val wakeLevelCalibration = WakeLevelCalibration()
+
     var cameraRotationOffset: Int
         get() = this.sharedPrefs.getInt("camera_rotation_offset", 0)
         set(value) = this.sharedPrefs.edit {
@@ -564,7 +615,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["screen_orientation_mode"]?.jsonPrimitive?.contentOrNull?.let { screenOrientationMode = it }
         settings["continue_conversation"]?.jsonPrimitive?.booleanOrNull?.let { continueConversation = it }
         settings["suppress_wake_sound"]?.jsonPrimitive?.booleanOrNull?.let { suppressWakeSound = it }
-        settings["wake_word_min_level"]?.jsonPrimitive?.intOrNull?.let { wakeWordMinLevel = it }
+        settings["mic_min_level"]?.jsonPrimitive?.intOrNull?.let { micMinLevel = it }
         settings["quick_actions"]?.jsonPrimitive?.booleanOrNull?.let { enableQuickActions = it }
         settings["custom_files"]?.let { customFiles = it }
         settings["rtsp_enabled"]?.jsonPrimitive?.booleanOrNull?.let { rtspEnabled = it }
@@ -581,6 +632,7 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["sendspin_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinEnabled = it }
         settings["sendspin_preferred_server"]?.jsonPrimitive?.contentOrNull?.let { sendspinPreferredServer = it }
         settings["sendspin_overlay_enabled"]?.jsonPrimitive?.booleanOrNull?.let { sendspinOverlayEnabled = it }
+        settings["wake_word_arbitration"]?.jsonPrimitive?.booleanOrNull?.let { wakeWordArbitrationEnabled = it }
         settings["bluetooth_proxy_enabled"]?.jsonPrimitive?.booleanOrNull?.let { bluetoothProxyEnabled = it }
         settings["camera_rotation_offset"]?.jsonPrimitive?.intOrNull?.let { cameraRotationOffset = it }
         settings["show_status_bar"]?.jsonPrimitive?.booleanOrNull?.let { showStatusBar = it }
@@ -655,6 +707,7 @@ class APPConfig @Inject constructor(val context: Context) {
         const val DEFAULT_DUCKING_VOLUME = 2
         const val DUCK_SCOPE_AREA = "area"
         const val DUCK_SCOPE_ZONE = "zone"
+        const val DUCK_SCOPE_DISABLED = "disabled"
         val DUCK_ZONES = (1..10).map { "Zone$it" }
         const val DEFAULT_MUTE = false
         const val DEFAULT_MIC_GAIN = 0

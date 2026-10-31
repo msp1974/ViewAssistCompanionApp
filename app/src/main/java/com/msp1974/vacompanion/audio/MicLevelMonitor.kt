@@ -4,8 +4,8 @@ import kotlin.math.log10
 
 /**
  * How loud the microphone has been lately, measured on the raw signal before any processing.
- * That matters: WebRTC's gain control brings whatever it is given up to speech loudness, so a
- * whisper looks like normal speech after it. Only the raw level tells them apart.
+ * That matters: WebRTC's gain control brings whatever it is given up to speech loudness, so only
+ * the raw level says how loud (and so how near) the speaker was.
  *
  * Levels are the RMS of each frame in dBFS (0 is full scale, so they are negative).
  *
@@ -59,23 +59,19 @@ class MicLevelMonitor {
     }
 
     companion object {
-        /** The `wake_word_min_level` value that switches the minimum off. */
-        const val MIN_LEVEL_OFF_DBFS = -80
+        /**
+         * How much of the most recent audio is looked at for how loud a wake word was said. Covers
+         * the phrase itself plus the time the engine takes to report it.
+         */
+        const val WAKE_WORD_WINDOW_MS = 2000L
+
+        /** [rawDbfs] with this device's calibration [offsetDb] added; null if the level is unknown. */
+        fun calibrated(rawDbfs: Float?, offsetDb: Float): Float? = rawDbfs?.plus(offsetDb)
 
         /** Digital silence reads as this rather than minus infinity. */
         private const val FLOOR_DBFS = -100f
 
         private const val HISTORY_MS = 5_000f
 
-        /**
-         * Whether a sound that peaked at [levelDbfs] is too quiet for a minimum of [minimumDbfs].
-         * Never true when the minimum is off, or when the level isn't known - it's better to let a
-         * wake word through than to block every one because the level couldn't be read.
-         */
-        fun isBelowMinimum(minimumDbfs: Int, levelDbfs: Float?): Boolean {
-            if (minimumDbfs <= MIN_LEVEL_OFF_DBFS) return false
-            if (levelDbfs == null) return false
-            return levelDbfs < minimumDbfs
-        }
     }
 }

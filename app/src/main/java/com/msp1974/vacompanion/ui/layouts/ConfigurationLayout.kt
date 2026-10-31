@@ -37,6 +37,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.key
 import androidx.compose.runtime.collectAsState
+import com.msp1974.vacompanion.ui.components.MicrophoneCalibrationDialog
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -64,6 +65,7 @@ import com.msp1974.vacompanion.ui.layouts.config.ConfigSection
 import com.msp1974.vacompanion.ui.layouts.config.audioConfig
 import com.msp1974.vacompanion.ui.layouts.config.deviceConfig
 import com.msp1974.vacompanion.ui.layouts.config.displayConfig
+import com.msp1974.vacompanion.ui.layouts.config.experimentalConfig
 import com.msp1974.vacompanion.ui.layouts.config.generalConfig
 import com.msp1974.vacompanion.ui.layouts.config.homeAssistantConfig
 import com.msp1974.vacompanion.ui.layouts.config.servicesConfig
@@ -119,6 +121,7 @@ fun ConfigurationLayout(
             homeAssistantConfig(viewModel),
             voiceConfig(viewModel),
             servicesConfig(viewModel),
+            experimentalConfig(viewModel),
             projectConfig(viewModel),
         )
     }
@@ -172,6 +175,11 @@ fun ConfigurationLayout(
                 }
             }
         }
+    }
+
+    val calibrationOpen by viewModel.calibrationOpen.collectAsState()
+    if (calibrationOpen) {
+        MicrophoneCalibrationDialog(viewModel) { viewModel.closeCalibrationWizard() }
     }
 }
 
@@ -505,6 +513,7 @@ private fun ActionRow(item: ConfigItem.Action) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (item.value != null) {
                         refresh // read so the value is recomputed when it changes
+                        LocalSettingsVersion.current // and when a setting changes, such as from a dialog
                         Text(
                             text = item.value.invoke(),
                             style = MaterialTheme.typography.bodyMedium,

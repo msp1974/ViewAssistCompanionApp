@@ -12,6 +12,8 @@ import androidx.media3.common.Player
 import androidx.core.net.toUri
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.audio.AudioOutputRouter
+import com.msp1974.vacompanion.audio.DetectionBuffer
+import com.msp1974.vacompanion.audio.MicLevelMonitor
 import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.broadcasts.VacaUdpBroadcast
@@ -409,6 +411,11 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             wakeWordHandler = null
         }
 
+        Timber.i(
+            "Experimental settings: wake word arbitration=${config.wakeWordArbitrationEnabled}, " +
+                "ducking scope=${config.duckScope}, " +
+                "suppress wake sound=${config.suppressWakeSound}, minimum mic level=${config.micMinLevel} dB, level calibration=${"%+.1f".format(config.wakeLevelOffsetDb)} dB"
+        )
         Timber.d("Starting Wake Word Detection")
         sendDiagnostics(0f, 0f)
         withContext(Dispatchers.Default) {
@@ -430,8 +437,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
                 override suspend fun onWakeWordDetected(detection: WakeWordEngineProvider.WakeWordDetection) {
                     Timber.d("Wake word detected: $detection")
-                    if (audioPipeline != null && audioPipeline?.pipelineStage == PipelineStage.STREAMING_TTS) {
-                        onStopWordDetected(detection)
+                    if (isResponding()) {
+                        interruptResponse(detection)
                     } else if (mediaManager.alarmPlayer.isSounding()) {
                         onStopWordDetected(detection)
                     } else {
@@ -490,6 +497,46 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
     @Volatile private var arbitratingWakeWord = false
 
+    // Audio kept from the moment a wake word was heard until this device knows whether it answers.
+    @Volatile private var detectionBuffer: DetectionBuffer? = null
+
+    private fun cancelDetectionBuffer() {
+        detectionBuffer?.cancel()
+        detectionBuffer = null
+    }
+
+    /** True while a pipeline is genuinely in progress: started, and neither ended nor stuck. */
+    fun isResponding(): Boolean {
+        val pipeline = audioPipeline ?: return false
+        if (pipeline.pipelineStage == PipelineStage.ENDED) return false
+        // One that has sat in a stage far too long is stuck, not responding, so a new wake word
+        // may replace it.
+        val stage = pipeline.pipelineStage.ordinal
+        val ageSeconds = ((System.currentTimeMillis() - audioPipelineLastStateChange) / 1000).toInt()
+        if (stage <= PipelineStage.AWAITING_RESPONSE.ordinal && ageSeconds > 15) return false
+        if (stage <= PipelineStage.STREAMING_TTS.ordinal && ageSeconds > 30) return false
+        return true
+    }
+
+    /**
+     * A wake word heard while responding is an interruption: stop, and nothing more. The other
+     * devices that heard it are told (they decide among themselves and this one always wins, so none
+     * of them answers), but this device doesn't wait to be told.
+     */
+    private suspend fun interruptResponse(detection: WakeWordEngineProvider.WakeWordDetection) {
+        Timber.i("Wake word heard while responding, interrupting")
+        val level = MicLevelMonitor.calibrated(
+            microphone.level.peakDbfs(MicLevelMonitor.WAKE_WORD_WINDOW_MS), config.wakeLevelOffsetDb
+        )
+        VacaUdpBroadcast.instance?.reportInterruption(detection.score, level)
+        cancelDetectionBuffer()
+        audioPipeline?.stop()
+        audioPipeline = null
+        if (mediaManager.alarmPlayer.isSounding()) {
+            handleAlarmAction(false)
+        }
+    }
+
     suspend fun handleWakeWordDetection(detection: WakeWordEngineProvider.WakeWordDetection) {
         if (clientId.isEmpty()) {
             Timber.e("Unable to run audio pipeline. Satellite not connected to HA")
@@ -498,35 +545,32 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             return
         }
         soundEffectFinishTime = 0L
-        var startNewPipeline = audioPipeline == null || audioPipeline?.pipelineStage == PipelineStage.ENDED
 
-        if (!startNewPipeline) {
-            // Check if running pipeline is still valid.  Cancel if not.
-            val currentAudioPipelineStageOrdinal = audioPipeline?.pipelineStage!!.ordinal
-            val audioPipelineStateAge = ((System.currentTimeMillis() - audioPipelineLastStateChange) / 1000).toInt()
+        // A spoken wake word never gets here while responding (it interrupts instead, see
+        // onWakeWordDetected); a manual wake is simply ignored.
+        if (isResponding()) return
 
-            if (currentAudioPipelineStageOrdinal <= PipelineStage.AWAITING_RESPONSE.ordinal && audioPipelineStateAge > 15) {
-                startNewPipeline = true
-                Timber.d("Pipeline timed out waiting response, starting new pipeline. State age: $audioPipelineStateAge")
-            } else if (currentAudioPipelineStageOrdinal <= PipelineStage.STREAMING_TTS.ordinal && audioPipelineStateAge > 30) {
-                startNewPipeline = true
-                Timber.d("Pipeline timed out waiting TTS, starting new pipeline. State age: $audioPipelineStateAge")
-            }
-        }
+        if (arbitratingWakeWord) return
+        arbitratingWakeWord = true
 
-        if (startNewPipeline) {
-            // Tell other VACA devices (so they duck their music) and, if several heard the same
-            // wake word, agree which one runs the pipeline - the others must stay out of it.
-            if (arbitratingWakeWord) return
-            arbitratingWakeWord = true
-            val won = try {
-                VacaUdpBroadcast.instance?.arbitrateWakeWord(
-                    detection.score,
-                    contest = detection.wakeWordId != "manual_wake",
-                ) ?: true
-            } finally {
-                arbitratingWakeWord = false
-            }
+        var buffer: DetectionBuffer? = null
+        try {
+            // Measured before the sound plays, so the device's own chime can't count towards it.
+            val level = MicLevelMonitor.calibrated(
+                microphone.level.peakDbfs(MicLevelMonitor.WAKE_WORD_WINDOW_MS), config.wakeLevelOffsetDb
+            )
+
+            // Every device that heard the wake word reacts at once: the sound tells the user it was
+            // heard, and the audio from now on is kept, so nothing said while the devices agree
+            // who answers is lost. Only the winner uses the audio; the others drop it.
+            buffer = DetectionBuffer(microphone.audio, scope).also { detectionBuffer = it }
+            playWakeWordDetectionSound()
+
+            val won = VacaUdpBroadcast.instance?.arbitrateWakeWord(
+                detection.score,
+                level,
+                contest = detection.wakeWordId != "manual_wake",
+            ) ?: true
             if (!won) {
                 Timber.i("Another device is nearer to the speaker, not starting audio pipeline")
                 return
@@ -543,8 +587,14 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 config.screenSaver = false
             }
             audioLogManager.onWakeWordDetected(detection.timestamp, detection.wakeWord, detection.score)
-            startAudioPipeline(PipelineStartMode.WAKE_WORD_DETECTED, detection.timestamp)
-            playWakeWordDetectionSound()
+            startAudioPipeline(PipelineStartMode.WAKE_WORD_DETECTED, detection.timestamp, buffer)
+            buffer = null // the pipeline owns it now
+        } finally {
+            arbitratingWakeWord = false
+            buffer?.let {
+                it.cancel()
+                if (detectionBuffer === it) detectionBuffer = null
+            }
         }
     }
 
@@ -627,12 +677,17 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     }
 
     @OptIn(ExperimentalAtomicApi::class)
-    fun startAudioPipeline(startStage: PipelineStartMode, eventId: Long = System.currentTimeMillis()) {
+    fun startAudioPipeline(
+        startStage: PipelineStartMode,
+        eventId: Long = System.currentTimeMillis(),
+        // Audio kept since the wake word was heard; the pipeline streams it, then live audio.
+        buffer: DetectionBuffer? = null,
+    ) {
         if (audioPipeline != null) {
             audioPipeline?.stop()
             audioPipeline = null
         }
-        audioPipeline = object: SatelliteAudioPipeline(context, scope, config, eventId, mediaManager, microphone.audio) {
+        audioPipeline = object: SatelliteAudioPipeline(context, scope, config, eventId, mediaManager, buffer?.frames ?: microphone.audio) {
             override fun sendMessage(packet: WyomingPacket) {
                 sendSatelliteMessage(clientId, packet.type, packet.data, packet.payload)
             }
@@ -640,6 +695,8 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
             override fun onStateChange(state: PipelineStage) {
                 Timber.d("Audio pipeline state: $state")
                 audioPipelineLastStateChange = System.currentTimeMillis()
+                // Past listening the kept audio is of no use any more.
+                if (state.ordinal > PipelineStage.VOICE_STARTED.ordinal) cancelDetectionBuffer()
                 // Refresh the diagnostics mode (detect/stream). Without a wake word engine there
                 // are no level updates to piggyback on, and the level drops to zero once the
                 // pipeline stops listening.
@@ -669,6 +726,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
 
             override fun onFinish(reason: PipelineEndReason, continueConversation: Boolean) {
                 Timber.i("Pipeline ended.  Restarting: $continueConversation")
+                cancelDetectionBuffer()
                 // A continuing conversation keeps other devices ducked until it really finishes.
                 // This device ducked the others when it won arbitration, so it always unducks them.
                 if (!(reason == PipelineEndReason.END_OF_PIPELINE && continueConversation)) {

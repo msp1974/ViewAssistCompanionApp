@@ -22,6 +22,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.floatOrNull
 import kotlinx.serialization.json.intOrNull
@@ -48,6 +49,10 @@ object VacaBroadcastType {
 
     // Sent by a device when its listener comes up; the master answers with an immediate heartbeat.
     const val DEVICE_HELLO = "device_hello"
+
+    // Sent by every device every few seconds, and when it hears a hello, so the others know who is
+    // around and which wake word each listens for (see PeerPresence).
+    const val PRESENCE = "presence"
 
     // Wake word arbitration: devices report detections to the master, which announces the winner.
     const val WAKE_DETECTION = "wake_detection"
@@ -87,11 +92,20 @@ data class VacaBroadcastMessage(
  * A datagram is only accepted if it parses, carries [MAGIC] and a supported version, and does not
  * come from this device. Anything else on the port is silently dropped.
  *
- * Wake word arbitration is run by one elected master (see [arbitrateWakeWord]). Every device that
- * hears a wake word reports it to the master; after [DECISION_WINDOW_MS] the master picks the
- * strongest detection per duck group (the devices' area or custom zone) and announces it. Only that
- * device starts a pipeline, and it tells its duck group to duck now and unduck when the pipeline finishes. The master heartbeats; when
- * the heartbeats stop the remaining devices elect a new one.
+ * Wake word arbitration is run by one elected master (see [arbitrateWakeWord]). It is by wake word,
+ * not by area: every device that hears a wake word reports it - with its calibrated mic level and
+ * detection score - to the master, wherever the device is, and after [DECISION_WINDOW_MS] the master
+ * picks one for that wake word by the rules in [WakeWordArbiter] and announces it. Only devices that
+ * actually heard it compete. (Ducking is separate and stays within a duck group, the devices' area or
+ * custom zone.) Only that device starts a pipeline, and it
+ * tells its duck group to duck now and unduck when the pipeline finishes. A report that arrives
+ * after the decision is told it lost at once. The master heartbeats; when the heartbeats stop the
+ * remaining devices elect a new one.
+ *
+ * Devices announce themselves ([VacaBroadcastType.PRESENCE]) so none waits for arbitration it
+ * doesn't need: one with no other device on the network that listens for the same wake word just
+ * answers, and the master decides as soon as every device that could have heard has reported
+ * instead of waiting out [DECISION_WINDOW_MS].
  *
  * To add a new broadcast: add a constant to [VacaBroadcastType], call [send] where it should be
  * emitted, and register a handler with [addHandler] where it should be acted on.
@@ -124,13 +138,23 @@ class VacaUdpBroadcast(
         private const val RESTART_DELAY_MS = 5_000L
 
         const val DATA_SCORE = "score"
+        const val DATA_LEVEL = "level"
+        const val DATA_WAKE_WORD = "wake_word"
+        const val DATA_RESPONDING = "responding"
+
+        // How often every device says it is still here. Peers are dropped after PeerPresence.PEER_TIMEOUT_MS.
+        private const val PRESENCE_INTERVAL_MS = 10_000L
+
+        // A hello is answered after a random delay up to this, so a room of devices doesn't all reply at once.
+        private const val PRESENCE_REPLY_JITTER_MS = 500
         const val DATA_ID = "id"
         const val DATA_WINNER = "winner"
         const val DATA_IDS = "ids"
 
-        // How long the master gathers detections of one wake word before choosing the strongest.
-        // It delays pipeline start, so it only needs to cover the spread between devices' detections.
-        private const val DECISION_WINDOW_MS = 300L
+        // How long the master gathers detections of one wake word before choosing. Audio is kept
+        // while it waits, so it costs no speech, only the wait for the pipeline to start - which is
+        // why it is short. A device that reports after it has closed is simply told it lost.
+        private const val DECISION_WINDOW_MS = 150L
 
         // How long a device waits for the master's decision before assuming it is gone and going ahead.
         private const val DECISION_TIMEOUT_MS = 1_500L
@@ -143,9 +167,6 @@ class VacaUdpBroadcast(
 
         // Devices wait a random time up to this before claiming mastership, so the fastest claims it.
         private const val ELECTION_JITTER_MS = 500
-
-        // Failsafe so a pipeline whose completion was never heard doesn't block its duck group forever.
-        private const val ACTIVE_PIPELINE_TIMEOUT_MS = 90_000L
 
         // Set while running, so the satellite can arbitrate without holding a reference.
         @Volatile var instance: VacaUdpBroadcast? = null
@@ -171,11 +192,23 @@ class VacaUdpBroadcast(
         addHandler(VacaBroadcastType.MASTER_CLAIM) { msg -> onMasterSeen(msg.senderId) }
         addHandler(VacaBroadcastType.MASTER_HEARTBEAT) { msg -> onMasterSeen(msg.senderId) }
         // A device just came up and doesn't know the master: tell it straight away.
-        addHandler(VacaBroadcastType.DEVICE_HELLO) { if (isMaster) send(VacaBroadcastType.MASTER_HEARTBEAT) }
+        addHandler(VacaBroadcastType.DEVICE_HELLO) {
+            if (isMaster) send(VacaBroadcastType.MASTER_HEARTBEAT)
+            // ...and tell it who else is here, so it needn't wait to hear from each of us.
+            scope.launch {
+                delay((0..PRESENCE_REPLY_JITTER_MS).random().milliseconds)
+                sendPresence()
+            }
+        }
         addHandler(VacaBroadcastType.WAKE_DETECTION) { msg ->
             val id = msg.data[DATA_ID]?.jsonPrimitive?.contentOrNull ?: return@addHandler
             val score = msg.data[DATA_SCORE]?.jsonPrimitive?.floatOrNull ?: 0f
-            if (isMaster) collectDetection(msg.duckGroup, Detection(id, msg.senderId, score))
+            val level = msg.data[DATA_LEVEL]?.jsonPrimitive?.floatOrNull
+            val wakeWord = msg.data[DATA_WAKE_WORD]?.jsonPrimitive?.contentOrNull
+            val responding = msg.data[DATA_RESPONDING]?.jsonPrimitive?.booleanOrNull ?: false
+            if (isMaster) {
+                collectDetection(key(wakeWord), WakeWordArbiter.Contender(id, msg.senderId, score, level, wakeWord, responding))
+            }
         }
         addHandler(VacaBroadcastType.WAKE_DECISION) { msg ->
             val winner = msg.data[DATA_WINNER]?.jsonPrimitive?.contentOrNull.orEmpty()
@@ -183,30 +216,32 @@ class VacaUdpBroadcast(
             completeAwaiting(winner, ids)
         }
         addHandler(VacaBroadcastType.DUCK) { msg ->
-            activePipelines[msg.senderId] = ActivePipeline(msg.duckGroup, SystemClock.elapsedRealtime())
-            config.eventBroadcaster.notifyEvent(Event(EVENT_REMOTE_WAKE_WORD_DETECTED, "", msg))
+            // pipeline_completed is always passed on: unducking something that never ducked does nothing.
+            if (config.groupDuckingEnabled) {
+                config.eventBroadcaster.notifyEvent(Event(EVENT_REMOTE_WAKE_WORD_DETECTED, "", msg))
+            }
         }
         addHandler(VacaBroadcastType.PIPELINE_COMPLETED) { msg ->
-            activePipelines.remove(msg.senderId)
             config.eventBroadcaster.notifyEvent(Event(EVENT_REMOTE_PIPELINE_COMPLETED, "", msg))
         }
 
         scope.launch { masterLoop() }
+        scope.launch { presenceLoop() }
         scope.launch { listenLoop() }
     }
 
-    private class Detection(val id: String, val sender: String, val score: Float)
-    private class ActivePipeline(val group: String, val since: Long)
+    private val arbiter = WakeWordArbiter()
+    private val presence = PeerPresence()
 
     @Volatile private var masterId: String? = null
     @Volatile private var lastMasterSeen = 0L
     private val isMaster get() = masterId == config.uuid
 
-    // Master only: detections gathered per duck group while a decision window is open.
-    private val pending = HashMap<String, MutableList<Detection>>()
+    // Master only: detections gathered per wake word (see [key]) while a decision window is open.
+    private val pending = HashMap<String, MutableList<WakeWordArbiter.Contender>>()
 
-    // Devices (by uuid) known to be running a pipeline, with the duck group they claimed.
-    private val activePipelines = ConcurrentHashMap<String, ActivePipeline>()
+    /** What arbitration is grouped by: the wake word, case-insensitively. Blank if there isn't one. */
+    private fun key(wakeWord: String?) = wakeWord?.trim()?.lowercase().orEmpty()
 
     // This device's reported detections waiting for the master's decision.
     private val awaiting = ConcurrentHashMap<String, CompletableDeferred<String>>()
@@ -216,19 +251,30 @@ class VacaUdpBroadcast(
      * Reports a wake word detection with its [score] and returns whether this device should start
      * the audio pipeline (Home Assistant only accepts one per wake word).
      *
-     * The master collects every report for the duck group (the device's area or custom zone, see
-     * [APPConfig.duckGroupKey]) for [DECISION_WINDOW_MS] and the highest score wins (a stronger
-     * detection means the speaker is closest), the lowest device id breaking ties. It refuses all
-     * of them if a different device in the group already has a pipeline running.
-     * The winner tells its group to duck, and later unducks via `audioPipelineCompleted`.
-     * Losers never start a pipeline, so they send nothing.
+     * The master collects every report of this wake word, from any area, for [DECISION_WINDOW_MS]
+     * and chooses by [WakeWordArbiter]'s rules: the loudest calibrated [levelDb] (the speaker being
+     * nearest to it) when it is clearly the loudest, otherwise the device that last answered, then
+     * the highest [score], then the lowest device id. Only devices that heard it report, so only
+     * they compete, and a device that is responding is not asked about at all unless it heard it too
+     * (see [reportInterruption]), when it always wins.
+     * The winner tells its duck group (area or custom zone) to duck, and later unducks via
+     * `audioPipelineCompleted`. Losers never start a pipeline, so they send nothing.
      *
-     * Skipped ([contest] false, or no duck group) the device just ducks and wins. The same happens
-     * if no master is known yet or it doesn't answer, so a dead master never silences a device.
+     * Skipped ([contest] false, or no wake word) the device just ducks and wins. The same happens
+     * if no other device listens for this wake word, if no master is known yet, or it doesn't
+     * answer, so a dead master never silences a device.
      */
-    suspend fun arbitrateWakeWord(score: Float, contest: Boolean = true): Boolean {
-        val group = config.duckGroupKey
-        if (!contest || group.isEmpty() || masterId == null) {
+    suspend fun arbitrateWakeWord(score: Float, levelDb: Float? = null, contest: Boolean = true): Boolean {
+        val wakeWordKey = key(config.wakeWord)
+        if (!contest || !config.wakeWordArbitrationEnabled || wakeWordKey.isEmpty() || masterId == null) {
+            sendDuck()
+            return true
+        }
+
+        // No other device listens for this wake word, so nobody else could have heard it and there
+        // is nothing to decide: no round trip to the master and no window to wait out.
+        if (presence.competitors(config.wakeWord, config.uuid).isEmpty()) {
+            Timber.d("VacaUdpBroadcast: no other device listens for ${config.wakeWord}, answering without arbitration")
             sendDuck()
             return true
         }
@@ -237,14 +283,7 @@ class VacaUdpBroadcast(
         val id = "$me-${detectionCounter.incrementAndGet()}"
         val decision = CompletableDeferred<String>()
         awaiting[id] = decision
-        if (isMaster) {
-            collectDetection(group, Detection(id, me, score))
-        } else {
-            send(VacaBroadcastType.WAKE_DETECTION, buildJsonObject {
-                put(DATA_ID, JsonPrimitive(id))
-                put(DATA_SCORE, JsonPrimitive(score))
-            })
-        }
+        report(id, score, levelDb, responding = false)
         val winner = withTimeoutOrNull(DECISION_TIMEOUT_MS.milliseconds) { decision.await() }
         awaiting.remove(id)
 
@@ -255,45 +294,111 @@ class VacaUdpBroadcast(
             return true
         }
         val won = winner == id
-        Timber.i("VacaUdpBroadcast: wake word arbitration ${if (won) "won" else "lost"} (score=$score)")
+        Timber.i("VacaUdpBroadcast: wake word arbitration ${if (won) "won" else "lost"} (score=$score, level=$levelDb)")
         if (won) sendDuck()
         return won
     }
 
     private fun sendDuck() {
-        activePipelines[config.uuid] = ActivePipeline(config.duckGroupKey, SystemClock.elapsedRealtime())
-        send(VacaBroadcastType.DUCK)
+        if (config.groupDuckingEnabled) send(VacaBroadcastType.DUCK)
+    }
+
+    /** Sends this device's report of the wake word to the master, or hands it over if this is the master. */
+    private fun report(id: String, score: Float, levelDb: Float?, responding: Boolean) {
+        if (isMaster) {
+            collectDetection(
+                key(config.wakeWord),
+                WakeWordArbiter.Contender(id, config.uuid, score, levelDb, config.wakeWord, responding)
+            )
+        } else {
+            send(VacaBroadcastType.WAKE_DETECTION, buildJsonObject {
+                put(DATA_ID, JsonPrimitive(id))
+                put(DATA_SCORE, JsonPrimitive(score))
+                put(DATA_WAKE_WORD, JsonPrimitive(config.wakeWord))
+                if (levelDb != null) put(DATA_LEVEL, JsonPrimitive(levelDb))
+                if (responding) put(DATA_RESPONDING, JsonPrimitive(true))
+            })
+        }
+    }
+
+    /**
+     * The wake word was heard while this device is responding, so it interrupts that response
+     * whatever is decided. This tells the master, so the decision for this wake word goes to this
+     * device - it always wins - and the other devices that heard it do nothing. It doesn't wait for
+     * an answer. Only devices that heard the wake word are told; a responding device that didn't hear
+     * it isn't asked to stop.
+     */
+    fun reportInterruption(score: Float, levelDb: Float?) {
+        if (!config.wakeWordArbitrationEnabled || key(config.wakeWord).isEmpty() || masterId == null) return
+        // Nobody else listens for this wake word, so there is nobody to tell.
+        if (presence.competitors(config.wakeWord, config.uuid).isEmpty()) return
+        report("${config.uuid}-${detectionCounter.incrementAndGet()}", score, levelDb, responding = true)
     }
 
     private fun completeAwaiting(winner: String, ids: List<String>) {
         ids.forEach { awaiting[it]?.complete(winner) }
     }
 
-    /** Master: adds a detection to its group's window, opening one (and a decision timer) if needed. */
-    private fun collectDetection(group: String, detection: Detection) {
+    /**
+     * Master: adds a detection to its wake word's window, opening one (and a decision timer) if needed.
+     * One that arrives just after the window closed is told it lost, not made to wait and then go ahead.
+     */
+    private fun collectDetection(group: String, detection: WakeWordArbiter.Contender) {
         if (group.isEmpty()) return
-        val opensWindow = synchronized(pending) {
-            val list = pending.getOrPut(group) { mutableListOf() }
-            list.add(detection)
-            list.size == 1
+        var lateWinner: String? = null
+        var opensWindow = false
+        var everyoneReported = false
+        synchronized(pending) {
+            val list = pending[group]
+            if (list != null) {
+                list.add(detection)
+            } else {
+                lateWinner = arbiter.lateVerdict(group)
+                if (lateWinner == null) {
+                    pending[group] = mutableListOf(detection)
+                    opensWindow = true
+                }
+            }
+            pending[group]?.let { everyoneReported = hasEveryoneReported(it) }
+        }
+        lateWinner?.let { winner ->
+            Timber.i("VacaUdpBroadcast: ${detection.sender} reported after the decision, telling it it lost")
+            send(VacaBroadcastType.WAKE_DECISION, buildJsonObject {
+                put(DATA_WINNER, JsonPrimitive(winner))
+                put(DATA_IDS, buildJsonArray { add(JsonPrimitive(detection.id)) })
+            })
+            completeAwaiting(winner, listOf(detection.id)) // our own broadcasts don't loop back to us
+            return
         }
         if (opensWindow) scope.launch {
             delay(DECISION_WINDOW_MS.milliseconds)
             decide(group)
         }
+        // No point waiting for devices that have nothing to report, or for others once a device that
+        // is responding has reported, as it wins whatever they say. The window's timer then finds
+        // nothing left to decide (a new window can't open for 2 s after a decision).
+        if (everyoneReported || detection.responding) decide(group)
     }
 
-    /** Master: picks the strongest detection for [groupKey] and announces it, or refuses all if busy. */
+    /** True once every device that could have heard this wake word has reported. */
+    private fun hasEveryoneReported(reports: List<WakeWordArbiter.Contender>): Boolean {
+        val wakeWord = reports.firstNotNullOfOrNull { it.wakeWord }
+        val selfCompetes = PeerPresence.competes(config.wakeWord, wakeWord)
+        val expected = presence.expectedReporters(wakeWord, config.uuid, selfCompetes)
+        return reports.map { it.sender }.toSet().containsAll(expected)
+    }
+
+    /** Master: picks the detection that answers for wake word [groupKey] and announces it. */
     private fun decide(groupKey: String) {
         val detections = synchronized(pending) { pending.remove(groupKey) } ?: return
-        val now = SystemClock.elapsedRealtime()
-        activePipelines.entries.removeIf { now - it.value.since > ACTIVE_PIPELINE_TIMEOUT_MS }
-
-        val best = detections.maxWithOrNull(compareBy<Detection> { it.score }.thenByDescending { it.sender }) ?: return
-        val busy = activePipelines.any { (sender, p) -> sender != best.sender && p.group == groupKey }
-        val winner = if (busy) "" else best.id
-        if (!busy) activePipelines[best.sender] = ActivePipeline(groupKey, now)
-        Timber.i("VacaUdpBroadcast: decided ${if (busy) "no winner (pipeline active)" else "winner ${best.sender}"} from ${detections.size} detection(s)")
+        val decision = arbiter.decide(groupKey, detections) ?: return
+        val best = decision.winner
+        val winner = decision.winnerId
+        val reports = detections.joinToString { d ->
+            "${d.sender.take(8)} ${d.levelDb?.let { "%.1f".format(it) } ?: "?"} dB, score ${"%.2f".format(d.score)}" +
+                if (d.responding) ", responding" else ""
+        }
+        Timber.i("VacaUdpBroadcast: decided winner ${best.sender.take(8)}${if (best.responding) " (interrupting its response)" else ""} from ${detections.size} detection(s): $reports")
 
         val ids = detections.map { it.id }
         send(VacaBroadcastType.WAKE_DECISION, buildJsonObject {
@@ -394,6 +499,7 @@ class VacaUdpBroadcast(
                 receiveSocket = socket
                 Timber.i("VacaUdpBroadcast: listening on UDP $PORT")
                 send(VacaBroadcastType.DEVICE_HELLO)
+                sendPresence()
                 val buffer = ByteArray(MAX_PACKET_BYTES)
                 while (scope.isActive) {
                     val packet = DatagramPacket(buffer, buffer.size)
@@ -414,6 +520,8 @@ class VacaUdpBroadcast(
     private fun handlePacket(packet: DatagramPacket) {
         val message = parse(packet) ?: return
         if (message.senderId == config.uuid) return
+        // Any message shows the sender is around; presence and detections also say its wake word.
+        presence.seen(message.senderId, message.data[DATA_WAKE_WORD]?.jsonPrimitive?.contentOrNull)
         if (message.type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: received ${message.type} from ${message.senderId}")
         handlers[message.type]?.forEach {
             try {
@@ -460,10 +568,25 @@ class VacaUdpBroadcast(
         }
     }
 
+    /** Tells the other devices this one is here, and which wake word it listens for. */
+    private fun sendPresence() {
+        send(VacaBroadcastType.PRESENCE, buildJsonObject {
+            put(DATA_WAKE_WORD, JsonPrimitive(config.wakeWord))
+        })
+    }
+
+    private suspend fun presenceLoop() {
+        while (scope.isActive) {
+            delay(PRESENCE_INTERVAL_MS.milliseconds)
+            sendPresence()
+        }
+    }
+
     override fun onEventTriggered(event: Event) {
         when (event.eventName) {
+            // Others decide whether we compete with them by our wake word, so say when it changes.
+            "wakeWord" -> sendPresence()
             EVENT_PIPELINE_COMPLETED -> {
-                activePipelines.remove(config.uuid)
                 send(VacaBroadcastType.PIPELINE_COMPLETED)
             }
         }

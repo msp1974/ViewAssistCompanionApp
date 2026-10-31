@@ -184,6 +184,12 @@ class VAViewModel @Inject constructor(
     private val _vacaState = MutableStateFlow(State())
     val vacaState: StateFlow<State> = _vacaState.asStateFlow()
 
+    // Whether the wake word level calibration wizard is showing over the configuration screen.
+    private val _calibrationOpen = MutableStateFlow(false)
+    val calibrationOpen: StateFlow<Boolean> = _calibrationOpen.asStateFlow()
+    fun openCalibrationWizard() { _calibrationOpen.value = true }
+    fun closeCalibrationWizard() { _calibrationOpen.value = false }
+
     var resources: Resources = application.resources
     var permissions: Permissions = Permissions(application.applicationContext, deviceManager)
     val network = Network(application.applicationContext)
