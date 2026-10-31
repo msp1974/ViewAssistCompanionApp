@@ -8,16 +8,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
-import android.location.LocationManager
 import android.os.Build
-import android.provider.Settings
 import androidx.core.content.ContextCompat
-import androidx.core.location.LocationManagerCompat
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.utils.Event
 import com.msp1974.vacompanion.utils.EventListener
+import com.msp1974.vacompanion.utils.isSystemLocationEnabled
 import timber.log.Timber
 import java.security.MessageDigest
 
@@ -108,7 +106,7 @@ class BluetoothProxyManager(
 
         // Everything the server calls back into must exist before it accepts its first client.
         gatt = GattManager(context, adapter, newServer)
-        scanner = object : BleScanner(adapter, { isLocationEnabled() }) {
+        scanner = object : BleScanner(adapter, { isSystemLocationEnabled(context) }) {
             override fun onAdvertisements(ads: List<BleAdvertisement>) {
                 newServer.sendAdvertisements(ads)
             }
@@ -190,22 +188,6 @@ class BluetoothProxyManager(
             }
             adapterReceiver = null
         }
-    }
-
-    // BLE scan results are only delivered while system Location is on (the manifest does not
-    // declare neverForLocation, as that would hide beacons from Home Assistant).
-    private fun isLocationEnabled(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
-            // AndroidX checks GPS/network providers before API 28. Devices such as the
-            // NSPanel Pro have neither provider, but can scan BLE when Location is on.
-            return Settings.Secure.getInt(
-                context.contentResolver,
-                Settings.Secure.LOCATION_MODE,
-                Settings.Secure.LOCATION_MODE_OFF,
-            ) != Settings.Secure.LOCATION_MODE_OFF
-        }
-        val lm = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return true
-        return LocationManagerCompat.isLocationEnabled(lm)
     }
 
     private fun scannerStatePayload(): ByteArray {
