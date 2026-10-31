@@ -3,6 +3,7 @@ package com.msp1974.vacompanion.btproxy
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanResult
 import android.bluetooth.le.ScanSettings
 import android.os.Handler
@@ -129,7 +130,9 @@ abstract class BleScanner(
             }
         }
         try {
-            scanner.startScan(null, settings, cb)
+            // Android suspends scans without a filter list while the screen is off. An
+            // explicit match-all filter keeps scanning without excluding any beacons.
+            scanner.startScan(listOf(ScanFilter.Builder().build()), settings, cb)
             callback = cb
             lastWatchdogCount = receivedCount
             handler.removeCallbacks(watchdog)
