@@ -53,6 +53,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -110,6 +112,10 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     // (see onEngineFailure below). Reset once the engine reports RUNNING again, so a transient
     // fault gets a fresh budget next time rather than exhausting it permanently.
     private var wakeWordEngineRestartAttempts = 0
+    // Start/stop/restart of wake word detection must not overlap: a settings push can change several
+    // wake word settings at once, each asking for a restart, and overlapping restarts leave an
+    // orphaned engine running that reports every wake word a second time.
+    private val wakeWordLock = Mutex()
 
     // The only owner of the microphone. The wake word engine and any listening audio pipeline
     // subscribe to it; it is open only while at least one of them is.
@@ -405,7 +411,9 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
     }
 
     @OptIn(ExperimentalAtomicApi::class)
-    suspend fun startWakeWordDetection() {
+    suspend fun startWakeWordDetection() = wakeWordLock.withLock { startWakeWordDetectionLocked() }
+
+    private suspend fun startWakeWordDetectionLocked() {
         if (wakeWordHandler != null) {
             wakeWordHandler?.stop()
             wakeWordHandler = null
@@ -462,16 +470,18 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
         }
     }
 
-    suspend fun stopWakeWordDetection() {
+    suspend fun stopWakeWordDetection() = wakeWordLock.withLock { stopWakeWordDetectionLocked() }
+
+    private suspend fun stopWakeWordDetectionLocked() {
         wakeWordHandler?.stop()
         wakeWordHandler = null
     }
 
 
-    suspend fun restartWakeWordDetection() {
-        stopWakeWordDetection()
+    suspend fun restartWakeWordDetection() = wakeWordLock.withLock {
+        stopWakeWordDetectionLocked()
         warmUpAudioResources()
-        startWakeWordDetection()
+        startWakeWordDetectionLocked()
     }
 
     // Reacts to SatelliteWakeWorkHandler.onEngineFailure - the wake word engine's audio/
