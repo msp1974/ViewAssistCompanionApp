@@ -13,7 +13,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import timber.log.Timber
-import java.util.UUID
+import java.util.IdentityHashMap
 
 /**
  * Executes GATT requests from Home Assistant against local Bluetooth devices.
@@ -51,7 +51,7 @@ class GattManager(
     fun handle(session: BtProxyApiServer.Session, type: Int, fields: ProtoFields) {
         val address = fields.long(1)
         when (type) {
-            MsgId.BLE_DEVICE_REQUEST -> handleDeviceRequest(session, address, fields.int(2))
+            MsgId.BLE_DEVICE_REQUEST -> handleDeviceRequest(session, address, fields.int(2), fields.int(4))
             else -> {
                 val conn = synchronized(connections) { connections[address] }
                 if (conn == null || conn.session !== session) {
@@ -63,12 +63,12 @@ class GattManager(
         }
     }
 
-    private fun handleDeviceRequest(session: BtProxyApiServer.Session, address: Long, requestType: Int) {
+    private fun handleDeviceRequest(session: BtProxyApiServer.Session, address: Long, requestType: Int, addressType: Int) {
         when (requestType) {
             BleDeviceRequest.CONNECT,
             BleDeviceRequest.CONNECT_V3_WITH_CACHE,
             BleDeviceRequest.CONNECT_V3_WITHOUT_CACHE ->
-                connect(session, address, refreshCache = requestType == BleDeviceRequest.CONNECT_V3_WITHOUT_CACHE)
+                connect(session, address, addressType, refreshCache = requestType == BleDeviceRequest.CONNECT_V3_WITHOUT_CACHE)
 
             BleDeviceRequest.DISCONNECT -> {
                 val conn = synchronized(connections) { connections[address] }
@@ -90,9 +90,19 @@ class GattManager(
         }
     }
 
-    private fun connect(session: BtProxyApiServer.Session, address: Long, refreshCache: Boolean) {
+    private fun connect(session: BtProxyApiServer.Session, address: Long, addressType: Int, refreshCache: Boolean) {
         val device = try {
-            adapter?.takeIf { it.isEnabled }?.getRemoteDevice(BleAddress.toString(address))
+            adapter?.takeIf { it.isEnabled }?.let {
+                val addr = BleAddress.toString(address)
+                // getRemoteDevice(String) assumes a public address; random-address devices need the type.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    (addressType == BluetoothDevice.ADDRESS_TYPE_PUBLIC || addressType == BluetoothDevice.ADDRESS_TYPE_RANDOM)
+                ) {
+                    it.getRemoteLeDevice(addr, addressType)
+                } else {
+                    it.getRemoteDevice(addr)
+                }
+            }
         } catch (e: IllegalArgumentException) {
             null
         }
@@ -163,9 +173,9 @@ class GattManager(
         private var servicesBuilt = false
         private val characteristics = HashMap<Int, BluetoothGattCharacteristic>()
         private val descriptors = HashMap<Int, BluetoothGattDescriptor>()
+        private val handles = IdentityHashMap<Any, Int>()
         private val ops = ArrayDeque<Op>()
         private var current: Op? = null
-        private var pendingServicesRequest = false
 
         private val connectTimeout = Runnable {
             Timber.w("Bluetooth proxy: connect timeout for ${BleAddress.toString(address)}")
@@ -245,55 +255,66 @@ class GattManager(
         }
 
         private fun getServices() {
-            val g = gatt ?: return
-            if (servicesBuilt) {
-                sendServices()
-            } else {
-                pendingServicesRequest = true
-                if (g.services.isNotEmpty()) {
-                    buildHandles()
-                    sendServices()
-                } else if (!g.discoverServices()) {
-                    pendingServicesRequest = false
-                    session.send(MsgId.BLE_GATT_ERROR_RESPONSE, ApiMessages.gattError(address, 0, ERR_GENERIC))
-                }
-            }
+            // Services are discovered and numbered before the connection is reported, so this
+            // only ever replays them.
+            if (servicesBuilt) sendServices()
+            else session.send(MsgId.BLE_GATT_ERROR_RESPONSE, ApiMessages.gattError(address, 0, ERR_GENERIC))
         }
 
+        /**
+         * Number every attribute. Home Assistant may reuse handles from its services cache without
+         * asking for them again, so they must be the same on every connection: Android's instance
+         * id is the real ATT handle on the AOSP stack. Anything without a usable id (0, or a
+         * duplicate) gets a number above the highest id so it can't collide.
+         */
         private fun buildHandles() {
             characteristics.clear()
             descriptors.clear()
-            var next = 1
-            gatt?.services?.forEach { service ->
-                next++
+            handles.clear()
+            val services = gatt?.services.orEmpty()
+            var highest = 0
+            services.forEach { s ->
+                highest = maxOf(highest, s.instanceId)
+                s.characteristics.forEach { c ->
+                    highest = maxOf(highest, c.instanceId)
+                    c.descriptors.forEach { d -> highest = maxOf(highest, instanceIdOf(d)) }
+                }
+            }
+            var next = highest + 1
+            val used = HashSet<Int>()
+            fun assign(attr: Any, instanceId: Int): Int {
+                val handle = if (instanceId > 0 && used.add(instanceId)) instanceId else next++
+                handles[attr] = handle
+                return handle
+            }
+            services.forEach { service ->
+                assign(service, service.instanceId)
                 service.characteristics.forEach { c ->
-                    characteristics[next++] = c
-                    c.descriptors.forEach { d -> descriptors[next++] = d }
+                    characteristics[assign(c, c.instanceId)] = c
+                    c.descriptors.forEach { d -> descriptors[assign(d, instanceIdOf(d))] = d }
                 }
             }
             servicesBuilt = true
         }
 
-        private fun handleOf(c: BluetoothGattCharacteristic): Int =
-            characteristics.entries.firstOrNull { it.value === c }?.key ?: 0
+        /** Descriptors have no public instance id; read the hidden one, or 0 to fall back to numbering. */
+        private fun instanceIdOf(d: BluetoothGattDescriptor): Int = try {
+            d.javaClass.getMethod("getInstanceId").invoke(d) as? Int ?: 0
+        } catch (e: Throwable) {
+            0
+        }
 
-        private fun handleOf(d: BluetoothGattDescriptor): Int =
-            descriptors.entries.firstOrNull { it.value === d }?.key ?: 0
+        private fun handleOf(c: BluetoothGattCharacteristic): Int = handles[c] ?: 0
 
         private fun sendServices() {
-            pendingServicesRequest = false
-            // Handles are assigned in the same walk order as buildHandles().
-            var next = 1
             gatt?.services?.forEach { service ->
-                val serviceHandle = next++
                 val chars = service.characteristics.map { c ->
-                    val ch = next++
-                    val descs = c.descriptors.map { d -> GattDescriptorInfo(d.uuid, next++) }
-                    GattCharacteristicInfo(c.uuid, ch, c.properties, descs)
+                    val descs = c.descriptors.map { d -> GattDescriptorInfo(d.uuid, handles[d] ?: 0) }
+                    GattCharacteristicInfo(c.uuid, handles[c] ?: 0, c.properties, descs)
                 }
                 session.send(
                     MsgId.BLE_GATT_GET_SERVICES_RESPONSE,
-                    ApiMessages.gattService(address, GattServiceInfo(service.uuid, serviceHandle, chars))
+                    ApiMessages.gattService(address, GattServiceInfo(service.uuid, handles[service] ?: 0, chars))
                 )
             }
             session.send(MsgId.BLE_GATT_GET_SERVICES_DONE, ApiMessages.addressOnly(address))
@@ -353,19 +374,9 @@ class GattManager(
                 session.send(MsgId.BLE_GATT_ERROR_RESPONSE, ApiMessages.gattError(address, handle, ERR_GENERIC))
                 return
             }
-            // Subscribing also needs the remote side told, via the CCCD descriptor.
-            val cccd = c.getDescriptor(CCCD_UUID)
-            if (cccd == null) {
-                session.send(MsgId.BLE_GATT_NOTIFY_RESPONSE, ApiMessages.addressHandle(address, handle))
-                return
-            }
-            val value = when {
-                !enable -> BluetoothGattDescriptor.DISABLE_NOTIFICATION_VALUE
-                c.properties and BluetoothGattCharacteristic.PROPERTY_NOTIFY != 0 ->
-                    BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
-                else -> BluetoothGattDescriptor.ENABLE_INDICATION_VALUE
-            }
-            enqueue(Op(handle, OP_NOTIFY) { writeDescriptorNow(cccd, value) })
+            // Home Assistant writes the CCCD itself (as ESPHome expects), so only the local
+            // delivery of notifications is switched on here.
+            session.send(MsgId.BLE_GATT_NOTIFY_RESPONSE, ApiMessages.addressHandle(address, handle))
         }
 
         private fun unknownHandle(handle: Int) {
@@ -409,7 +420,6 @@ class GattManager(
                 OP_READ -> session.send(MsgId.BLE_GATT_READ_RESPONSE, ApiMessages.gattData(address, op.handle, data ?: ByteArray(0)))
                 OP_READ_DESCRIPTOR -> session.send(MsgId.BLE_GATT_READ_RESPONSE, ApiMessages.gattData(address, op.handle, data ?: ByteArray(0)))
                 OP_WRITE, OP_WRITE_DESCRIPTOR -> session.send(MsgId.BLE_GATT_WRITE_RESPONSE, ApiMessages.addressHandle(address, op.handle))
-                OP_NOTIFY -> session.send(MsgId.BLE_GATT_NOTIFY_RESPONSE, ApiMessages.addressHandle(address, op.handle))
             }
             runNext()
         }
@@ -425,7 +435,7 @@ class GattManager(
                         connected = true
                         if (refreshOnConnect) refreshCache()
                         // Ask for a larger MTU; the connection is reported once that settles.
-                        if (!g.requestMtu(PREFERRED_MTU)) reportConnected()
+                        if (!g.requestMtu(PREFERRED_MTU)) discoverServices(g)
                     } else {
                         Timber.d("Bluetooth proxy: ${BleAddress.toString(address)} disconnected (status $status)")
                         close(notify = true, error = if (status == BluetoothGatt.GATT_SUCCESS) 0 else status)
@@ -437,7 +447,7 @@ class GattManager(
                 handler.post {
                     if (closed) return@post
                     if (status == BluetoothGatt.GATT_SUCCESS) mtu = newMtu
-                    reportConnected()
+                    discoverServices(g)
                 }
             }
 
@@ -445,11 +455,12 @@ class GattManager(
                 handler.post {
                     if (closed) return@post
                     if (status == BluetoothGatt.GATT_SUCCESS) {
+                        // Handles must exist before Home Assistant (which may skip GET_SERVICES
+                        // using its cache) sends its first read, write or notify.
                         buildHandles()
-                        if (pendingServicesRequest) sendServices()
+                        reportConnected()
                     } else {
-                        pendingServicesRequest = false
-                        session.send(MsgId.BLE_GATT_ERROR_RESPONSE, ApiMessages.gattError(address, 0, status))
+                        close(notify = true, error = status)
                     }
                 }
             }
@@ -509,6 +520,10 @@ class GattManager(
             }
         }
 
+        private fun discoverServices(g: BluetoothGatt) {
+            if (!g.discoverServices()) close(notify = true, error = ERR_GENERIC)
+        }
+
         private fun reportConnected() {
             session.send(MsgId.BLE_DEVICE_CONNECTION_RESPONSE, ApiMessages.deviceConnection(address, true, mtu, 0))
         }
@@ -528,7 +543,6 @@ class GattManager(
         private const val OP_WRITE_NO_RESPONSE = 3
         private const val OP_READ_DESCRIPTOR = 4
         private const val OP_WRITE_DESCRIPTOR = 5
-        private const val OP_NOTIFY = 6
 
         // ESP-IDF style codes Home Assistant understands.
         private const val ERR_GENERIC = 0x85
@@ -536,7 +550,5 @@ class GattManager(
         private const val ERR_TIMEOUT = 0x93
         private const val ERR_INVALID_HANDLE = 0x01
         private const val ERR_NOT_CONNECTED = 0x85
-
-        private val CCCD_UUID: UUID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
     }
 }

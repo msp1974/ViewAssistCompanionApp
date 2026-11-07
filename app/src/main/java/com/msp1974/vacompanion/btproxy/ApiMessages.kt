@@ -99,6 +99,7 @@ object ApiMessages {
 
     const val FEATURE_FLAGS = ProxyFeature.PASSIVE_SCAN or
         ProxyFeature.ACTIVE_CONNECTIONS or
+        ProxyFeature.REMOTE_CACHING or
         ProxyFeature.RAW_ADVERTISEMENTS or
         ProxyFeature.STATE_AND_MODE or
         ProxyFeature.CACHE_CLEARING
