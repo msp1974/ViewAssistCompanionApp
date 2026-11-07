@@ -536,6 +536,9 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         // Permissions can be changed in system settings while the app is backgrounded.
         updatePermissionStatus()
 
+        // The camera may have been taken away while backgrounded (motion/face detection, preview).
+        deviceManager.camera.onAppForeground()
+
         // Catch if background tasks not running
         if (initialised && Helpers.isNetworkAvailable(this) && config.backgroundTaskStatus == BackgroundTaskStatus.NOT_STARTED ) {
             Timber.e("Background task starting on resume as is is not running")

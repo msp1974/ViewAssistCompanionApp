@@ -173,6 +173,21 @@ class CameraController(
         return CameraAvailability.READY
     }
 
+    /**
+     * The app is back in the foreground. Some devices (e.g. the Portal) disable the camera for a
+     * backgrounded app, so retries made meanwhile fail and push the backoff out to a minute. Drop
+     * the backoff and try again now. A camera that is working is left alone.
+     */
+    fun onAppForeground() {
+        mainScope.launch {
+            if (consecutiveBindFailures == 0) return@launch
+            Timber.i("CameraController: app in foreground, retrying camera after $consecutiveBindFailures failure(s)")
+            consecutiveBindFailures = 0
+            rebindBackoffUntilMs = 0L
+            scheduleRebind()
+        }
+    }
+
     fun attachAnalyzer(analyzer: ImageAnalysis.Analyzer) {
         this.analyzer = analyzer
         scheduleRebind()
