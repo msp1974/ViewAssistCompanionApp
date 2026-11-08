@@ -77,7 +77,7 @@ class MicrophoneAudioStream(
         try {
             withContext(Dispatchers.IO) { microphone.start() }
             Timber.d("Microphone opened")
-            launch(Dispatchers.IO) {
+            launch(AudioThreads.capture) {
                 while (isActive) {
                     val frame = microphone.readShort()
                     if (frame.isNotEmpty()) trySend(frame) else delay(EMPTY_READ_DELAY_MS.milliseconds)

@@ -2,6 +2,7 @@ package com.msp1974.vacompanion.satellite
 
 import android.Manifest
 import android.content.Context
+import com.msp1974.vacompanion.audio.AudioThreads
 import com.msp1974.vacompanion.audio.MicLevelMonitor
 import com.msp1974.vacompanion.audio.MicrophoneAudioStream
 import com.msp1974.vacompanion.broadcasts.BroadcastSender
@@ -19,6 +20,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.cancellable
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import timber.log.Timber
@@ -179,7 +181,8 @@ abstract class SatelliteWakeWorkHandler(
         }
 
         //sendDiagnostics(0f, 0f)
-        val flow = engine?.start() ?: return
+        // The models run upstream of the collect below, so flowOn puts them on the audio-priority thread.
+        val flow = engine?.start()?.flowOn(AudioThreads.inference) ?: return
         wakeWordJob = scope.launch {
             try {
                 flow.cancellable().collect {
