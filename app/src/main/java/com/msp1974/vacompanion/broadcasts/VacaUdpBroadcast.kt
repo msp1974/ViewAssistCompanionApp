@@ -480,7 +480,7 @@ class VacaUdpBroadcast(
                 } catch (e: Exception) {
                     Timber.d("VacaUdpBroadcast: send to $target failed: ${e.message}")
                 }
-                if (type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: sent $type")
+                // if (type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: sent $type")
             } catch (e: Exception) {
                 Timber.e("VacaUdpBroadcast: send failed: ${e.message}")
             }
@@ -522,7 +522,7 @@ class VacaUdpBroadcast(
         if (message.senderId == config.uuid) return
         // Any message shows the sender is around; presence and detections also say its wake word.
         presence.seen(message.senderId, message.data[DATA_WAKE_WORD]?.jsonPrimitive?.contentOrNull)
-        if (message.type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: received ${message.type} from ${message.senderId}")
+        //if (message.type != VacaBroadcastType.MASTER_HEARTBEAT) Timber.d("VacaUdpBroadcast: received ${message.type} from ${message.senderId}")
         handlers[message.type]?.forEach {
             try {
                 it(message)
