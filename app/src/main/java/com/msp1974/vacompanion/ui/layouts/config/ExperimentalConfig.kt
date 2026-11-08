@@ -28,7 +28,7 @@ fun experimentalConfig(vm: VAViewModel): ConfigSection {
                 value = { if (c.wakeLevelCalibrated) "%+.1f dB".format(c.wakeLevelOffsetDb) else "Not calibrated" },
                 onClick = { vm.openCalibrationWizard() }),
             ConfigItem.Toggle(VOICE, "Wake word arbitration",
-                "When several devices hear the same wake word, they agree which one answers. Off, this device answers every wake word it hears, whatever the others do",
+                "When several devices hear the same wake word, they agree which one answers. Off, standard HA first detection wins applies",
                 Icons.Default.HowToVote, key = "wake_word_arbitration",
                 get = { c.wakeWordArbitrationEnabled }, set = { c.wakeWordArbitrationEnabled = it }),
             ConfigItem.Options(VOICE, "Ducking scope",
