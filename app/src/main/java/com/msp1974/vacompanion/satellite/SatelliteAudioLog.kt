@@ -9,6 +9,7 @@ data class AudioLogEntry(
     val timestamp: String,
     val wakeWord: String,
     val maxScore: Float,
+    val level: Float? = null,
     var request: String,
     var response: String,
     var audioFilePath: String? = null,
@@ -26,7 +27,7 @@ class SatelliteAudioLog(val config: APPConfig) {
         initAudioRecorder()
     }
 
-    fun onWakeWordDetected(eventId: Long, wakeWord: String, score: Float) {
+    fun onWakeWordDetected(eventId: Long, wakeWord: String, score: Float, level: Float?) {
         if (config.recordingWakewordEnabled) {
             if (audioRecorder == null) {
                 initAudioRecorder()
@@ -41,6 +42,7 @@ class SatelliteAudioLog(val config: APPConfig) {
                 timestamp = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss")),
                 wakeWord = wakeWord,
                 maxScore = score,
+                level = level,
                 request = "",
                 response = ""
             )

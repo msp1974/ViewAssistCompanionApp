@@ -2,6 +2,8 @@ package com.msp1974.vacompanion.ui.components
 
 import android.annotation.SuppressLint
 import android.content.res.Configuration
+import com.msp1974.vacompanion.ui.layouts.config.friendly
+import java.util.Locale
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -211,8 +213,13 @@ fun DiagnosticBar(
                                 verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 if (entry.value.wakeWord.isNotEmpty()) {
+                                    val logEntry = entry.value
+                                    val details = listOfNotNull(
+                                        logEntry.level?.let { "level: ${Math.round(it)}dB" },
+                                        "score: ${"%.2f".format(Locale.US, logEntry.maxScore)}"
+                                    ).joinToString(", ")
                                     Text(
-                                        text = "${entry.value.wakeWord} (${entry.value.maxScore})",
+                                        text = "${friendly(logEntry.wakeWord)} ($details)",
                                         style = MaterialTheme.typography.bodyLarge,
                                         color = labelColour
                                     )

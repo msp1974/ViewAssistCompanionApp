@@ -596,7 +596,7 @@ abstract class Satellite(var context: Context, val deviceManager: DeviceManager,
                 config.screenOn = true
                 config.screenSaver = false
             }
-            audioLogManager.onWakeWordDetected(detection.timestamp, detection.wakeWord, detection.score)
+            audioLogManager.onWakeWordDetected(detection.timestamp, detection.wakeWord, detection.score, level)
             startAudioPipeline(PipelineStartMode.WAKE_WORD_DETECTED, detection.timestamp, buffer)
             buffer = null // the pipeline owns it now
         } finally {
