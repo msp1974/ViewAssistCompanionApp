@@ -32,6 +32,7 @@ object WyomingCustomEventType {
     const val CAPABILITIES = "capabilities"
     const val STATUS = "status"
     const val LOGS = "logs"
+    const val INSTANCE_INFO = "instance-info"
 }
 
 /**
