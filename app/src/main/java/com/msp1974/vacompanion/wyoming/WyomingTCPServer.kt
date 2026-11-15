@@ -55,7 +55,7 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private var runServer: Boolean = true
     var satellite: Satellite? = null
     private val clients = mutableMapOf<String, Connection>()
-    private val zeroconf = Zeroconf(context, config.uuid)
+    private var zeroconf: Zeroconf? = null
     private var serverSocket: ServerSocket? = null
     private var restartIfStopped: Boolean = false
 
@@ -64,6 +64,11 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     private val unpairListener = object : EventListener {
         override fun onEventTriggered(event: Event) {
             when (event.eventName) {
+                "restartZeroconf" -> {
+                    Timber.i("Device UUID changed - re-advertising as vaca-${config.uuid}")
+                    zeroconf?.stop()
+                    zeroconf?.start(config.serverPort)
+                }
                 "unpairDevice" -> {
                     Timber.i("Device unpaired - stopping satellite")
                     scope.launch { stopSatellite() }
@@ -272,11 +277,13 @@ abstract class WyomingTCPServer(private val context: Context, val deviceManager:
     }
 
     private fun registerNSD() {
-        zeroconf.registerService(config.serverPort)
+        val identity = WyomingInfoBuilder(deviceManager).buildWyomingIdentity()
+        zeroconf = Zeroconf(context, identity)
+        zeroconf?.start(config.serverPort)
     }
 
     private fun unregisterNSD() {
-        zeroconf.unregisterService()
+        zeroconf?.stop()
     }
 
     private suspend fun messageHandler(clientId: String, packet: WyomingPacket) {

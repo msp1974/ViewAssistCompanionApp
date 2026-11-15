@@ -75,8 +75,18 @@ class SendspinManager(
 
     // The setting is SharedPreferences-backed, so the event carries no typed value - read it back.
     override fun onEventTriggered(event: Event) {
-        if (event.eventName != "sendspin_enabled") return
-        Timber.d("SendspinManager: sendspin_enabled=${config.sendspinEnabled}")
-        if (config.sendspinEnabled) startPlayer() else stopPlayer()
+        when (event.eventName) {
+            "sendspin_enabled" -> {
+                Timber.d("SendspinManager: sendspin_enabled=${config.sendspinEnabled}")
+                if (config.sendspinEnabled) startPlayer() else stopPlayer()
+            }
+            // The client id, player name and advertised service name all carry the uuid.
+            "restartZeroconf" -> {
+                if (player == null) return
+                Timber.d("SendspinManager: device UUID changed, restarting player")
+                stopPlayer()
+                if (config.sendspinEnabled) startPlayer()
+            }
+        }
     }
 }

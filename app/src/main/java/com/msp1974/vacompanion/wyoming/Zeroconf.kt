@@ -3,65 +3,87 @@ package com.msp1974.vacompanion.wyoming
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
-import com.msp1974.vacompanion.settings.APPConfig
+import android.os.Handler
+import android.os.Looper
 import timber.log.Timber
-import javax.inject.Inject
 
-internal class Zeroconf(private val context: Context, val uuid: String) {
+/**
+ * Advertises the proxy as an ESPHome node (`_esphomelib._tcp`) so Home Assistant's ESPHome
+ * integration discovers it. Registration retries after a failure, since it commonly fails when
+ * the network isn't up yet (e.g. right after boot).
+ */
+class Zeroconf(
+    context: Context,
+    private val identity: WyomingIdentity,
+) {
+    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+    private val handler = Handler(Looper.getMainLooper())
 
-    private var nsdManager: NsdManager? = null
-    private var isRegistered: Boolean = false
-    var serviceName: String? = null
+    private var port = 0
+    private var registered = false
+    private var stopped = true
 
-    fun registerService(port: Int) {
-        if (!isRegistered) {
-            val serviceInfo = NsdServiceInfo().apply {
-                serviceName = "vaca-${uuid}"
-                serviceType = "_vaca._tcp."
-                setPort(port)
-            }
+    private val listener = object : NsdManager.RegistrationListener {
+        override fun onServiceRegistered(info: NsdServiceInfo) {
+            registered = true
+            Timber.d("Wyoming: advertised as ${info.serviceName} on port $port")
+        }
 
+        override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+            Timber.w("Wyoming: mDNS registration failed ($errorCode), retrying")
+            if (!stopped) handler.postDelayed({ if (!stopped) register() }, RETRY_MS)
+        }
+
+        override fun onServiceUnregistered(info: NsdServiceInfo) {
+            registered = false
+        }
+
+        override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+            Timber.w("Wyoming: mDNS unregistration failed ($errorCode)")
+            registered = false
+        }
+    }
+
+    fun start(port: Int) {
+        this.port = port
+        stopped = false
+        register()
+    }
+
+    fun stop() {
+        stopped = true
+        handler.removeCallbacksAndMessages(null)
+        if (registered) {
             try {
-                nsdManager = (context.getSystemService(Context.NSD_SERVICE) as NsdManager).apply {
-                    registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
-                }
+                nsdManager.unregisterService(listener)
             } catch (e: Exception) {
-                Timber.Forest.e("Error registering NSD service: $e")
+                Timber.w("Wyoming: error unregistering mDNS service: $e")
             }
         }
     }
 
-    fun unregisterService() {
-        if (isRegistered && nsdManager != null) {
-            nsdManager!!.unregisterService(registrationListener)
+    private fun register() {
+        val info = NsdServiceInfo().apply {
+            serviceName = identity.nodeName
+            serviceType = SERVICE_TYPE
+            port = this@Zeroconf.port
+            setAttribute("friendly_name", identity.friendlyName)
+            setAttribute("version", identity.appVersion)
+            // 12 lowercase hex chars, no separators - what ESPHome nodes publish.
+            setAttribute("platform", "ANDROID")
+            setAttribute("board", identity.model)
+            setAttribute("network", "wifi")
+        }
+        try {
+            nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener)
+        } catch (e: Exception) {
+            Timber.e("Wyoming: error registering mDNS service: $e")
+            if (!stopped) handler.postDelayed({ if (!stopped) register() }, RETRY_MS)
         }
     }
 
-    private val registrationListener = object : NsdManager.RegistrationListener {
-        override fun onServiceRegistered(nsdServiceInfo: NsdServiceInfo) {
-            // Save the service name. Android may have changed it in order to
-            // resolve a conflict, so update the name you initially requested
-            // with the name Android actually used.
-            serviceName = nsdServiceInfo.serviceName
-            isRegistered = true
-            Timber.Forest.d("Registered NSD service: $serviceName")
-        }
-
-        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            // Registration failed! Put debugging code here to determine why.
-            Timber.Forest.e("Failed to register NSD service: $errorCode")
-        }
-
-        override fun onServiceUnregistered(arg0: NsdServiceInfo) {
-            // Service has been unregistered. This only happens when you call
-            // NsdManager.unregisterService() and pass in this listener.
-            Timber.Forest.d("Unregistered NSD service")
-            isRegistered = false
-        }
-
-        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-            // De-registration failed. Put debugging code here to determine why.
-            Timber.Forest.e("Failed to unregister NSD service: $errorCode")
-        }
+    companion object {
+        private const val SERVICE_TYPE = "_vaca._tcp."
+        private const val RETRY_MS = 15_000L
     }
 }

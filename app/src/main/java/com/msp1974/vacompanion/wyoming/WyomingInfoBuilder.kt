@@ -9,7 +9,26 @@ import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 
+/** Static identity reported to Home Assistant. */
+class WyomingIdentity(
+    val nodeName: String,
+    val friendlyName: String,
+    val model: String,
+    val manufacturer: String,
+    val appVersion: String,
+)
+
 class WyomingInfoBuilder(private val deviceManager: DeviceManager) {
+
+    fun buildWyomingIdentity(): WyomingIdentity {
+        return WyomingIdentity(
+            nodeName = "vaca-${deviceManager.config.uuid}",
+            friendlyName = "VACA ${deviceManager.config.uuid}",
+            model = deviceManager.deviceInfo.hardware.model,
+            manufacturer = deviceManager.deviceInfo.hardware.manufacturer,
+            appVersion = deviceManager.deviceInfo.software.appVersion,
+        )
+    }
 
     @OptIn(ExperimentalSerializationApi::class)
     fun buildInfo(): JsonObject {

@@ -38,6 +38,10 @@ data class AudioDeviceSummary(
 
 data class DeviceHardwareData(
     val deviceName: String,
+    val manufacturer: String = Build.MANUFACTURER,
+    val model: String = Build.MODEL,
+    val device: String = Build.DEVICE,
+    val board: String = Build.BOARD,
     val hasAccelerometer: Boolean,
     val hasBattery: Boolean,
     val hasFrontCamera: Boolean,

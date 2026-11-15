@@ -202,7 +202,7 @@ class BluetoothProxyManager(
     // --- Identity ---
 
     private fun buildIdentity(): ProxyIdentity {
-        val suffix = config.uuid.filter { it.isLetterOrDigit() }.lowercase().take(8)
+        // val suffix = config.uuid.filter { it.isLetterOrDigit() }.lowercase().take(8)
         // Home Assistant has no way to read this device's real Bluetooth address (Android hides
         // it), so derive a stable, locally administered one from the app's UUID. It is only used
         // to identify this proxy in Home Assistant.
@@ -211,7 +211,7 @@ class BluetoothProxyManager(
         mac[0] = ((mac[0].toInt() or 0x02) and 0xFE).toByte()
         val btMac = mac.copyOf().also { it[5] = (it[5] + 1).toByte() }
         return ProxyIdentity(
-            nodeName = "vaca-btproxy-$suffix",
+            nodeName = "vaca-btproxy-${config.uuid}",
             friendlyName = "VACA ${config.uuid} BT Proxy",
             mac = formatMac(mac),
             bluetoothMac = formatMac(btMac),
@@ -283,11 +283,21 @@ class BluetoothProxyManager(
 
     // The setting is SharedPreferences-backed, so the event carries no typed value - read it back.
     override fun onEventTriggered(event: Event) {
-        if (event.eventName != "bluetooth_proxy_enabled") return
-        Timber.d("BluetoothProxyManager: bluetooth_proxy_enabled=${config.bluetoothProxyEnabled}")
-        if (config.bluetoothProxyEnabled) startProxy() else {
-            unregisterPermissionReceiver()
-            stopProxy()
+        when (event.eventName) {
+            "bluetooth_proxy_enabled" -> {
+                Timber.d("BluetoothProxyManager: bluetooth_proxy_enabled=${config.bluetoothProxyEnabled}")
+                if (config.bluetoothProxyEnabled) startProxy() else {
+                    unregisterPermissionReceiver()
+                    stopProxy()
+                }
+            }
+            // The node name, MAC and friendly name are all derived from the uuid.
+            "restartZeroconf" -> {
+                if (server == null) return
+                Timber.d("BluetoothProxyManager: device UUID changed, restarting proxy")
+                stopProxy()
+                if (config.bluetoothProxyEnabled) startProxy()
+            }
         }
     }
 
