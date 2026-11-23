@@ -6,6 +6,7 @@ import android.content.res.AssetManager
 import com.msp1974.vacompanion.audio.AudioDSP
 import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.settings.APPConfig
+import com.msp1974.vacompanion.utils.CustomFileDownloader
 import com.msp1974.vacompanion.wakeword.WakeWordEngineModel
 import com.msp1974.vacompanion.wakeword.WakeWordEngineProvider
 import com.msp1974.vacompanion.wakeword.models.WakeWordWithId
@@ -13,9 +14,11 @@ import com.msp1974.vacompanion.wakeword.openwakeword.audio.AudioProcessor
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.ModelRunner
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.OnnxModelRunner
 import com.msp1974.vacompanion.wakeword.openwakeword.ml.TfliteModelRunner
+import com.msp1974.vacompanion.wakeword.openwakeword.ml.VerifierModel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import timber.log.Timber
+import java.io.File
 
 
 /**
@@ -40,6 +43,12 @@ class OpenWakeWordEngine(
     private val assetManager: AssetManager = context.assets
     private val modelProcessors = mutableMapOf<WakeWordWithId, ModelProcessor>()
     private val detectionCooldowns = mutableMapOf<String, Long>()
+
+    // Verifiers live next to the custom wake words, eg custom/wakewords/openwakeword_rt/hey_jarvis_verifier.json
+    private val verifierDir = File(
+        context.filesDir,
+        "${CustomFileDownloader.CUSTOM_DIR}/${CustomFileDownloader.WAKEWORDS_DIR}/${engine.toString().lowercase()}"
+    )
 
     private val config: APPConfig = deviceManager.config
     var isEnabled = true
@@ -106,7 +115,7 @@ class OpenWakeWordEngine(
     private fun initializeModels() {
         activeWakeWords.forEach { wakeWordWithId ->
             getWakeWord(wakeWordWithId)?.let { wakeWord ->
-                val processor = ModelProcessor(engine, wakeWord)
+                val processor = ModelProcessor(engine, wakeWord, VerifierModel.load(verifierDir, wakeWord.id))
                 modelProcessors[wakeWord] = processor
             }
         }
@@ -118,7 +127,7 @@ class OpenWakeWordEngine(
          */
         Timber.w("Adding model $wakeWordId to engine")
         getWakeWord(wakeWordId)?.let { wakeWord ->
-            val processor = ModelProcessor(engine, wakeWord)
+            val processor = ModelProcessor(engine, wakeWord, VerifierModel.load(verifierDir, wakeWord.id))
             modelProcessors[wakeWord] = processor
         }
     }
@@ -299,7 +308,8 @@ class OpenWakeWordEngine(
      */
     private class ModelProcessor(
         engine: WakeWordEngineModel,
-        wakeWord: WakeWordWithId
+        private val wakeWord: WakeWordWithId,
+        private val verifier: VerifierModel? = null
     ) : AutoCloseable {
 
         private val modelRunner = getModelRunner(engine, wakeWord)
@@ -311,11 +321,23 @@ class OpenWakeWordEngine(
 
         fun process(audioFeatures: Array<Array<FloatArray>>): Float {
             val score = modelRunner.predictWakeWord(audioFeatures)
-            return score
+            if (verifier == null || score < VERIFIER_MIN_SCORE) return score
+
+            // Unlike openWakeWord this doesn't replace the score with the verifier's, it only
+            // blocks it, so the wake word threshold still means the same thing with a verifier.
+            val verified = verifier.predict(audioFeatures)
+            if (verified >= verifier.threshold) return score
+            Timber.d("${wakeWord.id} score $score blocked by verifier ($verified)")
+            return 0f
         }
 
         override fun close() {
             modelRunner.close()
+        }
+
+        companion object {
+            // Same as openWakeWord's custom_verifier_threshold default, below this the verifier isn't run
+            const val VERIFIER_MIN_SCORE = 0.1f
         }
 
     }
