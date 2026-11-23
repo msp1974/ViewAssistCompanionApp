@@ -69,6 +69,8 @@ abstract class WyomingClientHandler (
             }
         }
 
+    var instanceUUID: String = ""
+
     suspend fun start() {
         try {
             writeHandlerJob = scope.launch {
