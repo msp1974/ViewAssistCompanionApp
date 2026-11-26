@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         // The orientation is otherwise only applied when the setting changes, so a new Activity
         // would start with the manifest default whatever mode is configured.
         screen.setScreenOrientation(this, config.screenOrientationMode)
-        updater = Updater(this)
+        updater = Updater(this, deviceManager)
         permissions = Permissions(this, deviceManager, this)
 
         var keepSplashScreen = true

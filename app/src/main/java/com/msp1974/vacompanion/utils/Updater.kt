@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
+import com.msp1974.vacompanion.device.DeviceManager
 import com.msp1974.vacompanion.device.authentication.HttpClientProvider
 import com.msp1974.vacompanion.settings.APPConfig
 import io.github.z4kn4fein.semver.toVersion
@@ -28,7 +29,7 @@ data class LatestRelease(
     var downloadURL: String = ""
 )
 
-class Updater(val context: Context) {
+class Updater(val context: Context, private val deviceManager: DeviceManager) {
     private val log = Logger()
     private val client = HttpClientProvider().get()
     var latestRelease: LatestRelease = LatestRelease("0.0.0", "")
@@ -55,7 +56,23 @@ class Updater(val context: Context) {
         return ""
     }
 
+    /**
+     * The release the HA integration has staged for this device, if any. It is served from the
+     * integration's /vaca static path, so airgapped devices need no access to GitHub.
+     */
+    private fun hostedRelease(): LatestRelease? {
+        val config = deviceManager.config
+        if (config.apkUpdateVersion.isBlank() || config.apkUpdateFile.isBlank()) return null
+        val base = deviceManager.authenticationManager.getBaseUrl().toString().removeSuffix("/")
+        return LatestRelease(config.apkUpdateVersion, "$base/vaca/custom/apk/${Uri.encode(config.apkUpdateFile)}")
+    }
+
     suspend fun getLatestRelease(forceUpdate: Boolean = true): LatestRelease {
+        hostedRelease()?.let {
+            latestRelease.version = it.version
+            latestRelease.downloadURL = it.downloadURL
+            return latestRelease
+        }
         if (latestRelease.version == "0.0.0" || forceUpdate) {
             val data = githubApiGET("${APPConfig.GITHUB_API_URL}/latest")
             latestRelease.version =
@@ -67,6 +84,13 @@ class Updater(val context: Context) {
     }
 
     suspend fun getVersionRelease(version: String): LatestRelease {
+        hostedRelease()?.let {
+            if (runCatching { it.version.toVersion() >= version.toVersion() }.getOrDefault(false)) {
+                latestRelease.version = it.version
+                latestRelease.downloadURL = it.downloadURL
+                return latestRelease
+            }
+        }
         val data = githubApiGET("${APPConfig.GITHUB_API_URL}/tags/v$version")
         latestRelease.version =
             data.getOrDefault("name", "0.0.0").toString().replace("v", "").replace("\"", "")
@@ -98,9 +122,11 @@ class Updater(val context: Context) {
 
     fun requestDownload(callback: (uri: String) -> Unit) {
         try {
-            if (latestRelease.downloadURL != "") {
+            // The manual update path runs in a different Updater than the one that looked the release up
+            val downloadURL = latestRelease.downloadURL.ifEmpty { hostedRelease()?.downloadURL ?: "" }
+            if (downloadURL != "") {
                 val request =
-                    DownloadManager.Request(latestRelease.downloadURL.toUri())
+                    DownloadManager.Request(downloadURL.toUri())
                 val downloadManager =
                     context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
                 request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)

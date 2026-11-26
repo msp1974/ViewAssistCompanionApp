@@ -194,7 +194,7 @@ class VAViewModel @Inject constructor(
     var permissions: Permissions = Permissions(application.applicationContext, deviceManager)
     val network = Network(application.applicationContext)
     val customFileDownloader = CustomFileDownloader(application, deviceManager)
-    val updater = Updater(application.applicationContext)
+    val updater = Updater(application.applicationContext, deviceManager)
 
     init {
         _vacaState.value = State()

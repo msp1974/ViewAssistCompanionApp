@@ -65,6 +65,9 @@ class APPConfig @Inject constructor(val context: Context) {
     // Versions
     var integrationVersion: String = "0.0.0"
     var minRequiredApkVersion: String = getPackageInfo(context, context.packageName)?.versionName.toString()
+    // APK staged on the HA server (served from /vaca/custom/apk/), for devices that cannot reach GitHub
+    var apkUpdateVersion: String = ""
+    var apkUpdateFile: String = ""
 
 
     // In memory only settings
@@ -604,6 +607,8 @@ class APPConfig @Inject constructor(val context: Context) {
         settings["diagnostics_enabled"]?.jsonPrimitive?.booleanOrNull?.let { diagnosticsEnabled = it }
         settings["integration_version"]?.jsonPrimitive?.contentOrNull?.let { integrationVersion = it }
         settings["min_required_apk_version"]?.jsonPrimitive?.contentOrNull?.let { minRequiredApkVersion = it }
+        settings["apk_update_version"]?.jsonPrimitive?.contentOrNull?.let { apkUpdateVersion = it }
+        settings["apk_update_file"]?.jsonPrimitive?.contentOrNull?.let { apkUpdateFile = it }
         settings["zoom_level"]?.jsonPrimitive?.intOrNull?.let { zoomLevel = it }
         settings["text_size"]?.jsonPrimitive?.intOrNull?.let { textSize = it }
         settings["screen_on_wake_word"]?.jsonPrimitive?.booleanOrNull?.let { screenOnWakeWord = it }
