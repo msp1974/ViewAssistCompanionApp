@@ -19,6 +19,15 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
 import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.contentLength
+import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import timber.log.Timber
@@ -32,6 +41,8 @@ data class LatestRelease(
 class Updater(val context: Context, private val deviceManager: DeviceManager) {
     private val log = Logger()
     private val client = HttpClientProvider().get()
+    private val downloadClient by lazy { HttpClientProvider(ignoreSslErrors = { deviceManager.config.ignoreSSLErrors }).get() }
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var latestRelease: LatestRelease = LatestRelease("0.0.0", "")
 
     private fun getDownloadLink(data: JsonObject): String {
@@ -124,7 +135,11 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
         try {
             // The manual update path runs in a different Updater than the one that looked the release up
             val downloadURL = latestRelease.downloadURL.ifEmpty { hostedRelease()?.downloadURL ?: "" }
-            if (downloadURL != "") {
+            if (downloadURL != "" && downloadURL == hostedRelease()?.downloadURL) {
+                // DownloadManager only runs on a network Android has validated as having internet,
+                // so it never starts on an airgapped LAN. Fetch from the HA server ourselves.
+                downloadFromHomeAssistant(downloadURL, callback)
+            } else if (downloadURL != "") {
                 val request =
                     DownloadManager.Request(downloadURL.toUri())
                 val downloadManager =
@@ -143,6 +158,42 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
             }
         } catch (e: Exception) {
             log.e(e.message.toString())
+        }
+    }
+
+    private fun downloadFromHomeAssistant(url: String, callback: (uri: String) -> Unit) {
+        scope.launch {
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            val file = File(dir, "vaca.apk")
+            val part = File(dir, "vaca.apk.part")
+            val ok = try {
+                part.delete()
+                downloadClient.prepareGet(url).execute { response ->
+                    if (!response.status.isSuccess()) error("HTTP ${response.status.value}")
+                    val expected = response.contentLength() ?: -1L
+                    val channel = response.bodyAsChannel()
+                    part.outputStream().use { out ->
+                        val buffer = ByteArray(64 * 1024)
+                        while (!channel.isClosedForRead) {
+                            val read = channel.readAvailable(buffer)
+                            if (read <= 0) break
+                            out.write(buffer, 0, read)
+                        }
+                    }
+                    if (expected > 0 && part.length() != expected) {
+                        error("incomplete download: ${part.length()} of $expected bytes")
+                    }
+                }
+                file.delete()
+                part.renameTo(file)
+            } catch (e: Exception) {
+                log.e("APK download from $url failed: ${e.message}")
+                part.delete()
+                false
+            }
+            withContext(Dispatchers.Main) {
+                callback(if (ok) getContentURIFromFile("").toString() else "")
+            }
         }
     }
 
