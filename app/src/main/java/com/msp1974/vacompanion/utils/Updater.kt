@@ -28,6 +28,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
 import timber.log.Timber
@@ -43,6 +44,7 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
     private val client = HttpClientProvider().get()
     private val downloadClient by lazy { HttpClientProvider(ignoreSslErrors = { deviceManager.config.ignoreSSLErrors }).get() }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val downloading = AtomicBoolean(false)
     var latestRelease: LatestRelease = LatestRelease("0.0.0", "")
 
     private fun getDownloadLink(data: JsonObject): String {
@@ -77,6 +79,9 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
         val base = deviceManager.authenticationManager.getBaseUrl().toString().removeSuffix("/")
         return LatestRelease(config.apkUpdateVersion, "$base/vaca/custom/apk/${Uri.encode(config.apkUpdateFile)}")
     }
+
+    /** True when the update comes from the HA server rather than GitHub. */
+    val usesHomeAssistant: Boolean get() = hostedRelease() != null
 
     suspend fun getLatestRelease(forceUpdate: Boolean = true): LatestRelease {
         hostedRelease()?.let {
@@ -162,6 +167,11 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
     }
 
     private fun downloadFromHomeAssistant(url: String, callback: (uri: String) -> Unit) {
+        // A second tap on Update must not start a second download over the same file
+        if (!downloading.compareAndSet(false, true)) {
+            log.d("APK download already running")
+            return
+        }
         scope.launch {
             val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
             val file = File(dir, "vaca.apk")
@@ -172,16 +182,25 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
                     if (!response.status.isSuccess()) error("HTTP ${response.status.value}")
                     val expected = response.contentLength() ?: -1L
                     val channel = response.bodyAsChannel()
+                    var total = 0L
+                    var nextLog = 10L * 1024 * 1024
+                    val started = System.currentTimeMillis()
                     part.outputStream().use { out ->
                         val buffer = ByteArray(64 * 1024)
                         while (!channel.isClosedForRead) {
                             val read = channel.readAvailable(buffer)
                             if (read <= 0) break
                             out.write(buffer, 0, read)
+                            total += read
+                            if (total >= nextLog) {
+                                log.d("APK download: ${total / 1024 / 1024} MB of ${expected / 1024 / 1024} MB")
+                                nextLog += 10L * 1024 * 1024
+                            }
                         }
                     }
-                    if (expected > 0 && part.length() != expected) {
-                        error("incomplete download: ${part.length()} of $expected bytes")
+                    log.d("APK download read $total bytes in ${System.currentTimeMillis() - started} ms")
+                    if (expected > 0 && total != expected) {
+                        error("incomplete download: $total of $expected bytes")
                     }
                 }
                 file.delete()
@@ -191,6 +210,7 @@ class Updater(val context: Context, private val deviceManager: DeviceManager) {
                 part.delete()
                 false
             }
+            downloading.set(false)
             withContext(Dispatchers.Main) {
                 callback(if (ok) getContentURIFromFile("").toString() else "")
             }
