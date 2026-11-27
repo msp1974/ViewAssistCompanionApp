@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
         // The orientation is otherwise only applied when the setting changes, so a new Activity
         // would start with the manifest default whatever mode is configured.
         screen.setScreenOrientation(this, config.screenOrientationMode)
-        updater = Updater(this)
+        updater = Updater(this, deviceManager)
         permissions = Permissions(this, deviceManager, this)
 
         var keepSplashScreen = true
@@ -395,6 +395,7 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             addAction(BroadcastSender.SATELLITE_CLIENT_UPDATED)
             addAction(BroadcastSender.SATELLITE_STOPPED)
             addAction(BroadcastSender.VERSION_MISMATCH)
+            addAction(BroadcastSender.RUN_UPDATE)
             addAction(BroadcastSender.WEBVIEW_CRASH)
             addAction(BroadcastSender.TOAST_MESSAGE)
             addAction(BroadcastSender.CLOSE_APP)
@@ -969,6 +970,8 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
     @Suppress("DEPRECATION")
     private fun downloadAndInstallUpdate() {
         setStatus(getString(R.string.status_downloading_update))
+        // The status line is only drawn on the connect screen, so also tell the user over the dashboard
+        Toast.makeText(this, "Downloading update, the install prompt appears when it is done", Toast.LENGTH_LONG).show()
         updater.requestDownload { uri ->
             if (uri != "") {
                 Timber.d("Download complete = $uri")
@@ -990,7 +993,13 @@ class MainActivity : AppCompatActivity(), EventListener, ComponentCallbacks2 {
             } else {
                 val b = VADialog(
                     title = "Error downloading update",
-                    message = "There was an error downloading the update.  This could be caused by a lack of disk space or an error accessing the internet.",
+                    message = if (updater.usesHomeAssistant) {
+                        "The update could not be downloaded from Home Assistant. Check that Home Assistant is reachable and the APK is still in its vaca/custom/apk folder, then try again."
+                    } else {
+                        "There was an error downloading the update.  This could be caused by a lack of disk space or an error accessing the internet."
+                    },
+                    confirmText = "OK",
+                    dismissText = "",
                     confirmCallback = {
                         updateProcessComplete = true
                         setStatus(getString(R.string.status_app_update_required, config.minRequiredApkVersion))
